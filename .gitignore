@@ -45,6 +45,7 @@ tmp/
 test-results/
 playwright-report/
 playwright/.cache/
+.playwright-mcp/
 
 # Claude/AI Integration artifacts (development tools, not needed in repo)
 .claude-flow/

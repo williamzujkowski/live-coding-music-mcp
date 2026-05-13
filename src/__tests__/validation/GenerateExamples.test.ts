@@ -2,13 +2,24 @@ import { PatternGenerator } from '../../services/PatternGenerator';
 import { MusicTheory } from '../../services/MusicTheory';
 import { PatternValidator } from '../../utils/PatternValidator';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 describe('Generate Example Patterns', () => {
   let generator: PatternGenerator;
   let theory: MusicTheory;
   let validator: PatternValidator;
-  const examplesDir = path.join(__dirname, '../../../patterns/examples');
+  // Write to a temp dir — tracked fixtures in patterns/examples/ must not be
+  // mutated by every test run (was producing 14-file timestamp churn).
+  let examplesDir: string;
+
+  beforeAll(() => {
+    examplesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'strudel-examples-'));
+  });
+
+  afterAll(() => {
+    fs.rmSync(examplesDir, { recursive: true, force: true });
+  });
 
   beforeEach(() => {
     theory = new MusicTheory();
