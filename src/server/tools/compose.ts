@@ -25,8 +25,26 @@ const SESSION_ID_PROP = {
 
 export const tools: Tool[] = [
   {
+    name: 'browser_window',
+    description:
+      'Interact with the visible Strudel browser window. ' +
+      'action=show brings the window to the foreground. ' +
+      'action=screenshot captures the current editor view to disk (optional `filename`). ' +
+      'Example: browser_window({ action: "screenshot", filename: "demo.png" }). ' +
+      'For diagnostics (status/errors/perf) use diagnostics; for the editor itself use edit_pattern.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['show', 'screenshot'], description: 'Window action' },
+        filename: { type: 'string', description: 'action=screenshot: optional output filename' },
+        ...SESSION_ID_PROP,
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'show_browser',
-    description: 'Bring browser window to foreground for visual feedback',
+    description: '[DEPRECATED — use browser_window({ action: "show" }) instead] Bring browser window to foreground',
     inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
@@ -72,15 +90,33 @@ function defaultTempo(style: string): number {
   return TEMPO_BY_STYLE[style.toLowerCase()] ?? 120;
 }
 
+async function doShow(ctx: ToolContext, sid?: string): Promise<unknown> {
+  if (!sid && !ctx.isInitialized()) {
+    return 'Browser not initialized. Run init first.';
+  }
+  return await ctx.getController(sid).showBrowser();
+}
+
+async function doScreenshot(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
+  if (!sid && !ctx.isInitialized()) {
+    return 'Browser not initialized. Run init first.';
+  }
+  return await ctx.getController(sid).takeScreenshot(args?.filename);
+}
+
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
   const sid: string | undefined = args?.session_id;
   switch (name) {
-    case 'show_browser': {
-      if (!sid && !ctx.isInitialized()) {
-        return 'Browser not initialized. Run init first.';
+    case 'browser_window': {
+      const a = args?.action;
+      if (a !== 'show' && a !== 'screenshot') {
+        throw new Error(`Invalid action: ${a}. Must be one of: show, screenshot`);
       }
-      return await ctx.getController(sid).showBrowser();
+      return a === 'show' ? await doShow(ctx, sid) : await doScreenshot(args, ctx, sid);
     }
+
+    case 'show_browser':
+      return await doShow(ctx, sid);
 
     case 'compose': {
       InputValidator.validateStringLength(args.style, 'style', 100, false);

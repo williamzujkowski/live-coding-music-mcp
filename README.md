@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-82-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-84-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**82 tools** across 15 categories:
+**84 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -336,7 +336,7 @@ Then ask Claude:
 | Tool | Description |
 |------|-------------|
 | `export_midi` | Export current pattern to MIDI file. Parses note(), n(), and chord() functions. |
-| `screenshot` | Take a screenshot of the current Strudel editor state |
+| `screenshot` | [DEPRECATED — use browser_window({ action: "screenshot" }) instead] Take a screenshot of the current Strudel editor state |
 
 </details>
 
@@ -354,7 +354,7 @@ Then ask Claude:
 
 | Tool | Description |
 |------|-------------|
-| `show_browser` | Bring browser window to foreground for visual feedback |
+| `show_browser` | [DEPRECATED — use browser_window({ action: "show" }) instead] Bring browser window to foreground |
 | `diagnostics` | Inspect server and browser state.  |
 | `show_errors` | [DEPRECATED — use diagnostics({ level: "errors" }) instead] Display captured console errors and warnings from Strudel |
 | `performance_report` | [DEPRECATED — use diagnostics({ level: "perf" }) instead] Get performance metrics and bottlenecks |
@@ -362,7 +362,7 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (17)</summary>
+<details><summary><strong>Other</strong> (19)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -373,6 +373,7 @@ Then ask Claude:
 | `query_pattern_events` | Enumerate events the pattern would emit between two cycle indices (max 16 cycles) |
 | `transpile_pattern` | Transpile pattern source via StrudelEngine; returns transpiled code or syntax error |
 | `audio_capture` | Record audio output from the live Strudel session.  |
+| `browser_window` | Interact with the visible Strudel browser window.  |
 | `edit_pattern` | Mutate the current session pattern.  |
 | `generate_part` | Generate a single instrumental layer and append it to the current session pattern.  |
 | `music_theory` | Music-theory queries.  |
@@ -387,7 +388,7 @@ Then ask Claude:
 
 </details>
 
-_Auto-generated from source. 82 tools registered._
+_Auto-generated from source. 84 tools registered._
 
 <!-- TOOLS:END -->
 

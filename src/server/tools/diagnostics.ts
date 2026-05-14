@@ -72,7 +72,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'screenshot',
-    description: 'Take a screenshot of the current Strudel editor state',
+    description: '[DEPRECATED — use browser_window({ action: "screenshot" }) instead] Take a screenshot of the current Strudel editor state',
     inputSchema: {
       type: 'object',
       properties: {
