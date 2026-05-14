@@ -310,11 +310,11 @@ Then ask Claude:
 
 | Tool | Description |
 |------|-------------|
-| `analyze` | Complete audio analysis |
-| `analyze_spectrum` | FFT spectrum analysis |
-| `analyze_rhythm` | Rhythm analysis |
-| `detect_tempo` | BPM detection |
-| `detect_key` | Key detection |
+| `analyze` | Audio analysis on the currently-playing pattern.  |
+| `analyze_spectrum` | [DEPRECATED — use analyze({ include: ["spectrum"] }) instead] FFT spectrum analysis |
+| `analyze_rhythm` | [DEPRECATED — use analyze({ include: ["rhythm"] }) instead] Rhythm analysis |
+| `detect_tempo` | [DEPRECATED — use analyze({ include: ["tempo"] }) instead] BPM detection |
+| `detect_key` | [DEPRECATED — use analyze({ include: ["key"] }) instead] Key detection |
 | `validate_pattern_runtime` | Validate pattern with runtime error checking (monitors Strudel console for errors) |
 | `compare_patterns` | [DEPRECATED — use history({ action: "compare" }) instead] Compare two patterns from history showing differences |
 

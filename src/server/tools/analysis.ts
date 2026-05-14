@@ -31,27 +31,46 @@ const SESSION_ID_PROP = {
 export const tools: Tool[] = [
   {
     name: 'analyze',
-    description: 'Complete audio analysis',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
+    description:
+      'Audio analysis on the currently-playing pattern. ' +
+      'include=["all"] (default) returns the full spectrum + features object, matching the pre-consolidation behaviour. ' +
+      'include=["tempo"] returns only BPM with confidence. ' +
+      'include=["key"] returns detected key + scale + confidence. ' +
+      'include=["spectrum"] returns FFT features (bass, mid, treble, brightness, etc.). ' +
+      'include=["rhythm"] returns rhythm-only analysis (complexity, density, syncopation). ' +
+      'Combining values returns an object keyed by category, e.g. analyze({ include: ["tempo", "key"] }) → { tempo: {...}, key: {...} }. ' +
+      'Example: analyze({ include: ["tempo"] }) to cheaply re-check BPM during a session. ' +
+      'For static pattern analysis (no browser) use analyze_pattern_local; for runtime validation use validate_pattern_runtime.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        include: {
+          type: 'array',
+          items: { type: 'string', enum: ['all', 'spectrum', 'rhythm', 'tempo', 'key'] },
+          description: 'Which analyses to return. Default ["all"] preserves pre-consolidation behaviour.',
+        },
+        ...SESSION_ID_PROP,
+      },
+    },
   },
   {
     name: 'analyze_spectrum',
-    description: 'FFT spectrum analysis',
+    description: '[DEPRECATED — use analyze({ include: ["spectrum"] }) instead] FFT spectrum analysis',
     inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'analyze_rhythm',
-    description: 'Rhythm analysis',
+    description: '[DEPRECATED — use analyze({ include: ["rhythm"] }) instead] Rhythm analysis',
     inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'detect_tempo',
-    description: 'BPM detection',
+    description: '[DEPRECATED — use analyze({ include: ["tempo"] }) instead] BPM detection',
     inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'detect_key',
-    description: 'Key detection',
+    description: '[DEPRECATED — use analyze({ include: ["key"] }) instead] Key detection',
     inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
@@ -125,6 +144,99 @@ const LOCAL_ENGINE_TOOLS = new Set([
   'transpile_pattern',
 ]);
 
+async function getSpectrum(controller: any): Promise<unknown> {
+  const spectrum = await controller.analyzeAudio();
+  return spectrum.features || spectrum;
+}
+
+async function getRhythm(controller: any): Promise<unknown> {
+  return await controller.analyzeRhythm();
+}
+
+async function getTempo(controller: any): Promise<unknown> {
+  try {
+    const tempoAnalysis = await controller.detectTempo();
+    if (!tempoAnalysis || tempoAnalysis.bpm === 0) {
+      return {
+        bpm: 0,
+        confidence: 0,
+        message: 'No tempo detected. Ensure audio is playing and has a clear rhythmic pattern.',
+      };
+    }
+    return {
+      bpm: tempoAnalysis.bpm,
+      confidence: Math.round(tempoAnalysis.confidence * 100) / 100,
+      method: tempoAnalysis.method,
+      message: `Detected ${tempoAnalysis.bpm} BPM with ${Math.round(tempoAnalysis.confidence * 100)}% confidence`,
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { bpm: 0, confidence: 0, error: message || 'Tempo detection failed' };
+  }
+}
+
+async function getKey(controller: any): Promise<unknown> {
+  try {
+    const keyAnalysis = await controller.detectKey();
+    if (!keyAnalysis || keyAnalysis.confidence < 0.1) {
+      return {
+        key: 'Unknown',
+        scale: 'unknown',
+        confidence: 0,
+        message: 'No clear key detected. Ensure audio is playing and has tonal content.',
+      };
+    }
+    const result: any = {
+      key: keyAnalysis.key,
+      scale: keyAnalysis.scale,
+      confidence: Math.round(keyAnalysis.confidence * 100) / 100,
+      message: `Detected ${keyAnalysis.key} ${keyAnalysis.scale} with ${Math.round(keyAnalysis.confidence * 100)}% confidence`,
+    };
+    if (keyAnalysis.alternatives && keyAnalysis.alternatives.length > 0) {
+      result.alternatives = keyAnalysis.alternatives.map((alt: any) => ({
+        key: alt.key,
+        scale: alt.scale,
+        confidence: Math.round(alt.confidence * 100) / 100,
+      }));
+    }
+    return result;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { key: 'Unknown', scale: 'unknown', confidence: 0, error: message || 'Key detection failed' };
+  }
+}
+
+async function doAnalyze(args: any, controller: any): Promise<unknown> {
+  const includeRaw: unknown = args?.include;
+  const include: string[] = Array.isArray(includeRaw) && includeRaw.length > 0
+    ? (includeRaw as string[])
+    : ['all'];
+
+  for (const v of include) {
+    if (!['all', 'spectrum', 'rhythm', 'tempo', 'key'].includes(v)) {
+      throw new Error(`Invalid include value: ${v}. Must be one of: all, spectrum, rhythm, tempo, key`);
+    }
+  }
+
+  // include=['all'] is the most-common path and returns the unwrapped
+  // analyzeAudio result (no schema surprise vs old `analyze`).
+  if (include.includes('all')) {
+    return await controller.analyzeAudio();
+  }
+
+  // Otherwise return an object keyed by category, computed in parallel.
+  const tasks: Record<string, Promise<unknown>> = {};
+  if (include.includes('spectrum')) tasks.spectrum = getSpectrum(controller);
+  if (include.includes('rhythm'))   tasks.rhythm   = getRhythm(controller);
+  if (include.includes('tempo'))    tasks.tempo    = getTempo(controller);
+  if (include.includes('key'))      tasks.key      = getKey(controller);
+
+  const entries = await Promise.all(
+    Object.entries(tasks).map(async ([k, p]) => [k, await p] as const),
+  );
+  return Object.fromEntries(entries);
+}
+
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
   const sid: string | undefined = args?.session_id;
   if (!LOCAL_ENGINE_TOOLS.has(name) && !sid && !ctx.isInitialized()) {
@@ -134,68 +246,13 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
 
   switch (name) {
     case 'analyze':
-      return await controller!.analyzeAudio();
+      return await doAnalyze(args, controller!);
 
-    case 'analyze_spectrum': {
-      const spectrum = await controller!.analyzeAudio();
-      return spectrum.features || spectrum;
-    }
-
-    case 'analyze_rhythm':
-      return await controller!.analyzeRhythm();
-
-    case 'detect_tempo': {
-      try {
-        const tempoAnalysis = await controller!.detectTempo();
-        if (!tempoAnalysis || tempoAnalysis.bpm === 0) {
-          return {
-            bpm: 0,
-            confidence: 0,
-            message: 'No tempo detected. Ensure audio is playing and has a clear rhythmic pattern.',
-          };
-        }
-        return {
-          bpm: tempoAnalysis.bpm,
-          confidence: Math.round(tempoAnalysis.confidence * 100) / 100,
-          method: tempoAnalysis.method,
-          message: `Detected ${tempoAnalysis.bpm} BPM with ${Math.round(tempoAnalysis.confidence * 100)}% confidence`,
-        };
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { bpm: 0, confidence: 0, error: message || 'Tempo detection failed' };
-      }
-    }
-
-    case 'detect_key': {
-      try {
-        const keyAnalysis = await controller!.detectKey();
-        if (!keyAnalysis || keyAnalysis.confidence < 0.1) {
-          return {
-            key: 'Unknown',
-            scale: 'unknown',
-            confidence: 0,
-            message: 'No clear key detected. Ensure audio is playing and has tonal content.',
-          };
-        }
-        const result: any = {
-          key: keyAnalysis.key,
-          scale: keyAnalysis.scale,
-          confidence: Math.round(keyAnalysis.confidence * 100) / 100,
-          message: `Detected ${keyAnalysis.key} ${keyAnalysis.scale} with ${Math.round(keyAnalysis.confidence * 100)}% confidence`,
-        };
-        if (keyAnalysis.alternatives && keyAnalysis.alternatives.length > 0) {
-          result.alternatives = keyAnalysis.alternatives.map((alt: any) => ({
-            key: alt.key,
-            scale: alt.scale,
-            confidence: Math.round(alt.confidence * 100) / 100,
-          }));
-        }
-        return result;
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { key: 'Unknown', scale: 'unknown', confidence: 0, error: message || 'Key detection failed' };
-      }
-    }
+    // Deprecated aliases — forward to consolidated handler.
+    case 'analyze_spectrum': return await getSpectrum(controller!);
+    case 'analyze_rhythm':   return await getRhythm(controller!);
+    case 'detect_tempo':     return await getTempo(controller!);
+    case 'detect_key':       return await getKey(controller!);
 
     case 'validate_pattern_runtime': {
       InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
