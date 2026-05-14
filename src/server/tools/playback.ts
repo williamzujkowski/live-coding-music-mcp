@@ -1,12 +1,11 @@
 /**
- * playback domain — transport controls (play, pause, stop).
+ * playback domain — transport controls.
  *
- * Owns (3 tools): play, pause, stop. Post-consolidation target
- * (#110 audit, #120 epic): single `playback` tool with action enum.
+ * Owns one consolidated tool (`playback(action)`) plus three deprecated
+ * aliases (play, pause, stop) per #120 / #152.
  *
- * Each tool accepts an optional `session_id` (#108). Omitting it
- * targets the default/legacy session; an explicit id routes through
- * SessionManager and errors if the session doesn't exist.
+ * Aliases forward to `playback` and will be removed in a future release
+ * per the deprecation policy.
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -21,18 +20,40 @@ const SESSION_ID_PROP = {
 
 export const tools: Tool[] = [
   {
+    name: 'playback',
+    description:
+      'Control transport on the current session. ' +
+      'action=play starts the editor pattern. ' +
+      'action=pause stops without resetting clock. ' +
+      'action=stop ends playback. ' +
+      'Example: playback({ action: "play" }). ' +
+      'For pattern editing use edit_pattern; for tempo use set_tempo.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['play', 'pause', 'stop'],
+          description: 'Transport action',
+        },
+        ...SESSION_ID_PROP,
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'play',
-    description: 'Start playing pattern',
+    description: '[DEPRECATED — use playback({ action: "play" }) instead] Start playing pattern',
     inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'pause',
-    description: 'Pause playback',
+    description: '[DEPRECATED — use playback({ action: "pause" }) instead] Pause playback',
     inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'stop',
-    description: 'Stop playback',
+    description: '[DEPRECATED — use playback({ action: "stop" }) instead] Stop playback',
     inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
 ];
@@ -45,16 +66,16 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
     return 'Browser not initialized. Run init first.';
   }
   const controller = ctx.getController(sid);
-  switch (name) {
+
+  const action = name === 'playback' ? args?.action : name;
+  switch (action) {
     case 'play':
       return await controller.play();
-
     case 'pause':
     case 'stop':
       return await controller.stop();
-
     default:
-      throw new Error(`playback module does not handle tool: ${name}`);
+      throw new Error(`Invalid action: ${action}. Must be one of: play, pause, stop`);
   }
 }
 
