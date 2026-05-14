@@ -29,9 +29,11 @@ export interface HistoryEntry {
 }
 
 /**
- * Undo / redo / history state — arrays are passed by reference so the
- * outer server can still push onto them during write/append/etc., and
- * the history module can pop/shift them during undo/redo.
+ * Undo / redo / history state for a single session — arrays are passed
+ * by reference so the outer server can still push onto them during
+ * write/append/etc., and the history module can pop/shift them during
+ * undo/redo. The bundle is fetched per-call via `ctx.getHistory(sid)`
+ * so that named sessions get their own stacks (#179).
  */
 export interface HistoryState {
   undoStack: string[];
@@ -62,7 +64,21 @@ export interface ToolContext {
    * exists; this method throws otherwise.
    */
   getAudioCaptureService(): Promise<AudioCaptureService>;
-  history: HistoryState;
+  /**
+   * Resolves the per-session HistoryState (#179). Omitting the session id
+   * returns the default-session bundle; named sessions get their own
+   * isolated undo/redo/history stacks. Auto-creates the bundle on first
+   * access so callers never have to check existence.
+   *
+   * The `historyEntryId()` counter is intentionally server-wide so a
+   * single ID is unique across the whole timeline (e.g. compare_patterns
+   * picking up an id from list_history can reference it unambiguously).
+   */
+  getHistory(sessionId?: string): HistoryState;
+  /** Mint a fresh history entry id (server-wide counter). */
+  historyEntryId(): number;
+  /** Drop a session's history bundle (called by session destroy). */
+  dropHistory(sessionId: string): void;
   logger: Logger;
   isInitialized(): boolean;
   /**

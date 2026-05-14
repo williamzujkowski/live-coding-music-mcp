@@ -15,12 +15,22 @@ function makeCtx(initialized = true) {
     getCurrentPattern: jest.fn(async () => currentPattern),
     writePattern: jest.fn(async (p: string) => { currentPattern = p; return 'written'; }),
   };
-  const history = {
-    undoStack: [] as string[],
-    redoStack: [] as string[],
-    historyStack: [] as HistoryEntry[],
-    maxHistory: 100,
-  };
+  // Per-session bundles keyed by sid (or 'default'). #179 made history
+  // session-scoped; the test uses one bundle since each case mocks one
+  // session.
+  const bundles = new Map<string, { undoStack: string[]; redoStack: string[]; historyStack: HistoryEntry[] }>();
+  function getBundle(id = 'default') {
+    let b = bundles.get(id);
+    if (!b) {
+      b = { undoStack: [], redoStack: [], historyStack: [] };
+      bundles.set(id, b);
+    }
+    return b;
+  }
+  // Expose the default bundle as `history` for tests that push directly.
+  const history = getBundle('default') as any;
+  history.maxHistory = 100;
+  let idCounter = 0;
   const ctx: ToolContext = {
     controller: controller as any,
     perfMonitor: {} as any,
@@ -32,7 +42,12 @@ function makeCtx(initialized = true) {
     strudelEngine: {} as any,
     midiExportService: {} as any,
     getAudioCaptureService: async () => ({}) as any,
-    history,
+    getHistory: (sid?: string) => {
+      const b = getBundle(sid ?? 'default');
+      return { ...b, maxHistory: 100 };
+    },
+    historyEntryId: () => ++idCounter,
+    dropHistory: (sid: string) => { bundles.delete(sid); },
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } as any,
     isInitialized: () => initialized,
     ensureInitialized: async () => {},

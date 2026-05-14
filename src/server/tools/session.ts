@@ -89,6 +89,9 @@ async function doDestroy(args: any, ctx: ToolContext): Promise<unknown> {
   InputValidator.validateStringLength(args.session_id, 'session_id', 100, false);
   try {
     await sm.destroySession(args.session_id);
+    // Drop the session's history bundle (#179) so a future session with
+    // the same id starts fresh.
+    ctx.dropHistory(args.session_id);
     return {
       success: true,
       session_id: args.session_id,

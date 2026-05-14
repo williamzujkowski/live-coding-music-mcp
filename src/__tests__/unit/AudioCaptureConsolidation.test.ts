@@ -27,7 +27,7 @@ function makeCtx() {
     sessionManager: {} as any, geminiService: {} as any, strudelEngine: {} as any,
     midiExportService: {} as any,
     getAudioCaptureService: async () => service as any,
-    history: { undoStack: [], redoStack: [], historyStack: [], maxHistory: 100 },
+    getHistory: () => ({ undoStack: [], redoStack: [], historyStack: [], maxHistory: 100 }), historyEntryId: () => 1, dropHistory: jest.fn(),
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } as any,
     isInitialized: () => true,
     ensureInitialized: async () => {},

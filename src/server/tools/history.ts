@@ -147,7 +147,7 @@ function summarizeDiff(a: string, b: string): {
 }
 
 async function doUndo(ctx: ToolContext, sid?: string): Promise<unknown> {
-  const { undoStack, redoStack, maxHistory } = ctx.history;
+  const { undoStack, redoStack, maxHistory } = ctx.getHistory(sid);
   if (!sid && !ctx.isInitialized()) return 'Browser not initialized. Run init first.';
   if (undoStack.length === 0) return 'Nothing to undo';
   const controller = ctx.getController(sid);
@@ -162,7 +162,7 @@ async function doUndo(ctx: ToolContext, sid?: string): Promise<unknown> {
 }
 
 async function doRedo(ctx: ToolContext, sid?: string): Promise<unknown> {
-  const { undoStack, redoStack, maxHistory } = ctx.history;
+  const { undoStack, redoStack, maxHistory } = ctx.getHistory(sid);
   if (!sid && !ctx.isInitialized()) return 'Browser not initialized. Run init first.';
   if (redoStack.length === 0) return 'Nothing to redo';
   const controller = ctx.getController(sid);
@@ -176,8 +176,8 @@ async function doRedo(ctx: ToolContext, sid?: string): Promise<unknown> {
   return 'Redone';
 }
 
-function doList(args: any, ctx: ToolContext): unknown {
-  const { historyStack } = ctx.history;
+function doList(args: any, ctx: ToolContext, sid?: string): unknown {
+  const { historyStack } = ctx.getHistory(sid);
   if (historyStack.length === 0) {
     return 'No pattern history yet. Make some edits to build history.';
   }
@@ -197,7 +197,7 @@ function doList(args: any, ctx: ToolContext): unknown {
 }
 
 async function doRestore(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
-  const { undoStack, historyStack, maxHistory } = ctx.history;
+  const { undoStack, historyStack, maxHistory } = ctx.getHistory(sid);
   if (!sid && !ctx.isInitialized()) return 'Browser not initialized. Run init first.';
   const controller = ctx.getController(sid);
 
@@ -215,7 +215,7 @@ async function doRestore(args: any, ctx: ToolContext, sid?: string): Promise<unk
 }
 
 async function doCompare(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
-  const { historyStack } = ctx.history;
+  const { historyStack } = ctx.getHistory(sid);
   const first = historyStack.find(e => e.id === args.id1);
   if (!first) return `History entry #${args.id1} not found.`;
 
@@ -248,7 +248,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       switch (action) {
         case 'undo':    return await doUndo(ctx, sid);
         case 'redo':    return await doRedo(ctx, sid);
-        case 'list':    return doList(args, ctx);
+        case 'list':    return doList(args, ctx, sid);
         case 'restore': return await doRestore(args, ctx, sid);
         case 'compare': return await doCompare(args, ctx, sid);
         default:
@@ -259,7 +259,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
     // Deprecated aliases — forward to consolidated handler.
     case 'undo':             return await doUndo(ctx, sid);
     case 'redo':             return await doRedo(ctx, sid);
-    case 'list_history':     return doList(args, ctx);
+    case 'list_history':     return doList(args, ctx, sid);
     case 'restore_history':  return await doRestore(args, ctx, sid);
     case 'compare_patterns': return await doCompare(args, ctx, sid);
 

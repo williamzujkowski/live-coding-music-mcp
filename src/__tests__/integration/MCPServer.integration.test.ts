@@ -220,11 +220,11 @@ describe('MCP Server Integration Tests', () => {
       expect(Array.isArray(serverAny.sessionHistory)).toBe(true);
     });
 
-    test('should maintain undo/redo stacks', () => {
+    test('should maintain per-session undo/redo stacks', () => {
       const serverAny = server as any;
-
-      expect(Array.isArray(serverAny.undoStack)).toBe(true);
-      expect(Array.isArray(serverAny.redoStack)).toBe(true);
+      // Per-session bundles (#179) — the legacy single undoStack/redoStack
+      // moved into a Map keyed by sessionId, lazily populated.
+      expect(serverAny.historyBundles instanceof Map).toBe(true);
     });
 
     test('should track initialization state', () => {

@@ -55,12 +55,19 @@ export class StrudelMCPServer {
   private perfMonitor: PerformanceMonitor;
   private strudelEngine: StrudelEngine;
   private sessionHistory: string[] = [];
-  private undoStack: string[] = [];
-  private redoStack: string[] = [];
-  /** Pattern history with metadata for browsing (#41) */
-  private historyStack: HistoryEntry[] = [];
+  /**
+   * Per-session undo/redo/history bundles (#179). Keyed by session id;
+   * 'default' for the legacy/single-session path. Bundles are lazily
+   * created on first access via getHistory().
+   */
+  private historyBundles: Map<string, {
+    undoStack: string[];
+    redoStack: string[];
+    historyStack: HistoryEntry[];
+  }> = new Map();
+  /** Server-wide history-entry counter; IDs unique across all sessions. */
   private historyIdCounter: number = 0;
-  /** Maximum history entries to prevent memory leaks */
+  /** Maximum history entries per session to prevent memory leaks */
   private readonly MAX_HISTORY = 100;
   private isInitialized: boolean = false;
   private generatedPatterns: Map<string, string> = new Map();
@@ -297,31 +304,33 @@ export class StrudelMCPServer {
     // explicit session_id (it returned "Browser not initialized" instead
     // of "Session 'X' not found").
 
-    // Save current state for undo and history (#41) before any edit on the
-    // default session. Named-session edits bypass the legacy undo stack —
-    // per-session history is tracked in #140 follow-up.
-    if (['write', 'append', 'insert', 'replace', 'clear'].includes(name) && this.isInitialized && !args?.session_id) {
-      try {
-        const current = await this.controller.getCurrentPattern();
-        this.undoStack.push(current);
+    // Save current state for undo and history (#41) before any edit
+    // (#179): route to the session-specific bundle. Default session is
+    // 'default'; named sessions get their own isolated stacks.
+    if (['write', 'append', 'insert', 'replace', 'clear'].includes(name)) {
+      const sid: string | undefined = args?.session_id;
+      const canRead = sid !== undefined || this.isInitialized;
+      if (canRead) {
+        try {
+          const controller = this.getControllerForSession(sid);
+          const current = await controller.getCurrentPattern();
+          const bundle = this.getHistoryBundle(sid ?? 'default');
+          bundle.undoStack.push(current);
 
-        this.historyIdCounter++;
-        this.historyStack.push({
-          id: this.historyIdCounter,
-          pattern: current,
-          timestamp: new Date(),
-          action: name
-        });
+          this.historyIdCounter++;
+          bundle.historyStack.push({
+            id: this.historyIdCounter,
+            pattern: current,
+            timestamp: new Date(),
+            action: name,
+          });
 
-        if (this.undoStack.length > this.MAX_HISTORY) {
-          this.undoStack.shift();
+          if (bundle.undoStack.length > this.MAX_HISTORY) bundle.undoStack.shift();
+          if (bundle.historyStack.length > this.MAX_HISTORY) bundle.historyStack.shift();
+          bundle.redoStack.length = 0;
+        } catch {
+          // Controller might not be initialized yet, or session is gone
         }
-        if (this.historyStack.length > this.MAX_HISTORY) {
-          this.historyStack.shift();
-        }
-        this.redoStack = [];
-      } catch {
-        // Controller might not be initialized yet
       }
     }
 
@@ -339,12 +348,17 @@ export class StrudelMCPServer {
       strudelEngine: this.strudelEngine,
       midiExportService: this.midiExportService,
       getAudioCaptureService: () => this.getAudioCaptureService(),
-      history: {
-        undoStack: this.undoStack,
-        redoStack: this.redoStack,
-        historyStack: this.historyStack,
-        maxHistory: this.MAX_HISTORY,
+      getHistory: (sessionId?: string) => {
+        const bundle = this.getHistoryBundle(sessionId ?? 'default');
+        return {
+          undoStack: bundle.undoStack,
+          redoStack: bundle.redoStack,
+          historyStack: bundle.historyStack,
+          maxHistory: this.MAX_HISTORY,
+        };
       },
+      historyEntryId: () => ++this.historyIdCounter,
+      dropHistory: (sessionId: string) => { this.historyBundles.delete(sessionId); },
       logger: this.logger,
       isInitialized: () => this.isInitialized,
       ensureInitialized: () => this.ensureInitialized(),
@@ -404,6 +418,23 @@ export class StrudelMCPServer {
     }
 
     throw new Error(`Unknown tool: ${name}`);
+  }
+
+  /**
+   * Lazily get or create the per-session history bundle (#179). Bundle is
+   * a mutable triple — callers push/shift directly on the arrays.
+   */
+  private getHistoryBundle(sessionId: string): {
+    undoStack: string[];
+    redoStack: string[];
+    historyStack: HistoryEntry[];
+  } {
+    let bundle = this.historyBundles.get(sessionId);
+    if (!bundle) {
+      bundle = { undoStack: [], redoStack: [], historyStack: [] };
+      this.historyBundles.set(sessionId, bundle);
+    }
+    return bundle;
   }
 
   /** Idempotent browser bring-up. Used by tools that promise auto-init (e.g. `compose`). */
