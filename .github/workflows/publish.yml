@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version type (patch, minor, major)'
+        description: 'Version bump type (ignored when dry_run is true)'
         required: true
         default: 'patch'
         type: choice
@@ -14,12 +14,24 @@ on:
           - patch
           - minor
           - major
+      dry_run:
+        description: 'Dry run — build/test/pack/SBOM but do NOT version-bump, publish, or attest. Default true so an accidental manual trigger validates the pipeline instead of publishing.'
+        required: false
+        default: true
+        type: boolean
 
 # Required for OIDC trusted publishing and build provenance attestation
 permissions:
   contents: write
   id-token: write
   attestations: write
+
+# A real release goes through the `release: published` event. A
+# workflow_dispatch run is dry by default — it exercises the whole
+# pipeline (#188) without touching npm, git tags, or the attestation log.
+# Set dry_run=false on a manual dispatch to actually publish.
+env:
+  IS_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 
 jobs:
   publish:
@@ -56,6 +68,14 @@ jobs:
             exit 1
           fi
 
+      - name: Report run mode
+        run: |
+          if [ "${IS_DRY_RUN}" = "true" ]; then
+            echo "::notice::DRY RUN — pipeline will be validated but nothing published, tagged, or attested."
+          else
+            echo "::notice::LIVE — this run will publish to npm."
+          fi
+
       - name: Install dependencies
         run: npm ci
 
@@ -66,7 +86,7 @@ jobs:
         run: npm run test:nocov -- --testPathIgnorePatterns="browser"
 
       - name: Version bump (manual trigger only)
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run != true
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
@@ -74,10 +94,11 @@ jobs:
           git push
           git push --tags
 
-      # Publish with provenance using OIDC trusted publishing
-      # If trusted publisher is configured on npmjs.com, no NPM_TOKEN needed
-      # Falls back to NPM_TOKEN if trusted publishing isn't configured
+      # Publish with provenance using OIDC trusted publishing.
+      # If trusted publisher is configured on npmjs.com, no NPM_TOKEN needed;
+      # falls back to NPM_TOKEN otherwise. Skipped entirely on a dry run.
       - name: Publish to npm with provenance
+        if: env.IS_DRY_RUN != 'true'
         run: npm publish --provenance --access public
         env:
           # NPM_TOKEN is optional when using OIDC trusted publishing
@@ -85,10 +106,12 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       # Pack the tarball so we can attest + attach it to the GitHub release.
-      # `npm pack` runs the `prepare` hook (npm run build), whose generator
-      # script prints to stdout — so parsing npm's output (even --json) is
-      # fragile. Instead, just glob for the .tgz it produces: npm pack
-      # creates exactly one, named deterministically from package.json.
+      # Runs in dry-run too — it validates the pack/glob logic, which is
+      # exactly where #187 broke. `npm pack` runs the `prepare` hook (npm
+      # run build), whose generator script prints to stdout — so parsing
+      # npm's output (even --json) is fragile. Instead, just glob for the
+      # .tgz it produces: npm pack creates exactly one, named
+      # deterministically from package.json.
       - name: Pack tarball for attestation
         id: pack
         run: |
@@ -101,14 +124,16 @@ jobs:
 
       # GitHub-native SLSA build provenance on the published tarball —
       # independent of npm's publish provenance so consumers can verify
-      # via either GitHub or the npm registry.
+      # via either GitHub or the npm registry. Skipped on a dry run so we
+      # don't pollute the repo's attestation log with un-published tarballs.
       - name: Generate build provenance attestation
+        if: env.IS_DRY_RUN != 'true'
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
         with:
           subject-path: ${{ steps.pack.outputs.tarball }}
 
       # SBOM via npm's built-in generator (SPDX + CycloneDX formats).
-      # Consumers can audit the dependency tree without cloning.
+      # Generated in dry-run too — cheap, and validates the generator works.
       - name: Generate SBOM (SPDX)
         run: npm sbom --sbom-format=spdx > sbom.spdx.json
 
@@ -116,7 +141,8 @@ jobs:
         run: npm sbom --sbom-format=cyclonedx > sbom.cdx.json
 
       # Attach SBOMs and tarball to the GitHub release for release events.
-      # Manual workflow_dispatch runs skip this since there's no release to attach to.
+      # workflow_dispatch runs (dry or not) skip this — there's no release
+      # object to attach to.
       - name: Attach artifacts to release
         if: github.event_name == 'release'
         env:
@@ -127,3 +153,28 @@ jobs:
             sbom.spdx.json \
             sbom.cdx.json \
             --clobber
+
+      - name: Run summary
+        if: always()
+        run: |
+          {
+            echo "## Publish workflow summary"
+            echo ""
+            if [ "${IS_DRY_RUN}" = "true" ]; then
+              echo "**Mode:** dry run — nothing published."
+              echo ""
+              echo "| Step | Status |"
+              echo "|---|---|"
+              echo "| Build + test | validated |"
+              echo "| npm pack (tarball glob) | validated |"
+              echo "| SBOM generation (SPDX + CycloneDX) | validated |"
+              echo "| Version bump | skipped (dry run) |"
+              echo "| npm publish | skipped (dry run) |"
+              echo "| Build provenance attestation | skipped (dry run) |"
+              echo "| Release artifact attach | skipped (workflow_dispatch) |"
+            else
+              echo "**Mode:** live — published to npm."
+              echo ""
+              echo "Packed: \`${{ steps.pack.outputs.tarball }}\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
