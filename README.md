@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-66-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-70-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**66 tools** across 15 categories:
+**70 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -362,15 +362,19 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (1)</summary>
+<details><summary><strong>Other</strong> (5)</summary>
 
 | Tool | Description |
 |------|-------------|
 | `suggest_pattern_from_audio` | Analyze the currently playing audio and suggest a complementary Strudel pattern using Gemini AI. Extracts tempo, key, and spectral features locally, then uses AI to generate a matching pattern. Returns pattern text (not auto-executed). |
+| `validate_pattern_local` | Validate pattern syntax against the in-process StrudelEngine (no browser required) |
+| `analyze_pattern_local` | Static analysis (events/cycle, complexity, optional BPM) without browser playback |
+| `query_pattern_events` | Enumerate events the pattern would emit between two cycle indices (max 16 cycles) |
+| `transpile_pattern` | Transpile pattern source via StrudelEngine; returns transpiled code or syntax error |
 
 </details>
 
-_Auto-generated from source. 66 tools registered._
+_Auto-generated from source. 70 tools registered._
 
 <!-- TOOLS:END -->
 

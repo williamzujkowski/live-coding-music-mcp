@@ -65,6 +65,12 @@ export interface ToolContext {
   history: HistoryState;
   logger: Logger;
   isInitialized(): boolean;
+  /**
+   * Initializes the browser if it isn't already, flipping the server's
+   * `isInitialized` flag. Used by tools (e.g. `compose`) that promise to
+   * auto-init rather than refusing without setup.
+   */
+  ensureInitialized(): Promise<void>;
   getCurrentPatternSafe(): Promise<string>;
   writePatternSafe(pattern: string): Promise<string>;
 }

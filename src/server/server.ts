@@ -9,14 +9,13 @@ import { StrudelController } from '../StrudelController.js';
 import { PatternStore } from '../PatternStore.js';
 import { MusicTheory } from '../services/MusicTheory.js';
 import { PatternGenerator } from '../services/PatternGenerator.js';
-import { GeminiService, CreativeFeedback, AudioFeedback } from '../services/GeminiService.js';
+import { GeminiService } from '../services/GeminiService.js';
 import { AudioCaptureService } from '../services/AudioCaptureService.js';
 import { MIDIExportService } from '../services/MIDIExportService.js';
 import { SessionManager } from '../services/SessionManager.js';
 import { readFileSync, existsSync } from 'fs';
 import { Logger } from '../utils/Logger.js';
 import { PerformanceMonitor } from '../utils/PerformanceMonitor.js';
-import { InputValidator } from '../utils/InputValidator.js';
 import { StrudelEngine } from '../services/StrudelEngine.js';
 import { diagnosticsModule } from './tools/diagnostics.js';
 import { playbackModule } from './tools/playback.js';
@@ -29,16 +28,13 @@ import { generateModule } from './tools/generate.js';
 import { sessionModule } from './tools/session.js';
 import { captureModule } from './tools/capture.js';
 import { aiModule } from './tools/ai.js';
+import { composeModule } from './tools/compose.js';
 import type { ToolContext, HistoryEntry } from './tools/types.js';
 
 const configPath = './config.json';
-const config = existsSync(configPath) 
+const config = existsSync(configPath)
   ? JSON.parse(readFileSync(configPath, 'utf-8'))
   : { headless: false };
-
-/** Energy level configuration for set_energy tool (#81) */
-// MOOD_PROFILES + ENERGY_LEVELS moved to src/server/tools/transform.ts
-// alongside the shift_mood / set_energy / refine handlers that use them.
 
 export class StrudelMCPServer {
   private server: Server;
@@ -91,83 +87,24 @@ export class StrudelMCPServer {
   }
 
   private getTools(): Tool[] {
-    // Same tools as before - keeping the same structure
     return [
-      // Core Control Tools (10)
       {
         name: 'init',
         description: 'Initialize Strudel in browser',
-        inputSchema: { type: 'object', properties: {} }
+        inputSchema: { type: 'object', properties: {} },
       },
-      // write, append, insert, replace, clear, get_pattern —
-      // extracted to src/server/tools/editor.ts (#104)
       ...editorModule.tools,
-      // play, pause, stop — extracted to src/server/tools/playback.ts (#104)
       ...playbackModule.tools,
-
-      // transform + effect + shape + set_tempo — extracted to src/server/tools/transform.ts (#104)
       ...transformModule.tools,
-
-      // generate_pattern, generate_drums, generate_bassline, generate_melody,
-      // generate_scale, generate_chord_progression, generate_euclidean,
-      // generate_polyrhythm, generate_fill — extracted to src/server/tools/generate.ts (#104)
       ...generateModule.tools,
-
-      // Audio Analysis + runtime validation — extracted to src/server/tools/analysis.ts (#104)
       ...analysisModule.tools,
-
-      // add_effect, remove_effect, set_tempo, add_swing, apply_scale,
-      // shift_mood — all handled by transformModule (see above).
-
-      // save, load, list — extracted to src/server/tools/storage.ts (#104)
       ...storageModule.tools,
-      // undo, redo, list_history, restore_history, compare_patterns
-      // — extracted to src/server/tools/history.ts (#104)
       ...historyModule.tools,
-
-      // generate_scale, generate_chord_progression, generate_euclidean,
-      // generate_polyrhythm, generate_fill — handled by generateModule (above).
-
-      // Performance, diagnostics, screenshots — extracted to src/server/tools/diagnostics.ts (#104)
       ...diagnosticsModule.tools,
-
-      // UX Tools - Browser Control (#37)
-      {
-        name: 'show_browser',
-        description: 'Bring browser window to foreground for visual feedback',
-        inputSchema: { type: 'object', properties: {} }
-      },
-
-      // UX Tools - High-level Compose (#42, #73)
-      {
-        name: 'compose',
-        description: 'Generate, write, and play a complete pattern in one step. Auto-initializes browser if needed.',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            style: { type: 'string', description: 'Genre: techno, house, dnb, ambient, trap, jungle, jazz, experimental' },
-            tempo: { type: 'number', description: 'BPM (default: genre-appropriate)' },
-            key: { type: 'string', description: 'Musical key (default: C)' },
-            auto_play: { type: 'boolean', description: 'Start playback immediately (default: true)' },
-            get_feedback: { type: 'boolean', description: 'Get AI feedback on the generated pattern (default: false)' }
-          },
-          required: ['style']
-        }
-      },
-
-      // get_pattern_feedback, suggest_pattern_from_audio, jam_with —
-      // extracted to src/server/tools/ai.ts (#104)
+      ...composeModule.tools,
       ...aiModule.tools,
-
-      // start_audio_capture, stop_audio_capture, capture_audio_sample,
-      // export_midi — extracted to src/server/tools/capture.ts (#104)
       ...captureModule.tools,
-
-      // create_session, destroy_session, list_sessions, switch_session —
-      // extracted to src/server/tools/session.ts (#104)
       ...sessionModule.tools,
-
-      // refine, set_energy — handled by transformModule (see above).
     ];
   }
 
@@ -354,6 +291,7 @@ export class StrudelMCPServer {
       },
       logger: this.logger,
       isInitialized: () => this.isInitialized,
+      ensureInitialized: () => this.ensureInitialized(),
       getCurrentPatternSafe: () => this.getCurrentPatternSafe(),
       writePatternSafe: (p: string) => this.writePatternSafe(p),
     };
@@ -390,254 +328,33 @@ export class StrudelMCPServer {
     if (aiModule.toolNames.has(name)) {
       return await aiModule.execute(name, args, ctx);
     }
-
-    switch (name) {
-      // Core Control
-      case 'init':
-        const initResult = await this.controller.initialize();
-        this.isInitialized = true;
-        
-        // Write any pending patterns
-        if (this.generatedPatterns.size > 0) {
-          const lastPattern = Array.from(this.generatedPatterns.values()).pop();
-          if (lastPattern) {
-            await this.controller.writePattern(lastPattern);
-            return `${initResult}. Loaded generated pattern.`;
-          }
-        }
-        return initResult;
-      
-      // write, append, insert, replace, clear, get_pattern
-      //   — handled by editorModule above.
-      // play, pause, stop — handled by playbackModule above.
-
-      // Pattern + music-theory generation — all handled by
-      // generateModule above. See src/server/tools/generate.ts.
-      
-      // Pattern manipulation + effects + tempo — all handled by
-      // transformModule above. See src/server/tools/transform.ts.
-      
-      // analyze, analyze_spectrum, analyze_rhythm, detect_tempo, detect_key,
-      // validate_pattern_runtime — handled by analysisModule above.
-
-      // Local Pattern Tools (#83) - No browser required
-      case 'validate_pattern_local':
-        InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
-        const localValidation = this.strudelEngine.validate(args.pattern);
-        return {
-          valid: localValidation.valid,
-          errors: localValidation.errors,
-          warnings: localValidation.warnings,
-          suggestions: localValidation.suggestions,
-          errorLocation: localValidation.errorLocation,
-          message: localValidation.valid
-            ? '✅ Pattern is valid'
-            : `❌ Pattern has ${localValidation.errors.length} error(s)`
-        };
-
-      case 'analyze_pattern_local':
-        InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
-        const patternMetadata = this.strudelEngine.analyzePattern(args.pattern);
-        return {
-          ...patternMetadata,
-          message: `Pattern analysis: ${patternMetadata.eventsPerCycle} events/cycle, ` +
-                   `complexity ${(patternMetadata.complexity * 100).toFixed(0)}%` +
-                   (patternMetadata.bpm ? `, ${patternMetadata.bpm} BPM` : '')
-        };
-
-      case 'query_pattern_events':
-        InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
-        const startCycle = args.start ?? 0;
-        const endCycle = args.end ?? 1;
-        if (startCycle >= endCycle) {
-          return { error: 'Start must be less than end' };
-        }
-        if (endCycle - startCycle > 16) {
-          return { error: 'Maximum range is 16 cycles to prevent excessive output' };
-        }
-        try {
-          const events = this.strudelEngine.queryEvents(args.pattern, startCycle, endCycle);
-          return {
-            count: events.length,
-            range: { start: startCycle, end: endCycle },
-            events: events.map((e: any) => ({
-              value: e.value,
-              start: e.start,
-              end: e.end,
-              duration: e.end - e.start
-            }))
-          };
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : String(error);
-          return {
-            error: message,
-            suggestion: 'Check pattern syntax with validate_pattern_local first'
-          };
-        }
-
-      case 'transpile_pattern':
-        InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
-        const transpileResult = this.strudelEngine.transpile(args.pattern);
-        if (transpileResult.success) {
-          return {
-            success: true,
-            transpiledCode: transpileResult.transpiledCode,
-            message: 'Pattern transpiled successfully'
-          };
-        } else {
-          return {
-            success: false,
-            error: transpileResult.error,
-            errorLocation: transpileResult.errorLocation,
-            message: 'Transpilation failed'
-          };
-        }
-
-
-      // shift_mood — handled by transformModule above.
-
-      // Session Management
-      // save, load, list — handled by storageModule above.
-      // undo, redo, list_history, restore_history, compare_patterns
-      //   — handled by historyModule above.
-
-      // performance_report, memory_usage, screenshot, status, diagnostics,
-      // show_errors — all handled by diagnosticsModule before this switch.
-      // show_browser stays here until session.ts extraction lands.
-
-      // UX Tools - Browser Control (#37)
-      case 'show_browser':
-        if (!this.isInitialized) {
-          return 'Browser not initialized. Run init first.';
-        }
-        return await this.controller.showBrowser();
-
-      // UX Tools - High-level Compose (#42, #73)
-      case 'compose':
-        InputValidator.validateStringLength(args.style, 'style', 100, false);
-        if (args.key) {
-          InputValidator.validateRootNote(args.key);
-        }
-        if (args.tempo !== undefined) {
-          InputValidator.validateBPM(args.tempo);
-        }
-
-        // Auto-initialize if needed
-        if (!this.isInitialized) {
-          await this.controller.initialize();
-          this.isInitialized = true;
-        }
-
-        // Generate pattern
-        const composedPattern = this.generator.generateCompletePattern(
-          args.style,
-          args.key || 'C',
-          args.tempo || this.getDefaultTempo(args.style)
-        );
-
-        // Write pattern
-        await this.controller.writePattern(composedPattern);
-
-        // Auto-play by default (unless explicitly set to false)
-        const shouldPlay = args.auto_play !== false;
-        if (shouldPlay) {
-          await this.controller.play();
-        }
-
-        // Build response
-        const composeResponse: {
-          success: boolean;
-          pattern: string;
-          metadata: { style: string; bpm: number; key: string };
-          status: string;
-          message: string;
-          feedback?: CreativeFeedback;
-        } = {
-          success: true,
-          pattern: composedPattern.substring(0, 200) + (composedPattern.length > 200 ? '...' : ''),
-          metadata: {
-            style: args.style,
-            bpm: args.tempo || this.getDefaultTempo(args.style),
-            key: args.key || 'C'
-          },
-          status: shouldPlay ? 'playing' : 'ready',
-          message: `Created ${args.style} pattern in ${args.key || 'C'}${shouldPlay ? ' - now playing' : ''}`
-        };
-
-        // Get AI feedback if requested (#73)
-        if (args.get_feedback) {
-          if (this.geminiService.isAvailable()) {
-            try {
-              const feedback = await this.geminiService.getCreativeFeedback(composedPattern);
-              composeResponse.feedback = feedback;
-              composeResponse.message += ` (AI feedback: ${feedback.complexity} complexity, estimated ${feedback.estimatedStyle})`;
-            } catch (error: unknown) {
-              const message = error instanceof Error ? error.message : String(error);
-              this.logger.warn('Failed to get AI feedback for compose', { error: message });
-              // Don't fail the whole operation, just note the feedback failure
-              composeResponse.message += ' (AI feedback unavailable)';
-            }
-          } else {
-            composeResponse.message += ' (AI feedback requires GEMINI_API_KEY)';
-          }
-        }
-
-        return composeResponse;
-
-      // get_pattern_feedback, suggest_pattern_from_audio —
-      // handled by aiModule above.
-
-      // start_audio_capture, stop_audio_capture, capture_audio_sample,
-      // export_midi — handled by captureModule above.
-
-      // create_session, destroy_session, list_sessions, switch_session —
-      // handled by sessionModule above.
-
-      // jam_with — handled by aiModule above.
-
-      // refine, set_energy — handled by transformModule above.
-
-      default:
-        throw new Error(`Unknown tool: ${name}`);
+    if (composeModule.toolNames.has(name)) {
+      return await composeModule.execute(name, args, ctx);
     }
+
+    if (name === 'init') {
+      const initResult = await this.controller.initialize();
+      this.isInitialized = true;
+      // Replay any pattern generated before init landed.
+      if (this.generatedPatterns.size > 0) {
+        const lastPattern = Array.from(this.generatedPatterns.values()).pop();
+        if (lastPattern) {
+          await this.controller.writePattern(lastPattern);
+          return `${initResult}. Loaded generated pattern.`;
+        }
+      }
+      return initResult;
+    }
+
+    throw new Error(`Unknown tool: ${name}`);
   }
 
-  // refinePattern, setEnergyLevel, transposePattern moved to
-  // src/server/tools/transform.ts alongside the tools that used them.
-
-  /**
-   * Gets the default tempo for a given music style
-   * @param style - Music style/genre
-   * @returns Default BPM for the style
-   */
-  private getDefaultTempo(style: string): number {
-    const tempoMap: Record<string, number> = {
-      'techno': 130,
-      'house': 125,
-      'dnb': 174,
-      'drum and bass': 174,
-      'ambient': 80,
-      'trap': 140,
-      'jungle': 160,
-      'jazz': 110,
-      'experimental': 120,
-      'dubstep': 140,
-      'trance': 138,
-      'breakbeat': 130,
-      'garage': 130,
-      'electro': 128,
-      'downtempo': 90,
-      'idm': 115
-    };
-
-    return tempoMap[style.toLowerCase()] || 120;
+  /** Idempotent browser bring-up. Used by tools that promise auto-init (e.g. `compose`). */
+  private async ensureInitialized(): Promise<void> {
+    if (this.isInitialized) return;
+    await this.controller.initialize();
+    this.isInitialized = true;
   }
-
-  // formatTimeAgo, generateDiff, summarizeDiff moved to
-  // src/server/tools/history.ts along with the tools that used them.
-
-  // getPatternFeedback, suggestPatternFromAudio, captureAudioSample,
-  // jamWith + six pattern-analysis helpers moved to src/server/tools/ai.ts.
 
   /** Getter for page access in audio capture. */
   private get _page() {

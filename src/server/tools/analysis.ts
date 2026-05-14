@@ -1,13 +1,20 @@
 /**
- * analysis domain — audio analysis + pattern runtime validation.
+ * analysis domain — audio analysis + pattern validation (browser + local).
  *
- * Owns (6 tools): analyze, analyze_spectrum, analyze_rhythm,
- * detect_tempo, detect_key, validate_pattern_runtime.
+ * Owns (10 tools):
+ *   browser-required: analyze, analyze_spectrum, analyze_rhythm,
+ *                     detect_tempo, detect_key, validate_pattern_runtime
+ *   browser-free:     validate_pattern_local, analyze_pattern_local,
+ *                     query_pattern_events, transpile_pattern
+ *
+ * The browser-free set runs against the in-process StrudelEngine and
+ * pairs naturally with validate_pattern_runtime (which monitors the
+ * actual Strudel console). They were orphan handlers — implementations
+ * present but not registered in tools/list — until #124.
  *
  * Post-consolidation (per #110 audit): a single `analyze` tool with
- * an `include[]` filter absorbs the 4 detection-specific tools.
- * `validate_pattern_runtime` stays separate — it's console/syntax
- * scraping, not audio DSP.
+ * an `include[]` filter absorbs the 4 audio detection tools.
+ * Local-engine tools stay distinct — different subsystem.
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -52,12 +59,66 @@ export const tools: Tool[] = [
       required: ['pattern'],
     },
   },
+  {
+    name: 'validate_pattern_local',
+    description: 'Validate pattern syntax against the in-process StrudelEngine (no browser required)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'Pattern code to validate' },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'analyze_pattern_local',
+    description: 'Static analysis (events/cycle, complexity, optional BPM) without browser playback',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'Pattern code to analyze' },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'query_pattern_events',
+    description: 'Enumerate events the pattern would emit between two cycle indices (max 16 cycles)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'Pattern code to query' },
+        start: { type: 'number', description: 'Start cycle (default 0)' },
+        end: { type: 'number', description: 'End cycle (default 1)' },
+      },
+      required: ['pattern'],
+    },
+  },
+  {
+    name: 'transpile_pattern',
+    description: 'Transpile pattern source via StrudelEngine; returns transpiled code or syntax error',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'Pattern code to transpile' },
+      },
+      required: ['pattern'],
+    },
+  },
 ];
 
 export const toolNames = new Set(tools.map(t => t.name));
 
+// Tools in this module that do NOT require a browser session.
+const LOCAL_ENGINE_TOOLS = new Set([
+  'validate_pattern_local',
+  'analyze_pattern_local',
+  'query_pattern_events',
+  'transpile_pattern',
+]);
+
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
-  if (!ctx.isInitialized()) {
+  if (!LOCAL_ENGINE_TOOLS.has(name) && !ctx.isInitialized()) {
     return 'Browser not initialized. Run init first.';
   }
 
@@ -137,6 +198,81 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       }
       return `❌ Pattern has runtime errors:\n${validation.errors.join('\n')}\n` +
         (validation.warnings.length > 0 ? `\nWarnings:\n${validation.warnings.join('\n')}` : '');
+    }
+
+    case 'validate_pattern_local': {
+      InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
+      const localValidation = ctx.strudelEngine.validate(args.pattern);
+      return {
+        valid: localValidation.valid,
+        errors: localValidation.errors,
+        warnings: localValidation.warnings,
+        suggestions: localValidation.suggestions,
+        errorLocation: localValidation.errorLocation,
+        message: localValidation.valid
+          ? '✅ Pattern is valid'
+          : `❌ Pattern has ${localValidation.errors.length} error(s)`,
+      };
+    }
+
+    case 'analyze_pattern_local': {
+      InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
+      const patternMetadata = ctx.strudelEngine.analyzePattern(args.pattern);
+      return {
+        ...patternMetadata,
+        message: `Pattern analysis: ${patternMetadata.eventsPerCycle} events/cycle, ` +
+                 `complexity ${(patternMetadata.complexity * 100).toFixed(0)}%` +
+                 (patternMetadata.bpm ? `, ${patternMetadata.bpm} BPM` : ''),
+      };
+    }
+
+    case 'query_pattern_events': {
+      InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
+      const startCycle = args.start ?? 0;
+      const endCycle = args.end ?? 1;
+      if (startCycle >= endCycle) {
+        return { error: 'Start must be less than end' };
+      }
+      if (endCycle - startCycle > 16) {
+        return { error: 'Maximum range is 16 cycles to prevent excessive output' };
+      }
+      try {
+        const events = ctx.strudelEngine.queryEvents(args.pattern, startCycle, endCycle);
+        return {
+          count: events.length,
+          range: { start: startCycle, end: endCycle },
+          events: events.map((e: any) => ({
+            value: e.value,
+            start: e.start,
+            end: e.end,
+            duration: e.end - e.start,
+          })),
+        };
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          error: message,
+          suggestion: 'Check pattern syntax with validate_pattern_local first',
+        };
+      }
+    }
+
+    case 'transpile_pattern': {
+      InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
+      const transpileResult = ctx.strudelEngine.transpile(args.pattern);
+      if (transpileResult.success) {
+        return {
+          success: true,
+          transpiledCode: transpileResult.transpiledCode,
+          message: 'Pattern transpiled successfully',
+        };
+      }
+      return {
+        success: false,
+        error: transpileResult.error,
+        errorLocation: transpileResult.errorLocation,
+        message: 'Transpilation failed',
+      };
     }
 
     default:
