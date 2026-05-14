@@ -74,27 +74,34 @@ function transposePattern(pattern: string, semitones: number): string {
   });
 }
 
+const SESSION_ID_PROP = {
+  session_id: {
+    type: 'string',
+    description: 'Optional session ID (#108). Omit to use default session.',
+  },
+};
+
 export const tools: Tool[] = [
   {
     name: 'transpose',
     description: 'Transpose notes by semitones',
     inputSchema: {
       type: 'object',
-      properties: { semitones: { type: 'number', description: 'Semitones to transpose' } },
+      properties: { semitones: { type: 'number', description: 'Semitones to transpose' }, ...SESSION_ID_PROP },
       required: ['semitones'],
     },
   },
   {
     name: 'reverse',
     description: 'Reverse pattern',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'stretch',
     description: 'Time stretch pattern',
     inputSchema: {
       type: 'object',
-      properties: { factor: { type: 'number', description: 'Stretch factor' } },
+      properties: { factor: { type: 'number', description: 'Stretch factor' }, ...SESSION_ID_PROP },
       required: ['factor'],
     },
   },
@@ -103,7 +110,7 @@ export const tools: Tool[] = [
     description: 'Quantize to grid',
     inputSchema: {
       type: 'object',
-      properties: { grid: { type: 'string', description: 'Grid size (e.g., "1/16")' } },
+      properties: { grid: { type: 'string', description: 'Grid size (e.g., "1/16")' }, ...SESSION_ID_PROP },
       required: ['grid'],
     },
   },
@@ -112,7 +119,7 @@ export const tools: Tool[] = [
     description: 'Add human timing variation',
     inputSchema: {
       type: 'object',
-      properties: { amount: { type: 'number', description: 'Humanization amount (0-1)' } },
+      properties: { amount: { type: 'number', description: 'Humanization amount (0-1)' }, ...SESSION_ID_PROP },
     },
   },
   {
@@ -120,7 +127,7 @@ export const tools: Tool[] = [
     description: 'Create pattern variations',
     inputSchema: {
       type: 'object',
-      properties: { type: { type: 'string', description: 'Variation type (subtle/moderate/extreme/glitch/evolving)' } },
+      properties: { type: { type: 'string', description: 'Variation type (subtle/moderate/extreme/glitch/evolving)' }, ...SESSION_ID_PROP },
     },
   },
   {
@@ -131,6 +138,7 @@ export const tools: Tool[] = [
       properties: {
         effect: { type: 'string', description: 'Effect name' },
         params: { type: 'string', description: 'Effect parameters' },
+        ...SESSION_ID_PROP,
       },
       required: ['effect'],
     },
@@ -140,7 +148,7 @@ export const tools: Tool[] = [
     description: 'Remove effect',
     inputSchema: {
       type: 'object',
-      properties: { effect: { type: 'string', description: 'Effect to remove' } },
+      properties: { effect: { type: 'string', description: 'Effect to remove' }, ...SESSION_ID_PROP },
       required: ['effect'],
     },
   },
@@ -149,7 +157,7 @@ export const tools: Tool[] = [
     description: 'Set BPM',
     inputSchema: {
       type: 'object',
-      properties: { bpm: { type: 'number', description: 'Tempo in BPM' } },
+      properties: { bpm: { type: 'number', description: 'Tempo in BPM' }, ...SESSION_ID_PROP },
       required: ['bpm'],
     },
   },
@@ -158,7 +166,7 @@ export const tools: Tool[] = [
     description: 'Add swing to pattern',
     inputSchema: {
       type: 'object',
-      properties: { amount: { type: 'number', description: 'Swing amount (0-1)' } },
+      properties: { amount: { type: 'number', description: 'Swing amount (0-1)' }, ...SESSION_ID_PROP },
       required: ['amount'],
     },
   },
@@ -170,6 +178,7 @@ export const tools: Tool[] = [
       properties: {
         scale: { type: 'string', description: 'Scale name' },
         root: { type: 'string', description: 'Root note' },
+        ...SESSION_ID_PROP,
       },
       required: ['scale', 'root'],
     },
@@ -187,6 +196,7 @@ export const tools: Tool[] = [
         },
         intensity: { type: 'number', minimum: 0, maximum: 1, description: 'How strongly to apply the mood transformation (0-1, default: 0.5)' },
         auto_play: { type: 'boolean', description: 'Start playback after transformation (default: true)' },
+        ...SESSION_ID_PROP,
       },
       required: ['target_mood'],
     },
@@ -196,7 +206,7 @@ export const tools: Tool[] = [
     description: 'Adjust the overall energy level of the current pattern on a 0-10 scale. 0: minimal/ambient, 1-2: sparse, 3-4: light/relaxed, 5-6: normal/moderate, 7-8: driving/intense, 9-10: maximum. Auto-plays after applying energy level.',
     inputSchema: {
       type: 'object',
-      properties: { level: { type: 'number', description: 'Energy level from 0 (minimal) to 10 (maximum)' } },
+      properties: { level: { type: 'number', description: 'Energy level from 0 (minimal) to 10 (maximum)' }, ...SESSION_ID_PROP },
       required: ['level'],
     },
   },
@@ -205,7 +215,7 @@ export const tools: Tool[] = [
     description: 'Incrementally refine the current pattern with simple directional commands. Supports: faster/slower (tempo), louder/quieter (gain), brighter/darker (filter cutoff), "more reverb"/drier (reverb). Auto-plays after applying refinement.',
     inputSchema: {
       type: 'object',
-      properties: { direction: { type: 'string', description: 'Refinement direction: faster, slower, louder, quieter, brighter, darker, "more reverb", or drier' } },
+      properties: { direction: { type: 'string', description: 'Refinement direction: faster, slower, louder, quieter, brighter, darker, "more reverb", or drier' }, ...SESSION_ID_PROP },
       required: ['direction'],
     },
   },
@@ -214,109 +224,113 @@ export const tools: Tool[] = [
 export const toolNames = new Set(tools.map(t => t.name));
 
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
+  const sid: string | undefined = args?.session_id;
+  if (!sid && !ctx.isInitialized()) {
+    return 'Browser not initialized. Run init first.';
+  }
   switch (name) {
     case 'transpose': {
       if (typeof args.semitones !== 'number' || !Number.isInteger(args.semitones)) {
         throw new Error('Semitones must be an integer');
       }
-      const p = await ctx.getCurrentPatternSafe();
-      await ctx.writePatternSafe(transposePattern(p, args.semitones));
+      const p = await ctx.getCurrentPatternSafe(sid);
+      await ctx.writePatternSafe(transposePattern(p, args.semitones), sid);
       return `Transposed ${args.semitones} semitones`;
     }
 
     case 'reverse': {
-      const p = await ctx.getCurrentPatternSafe();
-      await ctx.writePatternSafe(p + '.rev');
+      const p = await ctx.getCurrentPatternSafe(sid);
+      await ctx.writePatternSafe(p + '.rev', sid);
       return 'Pattern reversed';
     }
 
     case 'stretch': {
       InputValidator.validateGain(args.factor);
-      const p = await ctx.getCurrentPatternSafe();
-      await ctx.writePatternSafe(p + `.slow(${args.factor})`);
+      const p = await ctx.getCurrentPatternSafe(sid);
+      await ctx.writePatternSafe(p + `.slow(${args.factor})`, sid);
       return `Stretched by factor of ${args.factor}`;
     }
 
     case 'quantize': {
       InputValidator.validateStringLength(args.grid, 'grid', 50, false);
-      const p = await ctx.getCurrentPatternSafe();
-      await ctx.writePatternSafe(p + `.struct("${args.grid}")`);
+      const p = await ctx.getCurrentPatternSafe(sid);
+      await ctx.writePatternSafe(p + `.struct("${args.grid}")`, sid);
       return `Quantized to ${args.grid} grid`;
     }
 
     case 'humanize': {
       if (args.amount !== undefined) InputValidator.validateNormalizedValue(args.amount, 'amount');
-      const p = await ctx.getCurrentPatternSafe();
+      const p = await ctx.getCurrentPatternSafe(sid);
       const amt = args.amount || 0.01;
-      await ctx.writePatternSafe(p + `.nudge(rand.range(-${amt}, ${amt}))`);
+      await ctx.writePatternSafe(p + `.nudge(rand.range(-${amt}, ${amt}))`, sid);
       return 'Added human timing';
     }
 
     case 'generate_variation': {
-      const p = await ctx.getCurrentPatternSafe();
+      const p = await ctx.getCurrentPatternSafe(sid);
       const varied = ctx.generator.generateVariation(p, args.type || 'subtle');
-      await ctx.writePatternSafe(varied);
+      await ctx.writePatternSafe(varied, sid);
       return `Added ${args.type || 'subtle'} variation`;
     }
 
     case 'add_effect': {
       InputValidator.validateStringLength(args.effect, 'effect', 100, false);
       if (args.params) InputValidator.validateStringLength(args.params, 'params', 1000, true);
-      const p = await ctx.getCurrentPatternSafe();
+      const p = await ctx.getCurrentPatternSafe(sid);
       const withEffect = args.params
         ? p + `.${args.effect}(${args.params})`
         : p + `.${args.effect}()`;
-      await ctx.writePatternSafe(withEffect);
+      await ctx.writePatternSafe(withEffect, sid);
       return `Added ${args.effect} effect`;
     }
 
     case 'remove_effect': {
       InputValidator.validateStringLength(args.effect, 'effect', 100, false);
-      const p = await ctx.getCurrentPatternSafe();
+      const p = await ctx.getCurrentPatternSafe(sid);
       const regex = new RegExp(`\\.${args.effect}\\([^)]*\\)`, 'g');
       const stripped = p.replace(regex, '');
       if (stripped === p) return `No ${args.effect} effect found to remove`;
-      await ctx.writePatternSafe(stripped);
+      await ctx.writePatternSafe(stripped, sid);
       return `Removed ${args.effect} effect`;
     }
 
     case 'set_tempo': {
       InputValidator.validateBPM(args.bpm);
-      const p = await ctx.getCurrentPatternSafe();
-      await ctx.writePatternSafe(`setcpm(${args.bpm})\n${p}`);
+      const p = await ctx.getCurrentPatternSafe(sid);
+      await ctx.writePatternSafe(`setcpm(${args.bpm})\n${p}`, sid);
       return `Set tempo to ${args.bpm} BPM`;
     }
 
     case 'add_swing': {
       InputValidator.validateNormalizedValue(args.amount, 'amount');
-      const p = await ctx.getCurrentPatternSafe();
-      await ctx.writePatternSafe(p + `.swing(${args.amount})`);
+      const p = await ctx.getCurrentPatternSafe(sid);
+      await ctx.writePatternSafe(p + `.swing(${args.amount})`, sid);
       return `Added swing: ${args.amount}`;
     }
 
     case 'apply_scale': {
       InputValidator.validateStringLength(args.scale, 'scale', 50, false);
       InputValidator.validateRootNote(args.root);
-      const p = await ctx.getCurrentPatternSafe();
-      await ctx.writePatternSafe(p + `.scale("${args.root}:${args.scale}")`);
+      const p = await ctx.getCurrentPatternSafe(sid);
+      await ctx.writePatternSafe(p + `.scale("${args.root}:${args.scale}")`, sid);
       return `Applied ${args.root} ${args.scale} scale`;
     }
 
     case 'shift_mood':
-      return await shiftMood(args, ctx);
+      return await shiftMood(args, ctx, sid);
 
     case 'set_energy':
-      return await setEnergyLevel(args.level, ctx);
+      return await setEnergyLevel(args.level, ctx, sid);
 
     case 'refine':
-      return await refinePattern(args.direction, ctx);
+      return await refinePattern(args.direction, ctx, sid);
 
     default:
       throw new Error(`transform module does not handle tool: ${name}`);
   }
 }
 
-async function shiftMood(args: any, ctx: ToolContext): Promise<unknown> {
+async function shiftMood(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   const mood = args.target_mood?.toLowerCase()?.trim();
   const profile = MOOD_PROFILES[mood];
   if (!profile) {
@@ -326,7 +340,7 @@ async function shiftMood(args: any, ctx: ToolContext): Promise<unknown> {
     };
   }
 
-  const pattern = await ctx.getCurrentPatternSafe();
+  const pattern = await ctx.getCurrentPatternSafe(sid);
   if (!pattern || pattern.trim().length === 0) {
     return { success: false, error: 'No pattern to transform. Write a pattern first.' };
   }
@@ -375,21 +389,21 @@ async function shiftMood(args: any, ctx: ToolContext): Promise<unknown> {
     applied.push(`gain ${profile.gainMod > 0 ? '+' : ''}${Math.round(profile.gainMod * 100 * intensity)}%`);
   }
 
-  await ctx.writePatternSafe(result);
+  await ctx.writePatternSafe(result, sid);
 
-  if (args.auto_play !== false && ctx.isInitialized()) {
-    await ctx.controller.play();
+  if (args.auto_play !== false && (sid || ctx.isInitialized())) {
+    await ctx.getController(sid).play();
   }
 
   return { success: true, target_mood: mood, intensity, applied_effects: applied };
 }
 
-async function setEnergyLevel(level: number, ctx: ToolContext): Promise<unknown> {
+async function setEnergyLevel(level: number, ctx: ToolContext, sid?: string): Promise<unknown> {
   if (level < 0 || level > 10 || !Number.isInteger(level)) {
     return { success: false, error: 'Energy level must be an integer from 0 to 10.' };
   }
 
-  const pattern = await ctx.getCurrentPatternSafe();
+  const pattern = await ctx.getCurrentPatternSafe(sid);
   if (!pattern || pattern.trim().length === 0) {
     return { success: false, error: 'No pattern to adjust. Write a pattern first.' };
   }
@@ -399,14 +413,14 @@ async function setEnergyLevel(level: number, ctx: ToolContext): Promise<unknown>
   if (config.densityAdjust) result += config.densityAdjust;
   result += `.room(${config.roomAmount})`;
 
-  await ctx.writePatternSafe(result);
-  if (ctx.isInitialized()) await ctx.controller.play();
+  await ctx.writePatternSafe(result, sid);
+  if (sid || ctx.isInitialized()) await ctx.getController(sid).play();
 
   return { success: true, level, description: config.description };
 }
 
-async function refinePattern(direction: string, ctx: ToolContext): Promise<unknown> {
-  const pattern = await ctx.getCurrentPatternSafe();
+async function refinePattern(direction: string, ctx: ToolContext, sid?: string): Promise<unknown> {
+  const pattern = await ctx.getCurrentPatternSafe(sid);
   if (!pattern || pattern.trim().length === 0) {
     return { success: false, error: 'No pattern to refine. Write a pattern first.' };
   }
@@ -429,8 +443,8 @@ async function refinePattern(direction: string, ctx: ToolContext): Promise<unkno
       };
   }
 
-  await ctx.writePatternSafe(pattern + modification);
-  if (ctx.isInitialized()) await ctx.controller.play();
+  await ctx.writePatternSafe(pattern + modification, sid);
+  if (sid || ctx.isInitialized()) await ctx.getController(sid).play();
 
   return { success: true, direction: dir, applied: modification };
 }

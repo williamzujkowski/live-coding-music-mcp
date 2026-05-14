@@ -71,8 +71,23 @@ export interface ToolContext {
    * auto-init rather than refusing without setup.
    */
   ensureInitialized(): Promise<void>;
-  getCurrentPatternSafe(): Promise<string>;
-  writePatternSafe(pattern: string): Promise<string>;
+  /**
+   * Resolves a StrudelController for the requested session (#108).
+   *
+   * Semantics:
+   *   - `undefined` (no session_id) → legacy/default controller; preserves
+   *     single-user behaviour for callers that don't know about sessions.
+   *   - explicit string → SessionManager.getSession(id); **throws** if the
+   *     session doesn't exist. Named sessions must be created via the
+   *     `create_session` tool before use.
+   *
+   * Tools should call this instead of touching `controller` directly when
+   * they're stateful-on-the-browser. The dispatcher wraps the throw into
+   * `err('business', 'Session 'X' not found...')` for MCP clients.
+   */
+  getController(sessionId?: string): StrudelController;
+  getCurrentPatternSafe(sessionId?: string): Promise<string>;
+  writePatternSafe(pattern: string, sessionId?: string): Promise<string>;
 }
 
 /**

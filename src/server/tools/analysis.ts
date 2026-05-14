@@ -21,31 +21,38 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 
+const SESSION_ID_PROP = {
+  session_id: {
+    type: 'string',
+    description: 'Optional session ID (#108). Omit to use default session.',
+  },
+};
+
 export const tools: Tool[] = [
   {
     name: 'analyze',
     description: 'Complete audio analysis',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'analyze_spectrum',
     description: 'FFT spectrum analysis',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'analyze_rhythm',
     description: 'Rhythm analysis',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'detect_tempo',
     description: 'BPM detection',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'detect_key',
     description: 'Key detection',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'validate_pattern_runtime',
@@ -55,6 +62,7 @@ export const tools: Tool[] = [
       properties: {
         pattern: { type: 'string', description: 'Pattern code to validate' },
         waitMs: { type: 'number', description: 'How long to wait for errors (default 500ms)' },
+        ...SESSION_ID_PROP,
       },
       required: ['pattern'],
     },
@@ -118,25 +126,27 @@ const LOCAL_ENGINE_TOOLS = new Set([
 ]);
 
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
-  if (!LOCAL_ENGINE_TOOLS.has(name) && !ctx.isInitialized()) {
+  const sid: string | undefined = args?.session_id;
+  if (!LOCAL_ENGINE_TOOLS.has(name) && !sid && !ctx.isInitialized()) {
     return 'Browser not initialized. Run init first.';
   }
+  const controller = LOCAL_ENGINE_TOOLS.has(name) ? null : ctx.getController(sid);
 
   switch (name) {
     case 'analyze':
-      return await ctx.controller.analyzeAudio();
+      return await controller!.analyzeAudio();
 
     case 'analyze_spectrum': {
-      const spectrum = await ctx.controller.analyzeAudio();
+      const spectrum = await controller!.analyzeAudio();
       return spectrum.features || spectrum;
     }
 
     case 'analyze_rhythm':
-      return await ctx.controller.analyzeRhythm();
+      return await controller!.analyzeRhythm();
 
     case 'detect_tempo': {
       try {
-        const tempoAnalysis = await ctx.controller.detectTempo();
+        const tempoAnalysis = await controller!.detectTempo();
         if (!tempoAnalysis || tempoAnalysis.bpm === 0) {
           return {
             bpm: 0,
@@ -158,7 +168,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
 
     case 'detect_key': {
       try {
-        const keyAnalysis = await ctx.controller.detectKey();
+        const keyAnalysis = await controller!.detectKey();
         if (!keyAnalysis || keyAnalysis.confidence < 0.1) {
           return {
             key: 'Unknown',
@@ -189,7 +199,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
 
     case 'validate_pattern_runtime': {
       InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
-      const validation = await ctx.controller.validatePatternRuntime(
+      const validation = await controller!.validatePatternRuntime(
         args.pattern,
         args.waitMs || 500,
       );

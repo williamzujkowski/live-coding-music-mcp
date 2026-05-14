@@ -257,7 +257,7 @@ Then ask Claude:
 
 | Tool | Description |
 |------|-------------|
-| `compose` | Generate, write, and play a complete pattern in one step. Auto-initializes browser if needed. |
+| `compose` | Generate, write, and play a complete pattern in one step. Auto-initializes default browser if needed. |
 | `generate_pattern` | Generate complete pattern from style with optional auto-play |
 | `generate_drums` | Generate drum pattern |
 | `generate_bassline` | Generate bassline |

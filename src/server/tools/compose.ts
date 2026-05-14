@@ -16,15 +16,22 @@ import type { CreativeFeedback } from '../../services/GeminiService.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 
+const SESSION_ID_PROP = {
+  session_id: {
+    type: 'string',
+    description: 'Optional session ID (#108). Omit to use default session. compose auto-init only applies to default session — named sessions must already exist.',
+  },
+};
+
 export const tools: Tool[] = [
   {
     name: 'show_browser',
     description: 'Bring browser window to foreground for visual feedback',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'compose',
-    description: 'Generate, write, and play a complete pattern in one step. Auto-initializes browser if needed.',
+    description: 'Generate, write, and play a complete pattern in one step. Auto-initializes default browser if needed.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -33,6 +40,7 @@ export const tools: Tool[] = [
         key: { type: 'string', description: 'Musical key (default: C)' },
         auto_play: { type: 'boolean', description: 'Start playback immediately (default: true)' },
         get_feedback: { type: 'boolean', description: 'Get AI feedback on the generated pattern (default: false)' },
+        ...SESSION_ID_PROP,
       },
       required: ['style'],
     },
@@ -65,12 +73,13 @@ function defaultTempo(style: string): number {
 }
 
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
+  const sid: string | undefined = args?.session_id;
   switch (name) {
     case 'show_browser': {
-      if (!ctx.isInitialized()) {
+      if (!sid && !ctx.isInitialized()) {
         return 'Browser not initialized. Run init first.';
       }
-      return await ctx.controller.showBrowser();
+      return await ctx.getController(sid).showBrowser();
     }
 
     case 'compose': {
@@ -82,17 +91,23 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
         InputValidator.validateBPM(args.tempo);
       }
 
-      await ctx.ensureInitialized();
+      // Auto-init only the default session. Named sessions must be
+      // created via `create_session` first — ctx.getController(sid)
+      // throws if missing, which the dispatcher renders as err('business').
+      if (!sid) {
+        await ctx.ensureInitialized();
+      }
+      const controller = ctx.getController(sid);
 
       const tempo = args.tempo || defaultTempo(args.style);
       const key = args.key || 'C';
       const pattern = ctx.generator.generateCompletePattern(args.style, key, tempo);
 
-      await ctx.controller.writePattern(pattern);
+      await controller.writePattern(pattern);
 
       const shouldPlay = args.auto_play !== false;
       if (shouldPlay) {
-        await ctx.controller.play();
+        await controller.play();
       }
 
       const response: {

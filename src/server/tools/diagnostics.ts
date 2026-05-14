@@ -12,13 +12,22 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 
+const SESSION_ID_PROP = {
+  session_id: {
+    type: 'string',
+    description: 'Optional session ID (#108). Omit to use default session.',
+  },
+};
+
 export const tools: Tool[] = [
   {
+    // Server-wide metric; session_id not applicable.
     name: 'performance_report',
     description: 'Get performance metrics and bottlenecks',
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    // Server-wide; session_id not applicable.
     name: 'memory_usage',
     description: 'Get current memory usage statistics',
     inputSchema: { type: 'object', properties: {} },
@@ -30,29 +39,31 @@ export const tools: Tool[] = [
       type: 'object',
       properties: {
         filename: { type: 'string', description: 'Optional filename for screenshot' },
+        ...SESSION_ID_PROP,
       },
     },
   },
   {
     name: 'status',
     description: 'Get current browser and playback status (quick state check)',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'diagnostics',
     description: 'Get detailed browser diagnostics including cache, errors, and performance',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'show_errors',
     description: 'Display captured console errors and warnings from Strudel',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
 ];
 
 export const toolNames = new Set(tools.map(t => t.name));
 
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
+  const sid: string | undefined = args?.session_id;
   switch (name) {
     case 'performance_report': {
       const report = ctx.perfMonitor.getReport();
@@ -66,28 +77,29 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
     }
 
     case 'screenshot': {
-      if (!ctx.isInitialized()) {
+      if (!sid && !ctx.isInitialized()) {
         return 'Browser not initialized. Run init first.';
       }
-      return await ctx.controller.takeScreenshot(args?.filename);
+      return await ctx.getController(sid).takeScreenshot(args?.filename);
     }
 
     case 'status':
-      return ctx.controller.getStatus();
+      return ctx.getController(sid).getStatus();
 
     case 'diagnostics': {
-      if (!ctx.isInitialized()) {
+      if (!sid && !ctx.isInitialized()) {
         return {
           initialized: false,
           message: 'Browser not initialized. Run init first for full diagnostics.',
         };
       }
-      return await ctx.controller.getDiagnostics();
+      return await ctx.getController(sid).getDiagnostics();
     }
 
     case 'show_errors': {
-      const errors = ctx.controller.getConsoleErrors();
-      const warnings = ctx.controller.getConsoleWarnings();
+      const controller = ctx.getController(sid);
+      const errors = controller.getConsoleErrors();
+      const warnings = controller.getConsoleWarnings();
 
       if (errors.length === 0 && warnings.length === 0) {
         return 'No errors or warnings captured.';

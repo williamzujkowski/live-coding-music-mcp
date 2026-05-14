@@ -15,16 +15,23 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 
+const SESSION_ID_PROP = {
+  session_id: {
+    type: 'string',
+    description: 'Optional session ID (#108). Omit to use default session. Note: undo/redo/history stacks are currently server-wide; only the read/write target changes.',
+  },
+};
+
 export const tools: Tool[] = [
   {
     name: 'undo',
     description: 'Undo last action',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'redo',
     description: 'Redo action',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'list_history',
@@ -43,6 +50,7 @@ export const tools: Tool[] = [
       type: 'object',
       properties: {
         id: { type: 'number', description: 'History entry ID to restore' },
+        ...SESSION_ID_PROP,
       },
       required: ['id'],
     },
@@ -55,6 +63,7 @@ export const tools: Tool[] = [
       properties: {
         id1: { type: 'number', description: 'First pattern ID' },
         id2: { type: 'number', description: 'Second pattern ID (default: current pattern)' },
+        ...SESSION_ID_PROP,
       },
       required: ['id1'],
     },
@@ -111,31 +120,34 @@ function summarizeDiff(a: string, b: string): {
 
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
   const { undoStack, redoStack, historyStack, maxHistory } = ctx.history;
+  const sid: string | undefined = args?.session_id;
 
   switch (name) {
     case 'undo': {
-      if (!ctx.isInitialized()) return 'Browser not initialized. Run init first.';
+      if (!sid && !ctx.isInitialized()) return 'Browser not initialized. Run init first.';
       if (undoStack.length === 0) return 'Nothing to undo';
+      const controller = ctx.getController(sid);
 
-      const current = await ctx.controller.getCurrentPattern();
+      const current = await controller.getCurrentPattern();
       redoStack.push(current);
       if (redoStack.length > maxHistory) redoStack.shift();
 
       const previous = undoStack.pop()!;
-      await ctx.controller.writePattern(previous);
+      await controller.writePattern(previous);
       return 'Undone';
     }
 
     case 'redo': {
-      if (!ctx.isInitialized()) return 'Browser not initialized. Run init first.';
+      if (!sid && !ctx.isInitialized()) return 'Browser not initialized. Run init first.';
       if (redoStack.length === 0) return 'Nothing to redo';
+      const controller = ctx.getController(sid);
 
-      const current = await ctx.controller.getCurrentPattern();
+      const current = await controller.getCurrentPattern();
       undoStack.push(current);
       if (undoStack.length > maxHistory) undoStack.shift();
 
       const next = redoStack.pop()!;
-      await ctx.controller.writePattern(next);
+      await controller.writePattern(next);
       return 'Redone';
     }
 
@@ -159,18 +171,19 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
     }
 
     case 'restore_history': {
-      if (!ctx.isInitialized()) return 'Browser not initialized. Run init first.';
+      if (!sid && !ctx.isInitialized()) return 'Browser not initialized. Run init first.';
+      const controller = ctx.getController(sid);
 
       const entry = historyStack.find(e => e.id === args.id);
       if (!entry) {
         return `History entry #${args.id} not found. Use list_history to see available entries.`;
       }
 
-      const current = await ctx.controller.getCurrentPattern();
+      const current = await controller.getCurrentPattern();
       undoStack.push(current);
       if (undoStack.length > maxHistory) undoStack.shift();
 
-      await ctx.controller.writePattern(entry.pattern);
+      await controller.writePattern(entry.pattern);
       return `Restored pattern from history #${args.id} (${formatTimeAgo(entry.timestamp)})`;
     }
 
@@ -186,7 +199,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
         second = b.pattern;
         label = `#${args.id2}`;
       } else {
-        second = await ctx.getCurrentPatternSafe();
+        second = await ctx.getCurrentPatternSafe(sid);
         label = 'current';
       }
 

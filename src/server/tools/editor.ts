@@ -11,6 +11,13 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 
+const SESSION_ID_PROP = {
+  session_id: {
+    type: 'string',
+    description: 'Optional session ID (#108). Omit to use default session.',
+  },
+};
+
 export const tools: Tool[] = [
   {
     name: 'write',
@@ -21,6 +28,7 @@ export const tools: Tool[] = [
         pattern: { type: 'string', description: 'Pattern code' },
         auto_play: { type: 'boolean', description: 'Start playback immediately after writing (default: false)' },
         validate: { type: 'boolean', description: 'Validate pattern before writing (default: true)' },
+        ...SESSION_ID_PROP,
       },
       required: ['pattern'],
     },
@@ -30,7 +38,7 @@ export const tools: Tool[] = [
     description: 'Append code to current pattern',
     inputSchema: {
       type: 'object',
-      properties: { code: { type: 'string', description: 'Code to append' } },
+      properties: { code: { type: 'string', description: 'Code to append' }, ...SESSION_ID_PROP },
       required: ['code'],
     },
   },
@@ -42,6 +50,7 @@ export const tools: Tool[] = [
       properties: {
         position: { type: 'number', description: 'Line number' },
         code: { type: 'string', description: 'Code to insert' },
+        ...SESSION_ID_PROP,
       },
       required: ['position', 'code'],
     },
@@ -54,6 +63,7 @@ export const tools: Tool[] = [
       properties: {
         search: { type: 'string', description: 'Text to replace' },
         replace: { type: 'string', description: 'Replacement text' },
+        ...SESSION_ID_PROP,
       },
       required: ['search', 'replace'],
     },
@@ -61,26 +71,32 @@ export const tools: Tool[] = [
   {
     name: 'clear',
     description: 'Clear the editor',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'get_pattern',
     description: 'Get current pattern code',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
 ];
 
 export const toolNames = new Set(tools.map(t => t.name));
 
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
+  const sid: string | undefined = args?.session_id;
+  if (!sid && !ctx.isInitialized()) {
+    return 'Browser not initialized. Run init first.';
+  }
   switch (name) {
     case 'write': {
       InputValidator.validateStringLength(args.pattern, 'pattern', 10000, true);
 
+      const controller = ctx.getController(sid);
+
       // Validate pattern if requested (default: true) — issue #40
-      if (args.validate !== false && ctx.isInitialized() && typeof ctx.controller.validatePattern === 'function') {
+      if (args.validate !== false && typeof controller.validatePattern === 'function') {
         try {
-          const validation = await ctx.controller.validatePattern(args.pattern);
+          const validation = await controller.validatePattern(args.pattern);
           if (validation && !validation.valid) {
             return {
               success: false,
@@ -95,11 +111,11 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
         }
       }
 
-      const writeResult = await ctx.writePatternSafe(args.pattern);
+      const writeResult = await ctx.writePatternSafe(args.pattern, sid);
 
       // Auto-play if requested — issue #38
-      if (args.auto_play && ctx.isInitialized()) {
-        await ctx.controller.play();
+      if (args.auto_play) {
+        await controller.play();
         return `${writeResult}. Playing.`;
       }
       return writeResult;
@@ -107,33 +123,33 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
 
     case 'append': {
       InputValidator.validateStringLength(args.code, 'code', 10000, true);
-      const current = await ctx.getCurrentPatternSafe();
-      return await ctx.writePatternSafe(current + '\n' + args.code);
+      const current = await ctx.getCurrentPatternSafe(sid);
+      return await ctx.writePatternSafe(current + '\n' + args.code, sid);
     }
 
     case 'insert': {
       InputValidator.validatePositiveInteger(args.position, 'position');
       InputValidator.validateStringLength(args.code, 'code', 10000, true);
-      const lines = (await ctx.getCurrentPatternSafe()).split('\n');
+      const lines = (await ctx.getCurrentPatternSafe(sid)).split('\n');
       lines.splice(args.position, 0, args.code);
-      return await ctx.writePatternSafe(lines.join('\n'));
+      return await ctx.writePatternSafe(lines.join('\n'), sid);
     }
 
     case 'replace': {
       InputValidator.validateStringLength(args.search, 'search', 1000, true);
       InputValidator.validateStringLength(args.replace, 'replace', 10000, true);
-      const pattern = await ctx.getCurrentPatternSafe();
+      const pattern = await ctx.getCurrentPatternSafe(sid);
       // Escape $ in replacement to prevent special sequence injection ($&, $1, $', etc.)
       const safeReplacement = args.replace.replace(/\$/g, '$$$$');
       const replaced = pattern.replace(args.search, safeReplacement);
-      return await ctx.writePatternSafe(replaced);
+      return await ctx.writePatternSafe(replaced, sid);
     }
 
     case 'clear':
-      return await ctx.writePatternSafe('');
+      return await ctx.writePatternSafe('', sid);
 
     case 'get_pattern':
-      return await ctx.getCurrentPatternSafe();
+      return await ctx.getCurrentPatternSafe(sid);
 
     default:
       throw new Error(`editor module does not handle tool: ${name}`);

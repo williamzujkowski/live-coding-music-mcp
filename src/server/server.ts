@@ -197,41 +197,50 @@ export class StrudelMCPServer {
     }
   }
 
-  private requiresInitialization(toolName: string): boolean {
-    const toolsRequiringInit = [
-      'write', 'append', 'insert', 'replace', 'play', 'pause', 'stop',
-      'clear', 'get_pattern', 'analyze', 'analyze_spectrum', 'analyze_rhythm',
-      'transpose', 'reverse', 'stretch', 'humanize', 'generate_variation',
-      'add_effect', 'add_swing', 'set_tempo', 'save', 'undo', 'redo',
-      'validate_pattern_runtime'
-    ];
-    
-    const toolsRequiringWrite = [
-      'generate_pattern', 'generate_drums', 'generate_bassline', 'generate_melody',
-      'generate_chord_progression', 'generate_euclidean', 'generate_polyrhythm',
-      'generate_fill'
-    ];
-    
-    return toolsRequiringInit.includes(toolName) || toolsRequiringWrite.includes(toolName);
-  }
+  // requiresInitialization() removed (#141 / #108): each module's
+  // execute() does its own session-aware init check. The hardcoded
+  // tool-name lists had drifted and were silently wrong for explicit
+  // session_id.
 
-  private async getCurrentPatternSafe(): Promise<string> {
+  private async getCurrentPatternSafe(sessionId?: string): Promise<string> {
+    if (sessionId) {
+      // Explicit session — strict lookup, no pre-init stash. Named sessions
+      // must be created via `create_session` before they're useful.
+      const sessionController = this.sessionManager.getSession(sessionId);
+      if (!sessionController) {
+        throw new Error(`Session '${sessionId}' not found. Create it first with create_session.`);
+      }
+      try {
+        return await sessionController.getCurrentPattern();
+      } catch {
+        return '';
+      }
+    }
+
     if (!this.isInitialized) {
-      // Return the last generated pattern if available
+      // Default session: return the last pre-init generated pattern if any
       const lastPattern = Array.from(this.generatedPatterns.values()).pop();
       return lastPattern || '';
     }
-    
+
     try {
       return await this.controller.getCurrentPattern();
-    } catch (e) {
+    } catch {
       return '';
     }
   }
 
-  private async writePatternSafe(pattern: string): Promise<string> {
+  private async writePatternSafe(pattern: string, sessionId?: string): Promise<string> {
+    if (sessionId) {
+      const sessionController = this.sessionManager.getSession(sessionId);
+      if (!sessionController) {
+        throw new Error(`Session '${sessionId}' not found. Create it first with create_session.`);
+      }
+      return await sessionController.writePattern(pattern);
+    }
+
     if (!this.isInitialized) {
-      // Store the pattern for later use
+      // Default session: stash the pattern for the next init/auto-init
       const id = `pattern_${Date.now()}`;
       this.generatedPatterns.set(id, pattern);
       return `Pattern generated (initialize Strudel to use it): ${pattern.substring(0, 50)}...`;
@@ -281,26 +290,21 @@ export class StrudelMCPServer {
   }
 
   private async executeTool(name: string, args: any): Promise<any> {
-    // Check if tool needs initialization
-    if (this.requiresInitialization(name) && !this.isInitialized && name !== 'init') {
-      // For generation tools that don't require browser, handle them specially
-      const generationTools = [
-        'generate_pattern', 'generate_drums', 'generate_bassline', 'generate_melody',
-        'generate_chord_progression', 'generate_euclidean', 'generate_polyrhythm', 'generate_fill'
-      ];
-      
-      if (!generationTools.includes(name)) {
-        return `Browser not initialized. Run 'init' first to use ${name}.`;
-      }
-    }
+    // Pre-flight init check removed (#141): every module's execute() does
+    // its own session-aware init check via ctx.isInitialized() /
+    // ctx.getController(sid). The old hardcoded tool-name list drifted as
+    // tools moved between modules and #108 made it silently wrong for
+    // explicit session_id (it returned "Browser not initialized" instead
+    // of "Session 'X' not found").
 
-    // Save current state for undo and history (#41) (only if initialized)
-    if (['write', 'append', 'insert', 'replace', 'clear'].includes(name) && this.isInitialized) {
+    // Save current state for undo and history (#41) before any edit on the
+    // default session. Named-session edits bypass the legacy undo stack —
+    // per-session history is tracked in #140 follow-up.
+    if (['write', 'append', 'insert', 'replace', 'clear'].includes(name) && this.isInitialized && !args?.session_id) {
       try {
         const current = await this.controller.getCurrentPattern();
         this.undoStack.push(current);
 
-        // Add to history stack with metadata (#41)
         this.historyIdCounter++;
         this.historyStack.push({
           id: this.historyIdCounter,
@@ -309,7 +313,6 @@ export class StrudelMCPServer {
           action: name
         });
 
-        // Enforce bounds to prevent memory leaks
         if (this.undoStack.length > this.MAX_HISTORY) {
           this.undoStack.shift();
         }
@@ -317,7 +320,7 @@ export class StrudelMCPServer {
           this.historyStack.shift();
         }
         this.redoStack = [];
-      } catch (e) {
+      } catch {
         // Controller might not be initialized yet
       }
     }
@@ -345,8 +348,9 @@ export class StrudelMCPServer {
       logger: this.logger,
       isInitialized: () => this.isInitialized,
       ensureInitialized: () => this.ensureInitialized(),
-      getCurrentPatternSafe: () => this.getCurrentPatternSafe(),
-      writePatternSafe: (p: string) => this.writePatternSafe(p),
+      getController: (sessionId?: string) => this.getControllerForSession(sessionId),
+      getCurrentPatternSafe: (sessionId?: string) => this.getCurrentPatternSafe(sessionId),
+      writePatternSafe: (p: string, sessionId?: string) => this.writePatternSafe(p, sessionId),
     };
     if (diagnosticsModule.toolNames.has(name)) {
       return await diagnosticsModule.execute(name, args, ctx);

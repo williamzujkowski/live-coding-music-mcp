@@ -20,6 +20,13 @@ import { Logger } from '../../utils/Logger.js';
 
 const logger = new Logger();
 
+const SESSION_ID_PROP = {
+  session_id: {
+    type: 'string',
+    description: 'Optional session ID (#108). Omit to use default session.',
+  },
+};
+
 export const tools: Tool[] = [
   {
     name: 'get_pattern_feedback',
@@ -29,6 +36,7 @@ export const tools: Tool[] = [
       properties: {
         includeAudio: { type: 'boolean', description: 'Include audio analysis (plays pattern briefly). Default: false' },
         style: { type: 'string', description: 'Optional style hint for context (e.g., "techno", "ambient")' },
+        ...SESSION_ID_PROP,
       },
     },
   },
@@ -44,6 +52,7 @@ export const tools: Tool[] = [
           enum: ['complement', 'bassline', 'melody', 'percussion'],
           description: 'What role the suggested pattern should fill. Default: complement',
         },
+        ...SESSION_ID_PROP,
       },
     },
   },
@@ -60,6 +69,7 @@ export const tools: Tool[] = [
         },
         style_hint: { type: 'string', description: 'Optional style guidance (e.g., "funky", "minimal", "atmospheric")' },
         auto_play: { type: 'boolean', description: 'Start playback after adding layer (default: true)' },
+        ...SESSION_ID_PROP,
       },
       required: ['layer'],
     },
@@ -69,15 +79,16 @@ export const tools: Tool[] = [
 export const toolNames = new Set(tools.map(t => t.name));
 
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
+  const sid: string | undefined = args?.session_id;
   switch (name) {
     case 'get_pattern_feedback':
-      return await getPatternFeedback(args?.includeAudio || false, args?.style, ctx);
+      return await getPatternFeedback(args?.includeAudio || false, args?.style, ctx, sid);
 
     case 'suggest_pattern_from_audio':
-      return await suggestPatternFromAudio(args?.style, args?.role || 'complement', ctx);
+      return await suggestPatternFromAudio(args?.style, args?.role || 'complement', ctx, sid);
 
     case 'jam_with':
-      return await jamWith(args.layer, args.style_hint, args.auto_play, ctx);
+      return await jamWith(args.layer, args.style_hint, args.auto_play, ctx, sid);
 
     default:
       throw new Error(`ai module does not handle tool: ${name}`);
@@ -92,6 +103,7 @@ async function getPatternFeedback(
   includeAudio: boolean,
   style: string | undefined,
   ctx: ToolContext,
+  sid?: string,
 ): Promise<{
   pattern_analysis?: CreativeFeedback;
   audio_analysis?: AudioFeedback;
@@ -105,7 +117,7 @@ async function getPatternFeedback(
     };
   }
 
-  const pattern = await ctx.getCurrentPatternSafe();
+  const pattern = await ctx.getCurrentPatternSafe(sid);
   if (!pattern || pattern.trim().length === 0) {
     return { gemini_available: true, error: 'No pattern to analyze. Write a pattern first.' };
   }
@@ -128,9 +140,9 @@ async function getPatternFeedback(
     result.error = `Pattern analysis failed: ${message}`;
   }
 
-  if (includeAudio && ctx.isInitialized()) {
+  if (includeAudio && (sid || ctx.isInitialized())) {
     try {
-      const audioBlob = await captureAudioSampleForFeedback(ctx);
+      const audioBlob = await captureAudioSampleForFeedback(ctx, sid);
       if (audioBlob) {
         result.audio_analysis = await ctx.geminiService.analyzeAudio(audioBlob, { style, duration: 5 });
       } else {
@@ -156,8 +168,8 @@ async function getPatternFeedback(
  * analyzer's AudioContext and records 5 seconds without disturbing
  * the full AudioCaptureService lifecycle.
  */
-async function captureAudioSampleForFeedback(ctx: ToolContext): Promise<Blob | null> {
-  const page = ctx.controller.page;
+async function captureAudioSampleForFeedback(ctx: ToolContext, sid?: string): Promise<Blob | null> {
+  const page = ctx.getController(sid).page;
   if (!page) {
     logger.warn('Cannot capture audio: controller page not available');
     return null;
@@ -219,22 +231,24 @@ async function suggestPatternFromAudio(
   style: string | undefined,
   role: string,
   ctx: ToolContext,
+  sid?: string,
 ): Promise<Record<string, unknown>> {
-  if (!ctx.isInitialized()) {
+  if (!sid && !ctx.isInitialized()) {
     return { error: 'Browser not initialized. Run init and play a pattern first.' };
   }
   if (!ctx.geminiService.isAvailable()) {
     return { error: 'Gemini API not configured. Set GEMINI_API_KEY to enable AI features.' };
   }
+  const controller = ctx.getController(sid);
 
   let bpm = 0, key = 'C', scale = 'major';
   try {
-    const tempoResult = await ctx.controller.detectTempo();
+    const tempoResult = await controller.detectTempo();
     if (tempoResult && tempoResult.bpm > 0) bpm = tempoResult.bpm;
   } catch { /* best effort */ }
 
   try {
-    const keyResult = await ctx.controller.detectKey();
+    const keyResult = await controller.detectKey();
     if (keyResult && keyResult.confidence > 0.1) {
       key = keyResult.key;
       scale = keyResult.scale;
@@ -296,6 +310,7 @@ async function jamWith(
   styleHint: string | undefined,
   autoPlay: boolean = true,
   ctx: ToolContext,
+  sid?: string,
 ): Promise<{
   success: boolean;
   message: string;
@@ -316,7 +331,7 @@ async function jamWith(
     };
   }
 
-  const currentPattern = await ctx.getCurrentPatternSafe();
+  const currentPattern = await ctx.getCurrentPatternSafe(sid);
   if (!currentPattern || currentPattern.trim().length === 0) {
     return {
       success: false,
@@ -354,9 +369,9 @@ async function jamWith(
   const mergedPattern = mergeLayerIntoPattern(currentPattern, newLayer, layer);
 
   try {
-    await ctx.writePatternSafe(mergedPattern);
-    if (autoPlay && ctx.isInitialized()) {
-      await ctx.controller.play();
+    await ctx.writePatternSafe(mergedPattern, sid);
+    if (autoPlay && (sid || ctx.isInitialized())) {
+      await ctx.getController(sid).play();
     }
     return {
       success: true,

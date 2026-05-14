@@ -30,6 +30,13 @@ function blobToBase64(arrayBuffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
+const SESSION_ID_PROP = {
+  session_id: {
+    type: 'string',
+    description: 'Optional session ID (#108). Routes page reference to the named session. Note: AudioCaptureService is currently server-wide — concurrent captures across sessions will conflict.',
+  },
+};
+
 export const tools: Tool[] = [
   {
     name: 'start_audio_capture',
@@ -39,20 +46,24 @@ export const tools: Tool[] = [
       properties: {
         format: { type: 'string', enum: ['webm', 'opus'], description: 'Audio format (default: webm)' },
         maxDuration: { type: 'number', description: 'Maximum capture duration in milliseconds' },
+        ...SESSION_ID_PROP,
       },
     },
   },
   {
     name: 'stop_audio_capture',
     description: 'Stop audio capture and return the recorded audio as base64-encoded data.',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'capture_audio_sample',
     description: 'Capture a fixed-duration audio sample from Strudel output. Audio must be playing.',
     inputSchema: {
       type: 'object',
-      properties: { duration: { type: 'number', description: 'Duration in milliseconds (default: 5000)' } },
+      properties: {
+        duration: { type: 'number', description: 'Duration in milliseconds (default: 5000)' },
+        ...SESSION_ID_PROP,
+      },
     },
   },
   {
@@ -65,6 +76,7 @@ export const tools: Tool[] = [
         duration: { type: 'number', description: 'Export duration in bars (default: 4)' },
         bpm: { type: 'number', description: 'Tempo in BPM (default: 120)' },
         format: { type: 'string', enum: ['file', 'base64'], description: 'Output format: file or base64 (default: base64)' },
+        ...SESSION_ID_PROP,
       },
     },
   },
@@ -73,18 +85,22 @@ export const tools: Tool[] = [
 export const toolNames = new Set(tools.map(t => t.name));
 
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
+  const sid: string | undefined = args?.session_id;
+  // No outer init check: each capture handler has try/catch that
+  // produces a structured { success: false, message } from any error,
+  // including AudioCaptureService's "Browser not initialized" throw.
   switch (name) {
     case 'start_audio_capture':
-      return await startAudioCapture(args?.format, args?.maxDuration, ctx);
+      return await startAudioCapture(args?.format, args?.maxDuration, ctx, sid);
 
     case 'stop_audio_capture':
-      return await stopAudioCapture(ctx);
+      return await stopAudioCapture(ctx, sid);
 
     case 'capture_audio_sample':
-      return await captureAudioSample(args?.duration, ctx);
+      return await captureAudioSample(args?.duration, ctx, sid);
 
     case 'export_midi':
-      return await exportMidi(args?.filename, args?.duration, args?.bpm, args?.format, ctx);
+      return await exportMidi(args?.filename, args?.duration, args?.bpm, args?.format, ctx, sid);
 
     default:
       throw new Error(`capture module does not handle tool: ${name}`);
@@ -95,13 +111,14 @@ async function startAudioCapture(
   format: 'webm' | 'opus' | undefined,
   _maxDuration: number | undefined,
   ctx: ToolContext,
+  sid?: string,
 ): Promise<unknown> {
   try {
     const service = await ctx.getAudioCaptureService();
     if (service.isCapturing()) {
       return { success: false, message: 'Audio capture already in progress. Stop it first.' };
     }
-    await service.startCapture(ctx.controller.page!, { format });
+    await service.startCapture(ctx.getController(sid).page!, { format });
     return {
       success: true,
       message: 'Audio capture started. Use stop_audio_capture to get the recorded audio.',
@@ -113,13 +130,13 @@ async function startAudioCapture(
   }
 }
 
-async function stopAudioCapture(ctx: ToolContext): Promise<unknown> {
+async function stopAudioCapture(ctx: ToolContext, sid?: string): Promise<unknown> {
   try {
     const service = await ctx.getAudioCaptureService();
     if (!service.isCapturing()) {
       return { success: false, message: 'No audio capture in progress. Start capture first.' };
     }
-    const result = await service.stopCapture(ctx.controller.page!);
+    const result = await service.stopCapture(ctx.getController(sid).page!);
     const buf = await result.blob.arrayBuffer();
     return {
       success: true,
@@ -134,7 +151,7 @@ async function stopAudioCapture(ctx: ToolContext): Promise<unknown> {
   }
 }
 
-async function captureAudioSample(duration: number | undefined, ctx: ToolContext): Promise<unknown> {
+async function captureAudioSample(duration: number | undefined, ctx: ToolContext, sid?: string): Promise<unknown> {
   const durationMs = duration || 5000;
   if (durationMs < 100 || durationMs > 60000) {
     return { success: false, message: 'Duration must be between 100ms and 60000ms (1 minute)' };
@@ -145,7 +162,7 @@ async function captureAudioSample(duration: number | undefined, ctx: ToolContext
     if (service.isCapturing()) {
       return { success: false, message: 'Audio capture already in progress. Stop it first.' };
     }
-    const result = await service.captureForDuration(ctx.controller.page!, durationMs);
+    const result = await service.captureForDuration(ctx.getController(sid).page!, durationMs);
     const buf = await result.blob.arrayBuffer();
     return {
       success: true,
@@ -166,13 +183,14 @@ async function exportMidi(
   bpm: number | undefined,
   format: 'file' | 'base64' | undefined,
   ctx: ToolContext,
+  sid?: string,
 ): Promise<unknown> {
   if (bpm !== undefined) InputValidator.validateBPM(bpm);
   if (bars !== undefined && (bars < 1 || bars > 128)) {
     return { success: false, message: 'Bars must be between 1 and 128' };
   }
 
-  const pattern = await ctx.getCurrentPatternSafe();
+  const pattern = await ctx.getCurrentPatternSafe(sid);
   if (!pattern || pattern.trim().length === 0) {
     return { success: false, message: 'No pattern to export. Write a pattern first.' };
   }

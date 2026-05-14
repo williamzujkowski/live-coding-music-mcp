@@ -165,23 +165,20 @@ describe('MCP Server Integration Tests', () => {
   });
 
   describe('Tool Execution Logic', () => {
-    test('should require initialization for write tool', async () => {
+    test('write tool refuses without init', async () => {
       const serverAny = server as any;
-
-      const requiresInit = serverAny.requiresInitialization('write');
-      expect(requiresInit).toBe(true);
+      // requiresInitialization() was removed (#141/#108). Each module's
+      // execute() now does its own session-aware init check.
+      const result = await serverAny.executeTool('write', { pattern: 's("bd")' });
+      expect(typeof result === 'string' && result.includes('not initialized')).toBe(true);
     });
 
-    test('should not require initialization for music theory tools', async () => {
+    test('music theory tools run without browser', async () => {
       const serverAny = server as any;
-
-      // generate_scale is pure music theory - doesn't require init
-      expect(serverAny.requiresInitialization('generate_scale')).toBe(false);
-
-      // These tools require init for browser writing, but can work without it
-      // requiresInitialization returns true, but executeTool has special handling for them
-      expect(serverAny.requiresInitialization('generate_chord_progression')).toBe(true);
-      expect(serverAny.requiresInitialization('generate_euclidean')).toBe(true);
+      // generate_scale is pure music theory and returns scale notes directly.
+      const result = await serverAny.executeTool('generate_scale', { root: 'C', scale: 'major' });
+      expect(typeof result).toBe('string');
+      expect(result).toContain('C, D, E, F, G, A, B');
     });
 
     test('should execute music theory tools without browser', async () => {
@@ -267,7 +264,8 @@ describe('MCP Server Integration Tests', () => {
 
       // When browser is not initialized, write returns initialization message before validation
       const result1 = await serverAny.executeTool('write', {});
-      expect(result1).toBe("Browser not initialized. Run 'init' first to use write.");
+      // Post-#108: each module's execute() returns its own init-refusal message.
+      expect(result1).toContain('not initialized');
 
       // Initialize browser to test actual input validation
       serverAny.isInitialized = true;
