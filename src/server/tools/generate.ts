@@ -81,8 +81,29 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'music_theory',
+    description:
+      'Music-theory queries. ' +
+      'query=scale returns the notes of a scale (e.g. "C major scale: C, D, E, F, G, A, B"). ' +
+      'query=chord_progression returns a chord progression for the key/style AND writes the resulting chord pattern into the current session (matches the pre-consolidation behaviour of generate_chord_progression). ' +
+      'Example: music_theory({ query: "scale", root: "C", scale: "major" }). ' +
+      'For pattern generation (drums/bass/melody) use generate_part; for rhythmic patterns use generate_rhythm.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', enum: ['scale', 'chord_progression'], description: 'Which theory query' },
+        root: { type: 'string', description: 'Root note (query=scale; also used as key for chord_progression)' },
+        scale: { type: 'string', description: 'Scale type (query=scale)' },
+        key: { type: 'string', description: 'Key (query=chord_progression)' },
+        style: { type: 'string', description: 'Style (query=chord_progression: pop/jazz/blues/etc)' },
+        ...SESSION_ID_PROP,
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'generate_scale',
-    description: 'Generate scale notes',
+    description: '[DEPRECATED — use music_theory({ query: "scale" }) instead] Generate scale notes',
     inputSchema: {
       type: 'object',
       properties: {
@@ -94,7 +115,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'generate_chord_progression',
-    description: 'Generate chord progression',
+    description: '[DEPRECATED — use music_theory({ query: "chord_progression" }) instead] Generate chord progression',
     inputSchema: {
       type: 'object',
       properties: {
@@ -155,6 +176,22 @@ async function appendOrSet(generated: string, ctx: ToolContext, sessionId?: stri
   await ctx.writePatternSafe(combined, sessionId);
 }
 
+function doScale(args: any, ctx: ToolContext): string {
+  InputValidator.validateRootNote(args.root);
+  InputValidator.validateScaleName(args.scale);
+  const notes = ctx.theory.generateScale(args.root, args.scale);
+  return `${args.root} ${args.scale} scale: ${notes.join(', ')}`;
+}
+
+async function doChordProgression(args: any, ctx: ToolContext, sid?: string): Promise<string> {
+  InputValidator.validateRootNote(args.key);
+  InputValidator.validateChordStyle(args.style);
+  const progression = ctx.theory.generateChordProgression(args.key, args.style);
+  const chordPattern = ctx.generator.generateChords(progression);
+  await appendOrSet(chordPattern, ctx, sid);
+  return `Generated ${args.style} progression in ${args.key}: ${progression}`;
+}
+
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
   const sid: string | undefined = args?.session_id;
   switch (name) {
@@ -203,22 +240,15 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       return `Generated melody in ${args.root} ${args.scale}`;
     }
 
-    case 'generate_scale': {
-      // Pure music-theory query; no session needed.
-      InputValidator.validateRootNote(args.root);
-      InputValidator.validateScaleName(args.scale);
-      const notes = ctx.theory.generateScale(args.root, args.scale);
-      return `${args.root} ${args.scale} scale: ${notes.join(', ')}`;
+    case 'music_theory': {
+      const q = args?.query;
+      if (q !== 'scale' && q !== 'chord_progression') {
+        throw new Error(`Invalid query: ${q}. Must be one of: scale, chord_progression`);
+      }
+      return q === 'scale' ? doScale(args, ctx) : await doChordProgression(args, ctx, sid);
     }
-
-    case 'generate_chord_progression': {
-      InputValidator.validateRootNote(args.key);
-      InputValidator.validateChordStyle(args.style);
-      const progression = ctx.theory.generateChordProgression(args.key, args.style);
-      const chordPattern = ctx.generator.generateChords(progression);
-      await appendOrSet(chordPattern, ctx, sid);
-      return `Generated ${args.style} progression in ${args.key}: ${progression}`;
-    }
+    case 'generate_scale':              return doScale(args, ctx);
+    case 'generate_chord_progression':  return await doChordProgression(args, ctx, sid);
 
     case 'generate_euclidean': {
       InputValidator.validateEuclidean(args.hits, args.steps);

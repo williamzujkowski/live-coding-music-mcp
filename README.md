@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-75-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-77-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**75 tools** across 15 categories:
+**77 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -272,8 +272,8 @@ Then ask Claude:
 
 | Tool | Description |
 |------|-------------|
-| `generate_scale` | Generate scale notes |
-| `generate_chord_progression` | Generate chord progression |
+| `generate_scale` | [DEPRECATED — use music_theory({ query: "scale" }) instead] Generate scale notes |
+| `generate_chord_progression` | [DEPRECATED — use music_theory({ query: "chord_progression" }) instead] Generate chord progression |
 | `generate_euclidean` | Generate Euclidean rhythm |
 | `apply_scale` | [DEPRECATED — use transform({ op: "scale" }) instead] Apply scale to notes |
 
@@ -362,7 +362,7 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (10)</summary>
+<details><summary><strong>Other</strong> (12)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -372,6 +372,7 @@ Then ask Claude:
 | `query_pattern_events` | Enumerate events the pattern would emit between two cycle indices (max 16 cycles) |
 | `transpile_pattern` | Transpile pattern source via StrudelEngine; returns transpiled code or syntax error |
 | `edit_pattern` | Mutate the current session pattern.  |
+| `music_theory` | Music-theory queries.  |
 | `history` | Navigate or inspect the pattern edit history.  |
 | `playback` | Control transport on the current session.  |
 | `pattern_store` | Persist patterns to disk and read them back.  |
@@ -380,7 +381,7 @@ Then ask Claude:
 
 </details>
 
-_Auto-generated from source. 75 tools registered._
+_Auto-generated from source. 77 tools registered._
 
 <!-- TOOLS:END -->
 
