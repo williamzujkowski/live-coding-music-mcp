@@ -695,10 +695,40 @@ describe('AudioAnalyzer - Tempo Detection', () => {
 }
 ```
 
-**Return Values:**
-- Success: Return data or descriptive message
-- Failure: Return error object with `error` key
-- Include context: `{ bpm: 174, confidence: 0.92, method: 'onset-based' }`
+**Return Values — the MCP-level envelope (#130):**
+
+Every tool call surfaces to MCP clients wrapped in a discriminated envelope. The dispatcher in `server.ts` does the wrapping; tools can either return raw values (auto-wrapped) or return envelopes natively via the helpers in `src/server/tools/types.ts`:
+
+```typescript
+import { ok, err, empty } from './types.js';
+
+// success with data
+return ok({ bpm: 174, confidence: 0.92, method: 'onset-based' });
+
+// valid-empty result (call worked but nothing to return)
+return empty([]);
+
+// business-state failure (setup needed, don't retry)
+return err('business', 'Browser not initialized. Run init first.');
+
+// validation failure (caller passed bad input)
+return err('validation', `Invalid BPM: ${bpm}. Must be 20-300.`);
+
+// transient failure (retryable)
+return err('transient', 'Strudel.cc request timed out', { isRetryable: true });
+```
+
+Wire-level shape MCP clients see:
+
+```json
+{ "ok": true,  "data": { ... } }
+{ "ok": true,  "data": [],     "empty": true }
+{ "ok": false, "errorCategory": "validation", "isRetryable": false, "message": "..." }
+```
+
+`errorCategory` is one of `validation` / `transient` / `business` / `permission` / `internal`. Tools that throw raw `Error`s get categorised by message via `categorizeError()` — fine for the common cases (`Invalid X`, `not found`, `not initialized`, `timeout`, ...), but tools that own a specific error condition should call `err(category, message)` directly so the categorisation isn't string-sniffed.
+
+Module-level adoption is incremental: dispatch normalises legacy `'Browser not initialized...'` and `'Error: ...'` string returns into envelopes, so a tool can keep its current return shape until someone migrates it.
 
 ### 8. Dependency Management
 

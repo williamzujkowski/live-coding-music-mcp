@@ -31,7 +31,8 @@ import { sessionModule } from './tools/session.js';
 import { captureModule } from './tools/capture.js';
 import { aiModule } from './tools/ai.js';
 import { composeModule } from './tools/compose.js';
-import type { ToolContext, HistoryEntry } from './tools/types.js';
+import type { Envelope, ToolContext, HistoryEntry } from './tools/types.js';
+import { categorizeError, err, isEnvelope, ok } from './tools/types.js';
 import { readResource, resources as mcpResources } from './resources.js';
 import { join } from 'node:path';
 
@@ -120,32 +121,10 @@ export class StrudelMCPServer {
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
-
-      try {
-        this.logger.info(`Executing tool: ${name}`, args);
-
-        // Measure performance
-        const result = await this.perfMonitor.measureAsync(
-          name,
-          () => this.executeTool(name, args)
-        );
-
-        return {
-          content: [{
-            type: 'text',
-            text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-          }],
-        };
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`Tool execution failed: ${name}`, { error: message });
-        return {
-          content: [{
-            type: 'text',
-            text: `Error: ${message}`
-          }],
-        };
-      }
+      const envelope = await this.dispatchToolCall(name, args);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(envelope, null, 2) }],
+      };
     });
 
     // MCP resources — read-only catalogs (#131). Resource handlers stay
@@ -168,6 +147,54 @@ export class StrudelMCPServer {
         throw error;
       }
     });
+  }
+
+  /**
+   * Wraps every tool call into the shared envelope (#130).
+   *
+   * Tools may return:
+   *   - a raw value → auto-wrapped via `ok(value)`
+   *   - a pre-built Envelope (via the `ok()`/`err()`/`empty()` helpers in
+   *     `tools/types.ts`) → passed through unchanged
+   *   - an "error-shaped" string (starts with "Error: " or "Browser not
+   *     initialized") → converted to `err(...)` so legacy modules still
+   *     surface as failures while their internal migration to envelope
+   *     helpers proceeds incrementally
+   *
+   * Thrown errors are caught and converted to `err(...)` with a category
+   * inferred from the message (see `categorizeError`).
+   */
+  private async dispatchToolCall(name: string, args: unknown): Promise<Envelope> {
+    try {
+      this.logger.info(`Executing tool: ${name}`, args);
+      const result = await this.perfMonitor.measureAsync(
+        name,
+        () => this.executeTool(name, args),
+      );
+
+      if (isEnvelope(result)) {
+        return result;
+      }
+
+      // Convert legacy "Error: ..." / "Browser not initialized" string returns
+      // into the envelope. Module-level migration is incremental — this branch
+      // shrinks as modules adopt the helpers natively.
+      if (typeof result === 'string') {
+        if (result.startsWith('Error: ')) {
+          return err('internal', result.slice('Error: '.length));
+        }
+        if (result.startsWith('Browser not initialized')) {
+          return err('business', result);
+        }
+        return ok(result);
+      }
+
+      return ok(result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Tool execution failed: ${name}`, { error: message });
+      return err(categorizeError(error), message);
+    }
   }
 
   private requiresInitialization(toolName: string): boolean {
