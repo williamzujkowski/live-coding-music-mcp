@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-72-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-73-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**72 tools** across 15 categories:
+**73 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -211,11 +211,11 @@ Then ask Claude:
 
 | Tool | Description |
 |------|-------------|
-| `write` | Write pattern to editor with optional auto-play and validation |
-| `append` | Append code to current pattern |
-| `insert` | Insert code at specific line |
-| `replace` | Replace pattern section |
 | `get_pattern` | Get current pattern code |
+| `write` | [DEPRECATED — use edit_pattern({ mode: "write" }) instead] Write pattern to editor with optional auto-play and validation |
+| `append` | [DEPRECATED — use edit_pattern({ mode: "append" }) instead] Append code to current pattern |
+| `insert` | [DEPRECATED — use edit_pattern({ mode: "insert" }) instead] Insert code at specific line |
+| `replace` | [DEPRECATED — use edit_pattern({ mode: "replace" }) instead] Replace pattern section |
 
 </details>
 
@@ -224,7 +224,7 @@ Then ask Claude:
 | Tool | Description |
 |------|-------------|
 | `status` | [DEPRECATED — use diagnostics({ level: "status" }) instead] Get current browser and playback status (quick state check) |
-| `clear` | Clear the editor |
+| `clear` | [DEPRECATED — use edit_pattern({ mode: "clear" }) instead] Clear the editor |
 | `play` | Start playing pattern |
 | `pause` | Pause playback |
 | `stop` | Stop playback |
@@ -362,7 +362,7 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (7)</summary>
+<details><summary><strong>Other</strong> (8)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -371,12 +371,13 @@ Then ask Claude:
 | `analyze_pattern_local` | Static analysis (events/cycle, complexity, optional BPM) without browser playback |
 | `query_pattern_events` | Enumerate events the pattern would emit between two cycle indices (max 16 cycles) |
 | `transpile_pattern` | Transpile pattern source via StrudelEngine; returns transpiled code or syntax error |
+| `edit_pattern` | Mutate the current session pattern.  |
 | `history` | Navigate or inspect the pattern edit history.  |
 | `pattern_store` | Persist patterns to disk and read them back.  |
 
 </details>
 
-_Auto-generated from source. 72 tools registered._
+_Auto-generated from source. 73 tools registered._
 
 <!-- TOOLS:END -->
 
