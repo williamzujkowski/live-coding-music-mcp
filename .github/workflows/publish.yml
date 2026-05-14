@@ -39,19 +39,26 @@ jobs:
           node-version: '22.x'
           registry-url: 'https://registry.npmjs.org'
 
-      # Ensure we have npm 11.5.1+ for OIDC trusted publishing
-      - name: Update npm to latest
-        run: npm install -g npm@latest
+      # OIDC trusted publishing needs npm >= 11.5.1. The runner's bundled
+      # npm (10.x with Node 22) is too old, but `npm install -g npm@latest`
+      # self-corrupts mid-upgrade (MODULE_NOT_FOUND: promise-retry) because
+      # the old npm can't rebuild the new npm's dependency tree. Corepack
+      # manages the install out-of-band and sidesteps that entirely.
+      - name: Pin npm >= 11.5.1 via corepack (for OIDC trusted publishing)
+        run: |
+          corepack enable
+          corepack install -g npm@latest
+          npm --version
 
       - name: Verify npm version
         run: |
           NPM_VERSION=$(npm --version)
           echo "npm version: $NPM_VERSION"
-          # Check if version is >= 11.5.1
           if [ "$(printf '%s\n' "11.5.1" "$NPM_VERSION" | sort -V | head -n1)" = "11.5.1" ]; then
             echo "npm version is sufficient for OIDC trusted publishing"
           else
-            echo "Warning: npm version may be too old for OIDC trusted publishing"
+            echo "::error::npm $NPM_VERSION is below the 11.5.1 required for OIDC trusted publishing"
+            exit 1
           fi
 
       - name: Install dependencies
