@@ -83,8 +83,42 @@ const SESSION_ID_PROP = {
 
 export const tools: Tool[] = [
   {
+    name: 'transform',
+    description:
+      'Apply a single transform op to the current session pattern. ' +
+      'op=transpose shifts notes by `semitones`. ' +
+      'op=reverse appends `.rev` to the pattern. ' +
+      'op=stretch slows by `factor` (>1 slower, <1 faster). ' +
+      'op=quantize snaps to the `grid` (e.g. "1/16"). ' +
+      'op=humanize adds rand-nudge timing of `amount` (0-1). ' +
+      'op=swing applies `.swing(amount)` (alias for add_swing). ' +
+      'op=scale applies a `root`/`scale` filter to notes (alias for apply_scale). ' +
+      'op=vary returns a variation of `type` (subtle/moderate/extreme/glitch/evolving — note: this is what generate_variation does today; the name is misleading because it transforms rather than generates). ' +
+      'Example: transform({ op: "transpose", semitones: 7 }). ' +
+      'For effects (add/remove) use effect; for mood/energy/refine use shape; for tempo use set_tempo.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        op: {
+          type: 'string',
+          enum: ['transpose', 'reverse', 'stretch', 'quantize', 'humanize', 'swing', 'scale', 'vary'],
+          description: 'Which transform to apply',
+        },
+        semitones: { type: 'number', description: 'op=transpose: integer semitones to shift' },
+        factor: { type: 'number', description: 'op=stretch: stretch factor' },
+        grid: { type: 'string', description: 'op=quantize: grid size (e.g. "1/16")' },
+        amount: { type: 'number', description: 'op=humanize/swing: amount 0-1' },
+        root: { type: 'string', description: 'op=scale: root note (e.g. "C")' },
+        scale: { type: 'string', description: 'op=scale: scale name (e.g. "minor")' },
+        type: { type: 'string', description: 'op=vary: variation type (subtle/moderate/extreme/glitch/evolving)' },
+        ...SESSION_ID_PROP,
+      },
+      required: ['op'],
+    },
+  },
+  {
     name: 'transpose',
-    description: 'Transpose notes by semitones',
+    description: '[DEPRECATED — use transform({ op: "transpose" }) instead] Transpose notes by semitones',
     inputSchema: {
       type: 'object',
       properties: { semitones: { type: 'number', description: 'Semitones to transpose' }, ...SESSION_ID_PROP },
@@ -93,12 +127,12 @@ export const tools: Tool[] = [
   },
   {
     name: 'reverse',
-    description: 'Reverse pattern',
+    description: '[DEPRECATED — use transform({ op: "reverse" }) instead] Reverse pattern',
     inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'stretch',
-    description: 'Time stretch pattern',
+    description: '[DEPRECATED — use transform({ op: "stretch" }) instead] Time stretch pattern',
     inputSchema: {
       type: 'object',
       properties: { factor: { type: 'number', description: 'Stretch factor' }, ...SESSION_ID_PROP },
@@ -107,7 +141,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'quantize',
-    description: 'Quantize to grid',
+    description: '[DEPRECATED — use transform({ op: "quantize" }) instead] Quantize to grid',
     inputSchema: {
       type: 'object',
       properties: { grid: { type: 'string', description: 'Grid size (e.g., "1/16")' }, ...SESSION_ID_PROP },
@@ -116,7 +150,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'humanize',
-    description: 'Add human timing variation',
+    description: '[DEPRECATED — use transform({ op: "humanize" }) instead] Add human timing variation',
     inputSchema: {
       type: 'object',
       properties: { amount: { type: 'number', description: 'Humanization amount (0-1)' }, ...SESSION_ID_PROP },
@@ -124,7 +158,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'generate_variation',
-    description: 'Create pattern variations',
+    description: '[DEPRECATED — use transform({ op: "vary" }) instead] Create pattern variations (mis-named today; it transforms, not generates)',
     inputSchema: {
       type: 'object',
       properties: { type: { type: 'string', description: 'Variation type (subtle/moderate/extreme/glitch/evolving)' }, ...SESSION_ID_PROP },
@@ -163,7 +197,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'add_swing',
-    description: 'Add swing to pattern',
+    description: '[DEPRECATED — use transform({ op: "swing" }) instead] Add swing to pattern',
     inputSchema: {
       type: 'object',
       properties: { amount: { type: 'number', description: 'Swing amount (0-1)' }, ...SESSION_ID_PROP },
@@ -172,7 +206,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'apply_scale',
-    description: 'Apply scale to notes',
+    description: '[DEPRECATED — use transform({ op: "scale" }) instead] Apply scale to notes',
     inputSchema: {
       type: 'object',
       properties: {
@@ -223,55 +257,98 @@ export const tools: Tool[] = [
 
 export const toolNames = new Set(tools.map(t => t.name));
 
+// ---- per-op helpers (shared by transform({op}) and the deprecated aliases)
+
+async function opTranspose(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
+  if (typeof args.semitones !== 'number' || !Number.isInteger(args.semitones)) {
+    throw new Error('Semitones must be an integer');
+  }
+  const p = await ctx.getCurrentPatternSafe(sid);
+  await ctx.writePatternSafe(transposePattern(p, args.semitones), sid);
+  return `Transposed ${args.semitones} semitones`;
+}
+
+async function opReverse(ctx: ToolContext, sid?: string): Promise<unknown> {
+  const p = await ctx.getCurrentPatternSafe(sid);
+  await ctx.writePatternSafe(p + '.rev', sid);
+  return 'Pattern reversed';
+}
+
+async function opStretch(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
+  InputValidator.validateGain(args.factor);
+  const p = await ctx.getCurrentPatternSafe(sid);
+  await ctx.writePatternSafe(p + `.slow(${args.factor})`, sid);
+  return `Stretched by factor of ${args.factor}`;
+}
+
+async function opQuantize(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
+  InputValidator.validateStringLength(args.grid, 'grid', 50, false);
+  const p = await ctx.getCurrentPatternSafe(sid);
+  await ctx.writePatternSafe(p + `.struct("${args.grid}")`, sid);
+  return `Quantized to ${args.grid} grid`;
+}
+
+async function opHumanize(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
+  if (args.amount !== undefined) InputValidator.validateNormalizedValue(args.amount, 'amount');
+  const p = await ctx.getCurrentPatternSafe(sid);
+  const amt = args.amount || 0.01;
+  await ctx.writePatternSafe(p + `.nudge(rand.range(-${amt}, ${amt}))`, sid);
+  return 'Added human timing';
+}
+
+async function opVary(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
+  const p = await ctx.getCurrentPatternSafe(sid);
+  const varied = ctx.generator.generateVariation(p, args.type || 'subtle');
+  await ctx.writePatternSafe(varied, sid);
+  return `Added ${args.type || 'subtle'} variation`;
+}
+
+async function opSwing(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
+  InputValidator.validateNormalizedValue(args.amount, 'amount');
+  const p = await ctx.getCurrentPatternSafe(sid);
+  await ctx.writePatternSafe(p + `.swing(${args.amount})`, sid);
+  return `Added swing: ${args.amount}`;
+}
+
+async function opScale(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
+  InputValidator.validateStringLength(args.scale, 'scale', 50, false);
+  InputValidator.validateRootNote(args.root);
+  const p = await ctx.getCurrentPatternSafe(sid);
+  await ctx.writePatternSafe(p + `.scale("${args.root}:${args.scale}")`, sid);
+  return `Applied ${args.root} ${args.scale} scale`;
+}
+
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
   const sid: string | undefined = args?.session_id;
   if (!sid && !ctx.isInitialized()) {
     return 'Browser not initialized. Run init first.';
   }
   switch (name) {
-    case 'transpose': {
-      if (typeof args.semitones !== 'number' || !Number.isInteger(args.semitones)) {
-        throw new Error('Semitones must be an integer');
+    case 'transform': {
+      const op = args?.op;
+      switch (op) {
+        case 'transpose': return await opTranspose(args, ctx, sid);
+        case 'reverse':   return await opReverse(ctx, sid);
+        case 'stretch':   return await opStretch(args, ctx, sid);
+        case 'quantize':  return await opQuantize(args, ctx, sid);
+        case 'humanize':  return await opHumanize(args, ctx, sid);
+        case 'swing':     return await opSwing(args, ctx, sid);
+        case 'scale':     return await opScale(args, ctx, sid);
+        case 'vary':      return await opVary(args, ctx, sid);
+        default:
+          throw new Error(`Invalid op: ${op}. Must be one of: transpose, reverse, stretch, quantize, humanize, swing, scale, vary`);
       }
-      const p = await ctx.getCurrentPatternSafe(sid);
-      await ctx.writePatternSafe(transposePattern(p, args.semitones), sid);
-      return `Transposed ${args.semitones} semitones`;
     }
 
-    case 'reverse': {
-      const p = await ctx.getCurrentPatternSafe(sid);
-      await ctx.writePatternSafe(p + '.rev', sid);
-      return 'Pattern reversed';
-    }
-
-    case 'stretch': {
-      InputValidator.validateGain(args.factor);
-      const p = await ctx.getCurrentPatternSafe(sid);
-      await ctx.writePatternSafe(p + `.slow(${args.factor})`, sid);
-      return `Stretched by factor of ${args.factor}`;
-    }
-
-    case 'quantize': {
-      InputValidator.validateStringLength(args.grid, 'grid', 50, false);
-      const p = await ctx.getCurrentPatternSafe(sid);
-      await ctx.writePatternSafe(p + `.struct("${args.grid}")`, sid);
-      return `Quantized to ${args.grid} grid`;
-    }
-
-    case 'humanize': {
-      if (args.amount !== undefined) InputValidator.validateNormalizedValue(args.amount, 'amount');
-      const p = await ctx.getCurrentPatternSafe(sid);
-      const amt = args.amount || 0.01;
-      await ctx.writePatternSafe(p + `.nudge(rand.range(-${amt}, ${amt}))`, sid);
-      return 'Added human timing';
-    }
-
-    case 'generate_variation': {
-      const p = await ctx.getCurrentPatternSafe(sid);
-      const varied = ctx.generator.generateVariation(p, args.type || 'subtle');
-      await ctx.writePatternSafe(varied, sid);
-      return `Added ${args.type || 'subtle'} variation`;
-    }
+    // Deprecated aliases — forward to per-op helpers.
+    case 'transpose':          return await opTranspose(args, ctx, sid);
+    case 'reverse':            return await opReverse(ctx, sid);
+    case 'stretch':            return await opStretch(args, ctx, sid);
+    case 'quantize':           return await opQuantize(args, ctx, sid);
+    case 'humanize':           return await opHumanize(args, ctx, sid);
+    case 'generate_variation': return await opVary(args, ctx, sid);
+    case 'add_swing':          return await opSwing(args, ctx, sid);
+    case 'apply_scale':        return await opScale(args, ctx, sid);
 
     case 'add_effect': {
       InputValidator.validateStringLength(args.effect, 'effect', 100, false);
@@ -299,21 +376,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       const p = await ctx.getCurrentPatternSafe(sid);
       await ctx.writePatternSafe(`setcpm(${args.bpm})\n${p}`, sid);
       return `Set tempo to ${args.bpm} BPM`;
-    }
-
-    case 'add_swing': {
-      InputValidator.validateNormalizedValue(args.amount, 'amount');
-      const p = await ctx.getCurrentPatternSafe(sid);
-      await ctx.writePatternSafe(p + `.swing(${args.amount})`, sid);
-      return `Added swing: ${args.amount}`;
-    }
-
-    case 'apply_scale': {
-      InputValidator.validateStringLength(args.scale, 'scale', 50, false);
-      InputValidator.validateRootNote(args.root);
-      const p = await ctx.getCurrentPatternSafe(sid);
-      await ctx.writePatternSafe(p + `.scale("${args.root}:${args.scale}")`, sid);
-      return `Applied ${args.root} ${args.scale} scale`;
     }
 
     case 'shift_mood':
