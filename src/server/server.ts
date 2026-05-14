@@ -2,7 +2,9 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  ReadResourceRequestSchema,
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { StrudelController } from '../StrudelController.js';
@@ -30,6 +32,8 @@ import { captureModule } from './tools/capture.js';
 import { aiModule } from './tools/ai.js';
 import { composeModule } from './tools/compose.js';
 import type { ToolContext, HistoryEntry } from './tools/types.js';
+import { readResource, resources as mcpResources } from './resources.js';
+import { join } from 'node:path';
 
 const configPath = './config.json';
 const config = existsSync(configPath)
@@ -69,6 +73,7 @@ export class StrudelMCPServer {
       {
         capabilities: {
           tools: {},
+          resources: {},
         },
       }
     );
@@ -140,6 +145,27 @@ export class StrudelMCPServer {
             text: `Error: ${message}`
           }],
         };
+      }
+    });
+
+    // MCP resources — read-only catalogs (#131). Resource handlers stay
+    // here in server.ts because they're protocol surface, not tool calls.
+    this.server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+      resources: mcpResources,
+    }));
+
+    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      const uri = request.params.uri;
+      try {
+        const content = await readResource(uri, {
+          store: this.store,
+          examplesDir: join(process.cwd(), 'patterns', 'examples'),
+        });
+        return { contents: [content] };
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Resource read failed: ${uri}`, { error: message });
+        throw error;
       }
     });
   }
