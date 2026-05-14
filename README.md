@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-81-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-82-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**81 tools** across 15 categories:
+**82 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -324,10 +324,10 @@ Then ask Claude:
 
 | Tool | Description |
 |------|-------------|
-| `create_session` | Create a new isolated Strudel browser session. Sessions share one browser but have isolated contexts. |
-| `destroy_session` | Close and destroy a Strudel session, releasing its resources. |
-| `list_sessions` | List all active Strudel sessions with their metadata. |
-| `switch_session` | Change the default session used by other tools. |
+| `create_session` | [DEPRECATED — use session({ action: "create" }) instead] Create a new isolated Strudel browser session. |
+| `destroy_session` | [DEPRECATED — use session({ action: "destroy" }) instead] Close and destroy a Strudel session. |
+| `list_sessions` | [DEPRECATED — use session({ action: "list" }) instead] List all active Strudel sessions. |
+| `switch_session` | [DEPRECATED — use session({ action: "switch" }) instead] Change the default session. |
 
 </details>
 
@@ -362,7 +362,7 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (16)</summary>
+<details><summary><strong>Other</strong> (17)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -378,6 +378,7 @@ Then ask Claude:
 | `generate_rhythm` | Generate a rhythmic pattern and append it to the current session.  |
 | `history` | Navigate or inspect the pattern edit history.  |
 | `playback` | Control transport on the current session.  |
+| `session` | Manage isolated Strudel browser sessions (multi-session, #108).  |
 | `pattern_store` | Persist patterns to disk and read them back.  |
 | `transform` | Apply a single transform op to the current session pattern.  |
 | `effect` | Add or remove a Strudel effect on the current session pattern.  |
@@ -385,7 +386,7 @@ Then ask Claude:
 
 </details>
 
-_Auto-generated from source. 81 tools registered._
+_Auto-generated from source. 82 tools registered._
 
 <!-- TOOLS:END -->
 
