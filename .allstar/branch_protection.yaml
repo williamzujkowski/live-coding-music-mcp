@@ -1,0 +1,11 @@
+# Allstar branch_protection policy — opt-out for this repo.
+#
+# Allstar's stock policy requires ≥1 reviewer approval on protected
+# branches. This is a single-maintainer project; that requirement isn't
+# viable here. Branch protection is still enforced (status checks
+# required, force-push disallowed) — just managed directly in GitHub
+# settings rather than through Allstar.
+#
+# Closes #87.
+optConfig:
+  optOut: true

@@ -311,24 +311,38 @@ npm run test:watch    # Watch mode
 ```
 
 ### Adding New Tools
-1. Define tool in `StrudelMCPServer.setupHandlers()`:
+
+Tools live in `src/server/tools/<domain>.ts` modules, each exporting `{ tools, toolNames, execute }`. `server.ts` just dispatches.
+
+1. Pick the right domain module (or add a new one if no fit). Add the tool definition to the module's `tools` array:
    ```typescript
-   server.setRequestHandler(CallToolRequestSchema, async (request) => {
-     const { name, arguments: args } = request.params;
-     // Add to switch statement in executeTool()
-   });
+   export const tools: Tool[] = [
+     // ...
+     {
+       name: 'your_tool',
+       description: 'One-line description; LLMs read this to pick between adjacent tools',
+       inputSchema: {
+         type: 'object',
+         properties: {
+           param: { type: 'string', description: 'What it is' },
+         },
+         required: ['param'],
+       },
+     },
+   ];
    ```
 
-2. Implement handler in `executeTool()` switch:
+2. Add the case to the module's `execute()` switch:
    ```typescript
    case 'your_tool':
-     const result = await this.yourMethod(args);
-     return JSON.stringify({ result });
+     return await ctx.controller.yourMethod(args.param);
    ```
 
-3. Add service method if needed (MusicTheory, PatternGenerator, etc.)
+3. Add service method if needed (`MusicTheory`, `PatternGenerator`, etc.) and surface it through `ToolContext` (`src/server/tools/types.ts`) if other modules need it.
 
-4. Update README.md tool reference
+4. **Don't hand-edit the README tool table.** It's auto-generated. `npm run build` regenerates it via `scripts/generate-tool-docs.ts`. A Jest test (`src/__tests__/unit/ToolDocsDrift.test.ts`) and a CI step both guard against drift — if either fails, run `npm run build` and commit the regenerated `README.md`.
+
+5. If the tool needs the browser, every module's `execute()` already checks `ctx.isInitialized()` — follow the existing pattern. For tools that don't need the browser (local-engine tools etc.), branch on a per-module allow-set; see `analysis.ts:LOCAL_ENGINE_TOOLS`.
 
 ### Code Standards
 - TypeScript strict mode required
