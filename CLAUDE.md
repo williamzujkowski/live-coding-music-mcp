@@ -155,7 +155,7 @@ Adding context guidelines to CLAUDE.md after line 70.
 ## Project Purpose
 This is an **open source, actively developed** MCP server enabling AI agents to generate music via Strudel.cc using browser automation.
 
-**Current State:** Beta. 1470 tests pass, 77% statement coverage, CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot). Tool schemas are stable within minor versions. Known coverage gaps: `AudioCaptureService` 33%, `AudioAnalyzer` branch 48%. See GitHub Issues for the roadmap. Contributions welcome.
+**Current State:** Beta. 1771 tests pass, 86.76% statement / 77.32% branch coverage. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. See GitHub Issues for the roadmap. Contributions welcome.
 
 ## GitHub Issues Workflow
 
@@ -226,24 +226,29 @@ Closes #123"
 ## Core Architecture
 
 ```
-MCP Protocol Layer (66 tools)
+MCP Protocol Layer (84 tools + 4 resources)
+    ↓ dispatcher in src/server/server.ts
+Per-domain tool modules (src/server/tools/*.ts)
     ↓
-Services: MusicTheory, PatternGenerator
+Services: MusicTheory, PatternGenerator, SessionManager,
+          AudioCaptureService, GeminiService, MIDIExportService,
+          StrudelEngine
     ↓
 Controllers: StrudelController, AudioAnalyzer
     ↓
-Storage: PatternStore
+Storage: PatternStore (on-disk JSON)
     ↓
 Integration: Playwright → Strudel.cc
 ```
 
 ## Key Components
 
-### 1. StrudelMCPServer (`src/server/server.ts`)
-- **Purpose**: MCP protocol handling, tool registration
-- **Tools**: 66 registered tools for pattern generation, manipulation, analysis
-- **Key Methods**: `setupHandlers()`, `executeTool()`, `handleToolsList()`
-- **State**: Manages undo/redo stacks, pattern cache
+### 1. StrudelMCPServer (`src/server/server.ts`, ~510 lines)
+- **Purpose**: MCP protocol handling, dispatch to per-domain tool modules, response envelope wrapping
+- **Tools**: 84 registered (26 consolidated + 58 deprecated aliases; v3.0.0 / #120)
+- **Resources**: 4 MCP resources (#131) — examples, patterns, styles, tool docs
+- **Key Methods**: `setupHandlers()`, `dispatchToolCall()`, `executeTool()` (thin), `getHistoryBundle()`, `getAudioCaptureService(sid)`
+- **State**: per-session history bundles (`historyBundles: Map<sid, ...>`), per-session capture services (`audioCaptureServices: Map<sid, ...>`), pattern cache
 
 ### 2. StrudelController (`src/StrudelController.ts`)
 - **Purpose**: Browser automation via Playwright
@@ -391,10 +396,11 @@ if (!validation.isValid) {
 ## Known Issues & Limitations
 
 ### Current Limitations
-- Single browser instance (no multi-session)
-- Tempo/key detection accuracy may vary (Krumhansl-Schmuckler algorithm)
-- History bounded to 100 entries (MAX_HISTORY constant)
-- Browser tests require Playwright and are skipped in CI
+- Multi-session is supported (#108, v3.0.0): each `session_id` gets its own browser page, undo/redo/history, and audio capture. Max 5 concurrent sessions, 30-min idle eviction. Browser process is still shared across sessions (one Chromium, multiple contexts).
+- Tempo detection accuracy degrades under headless audio — onset sampling is flakier than in a real browser. Key detection (Krumhansl-Schmuckler) is best-effort.
+- History bounded to 100 entries per session (`MAX_HISTORY` constant).
+- Browser tests require Playwright and are skipped in CI.
+- Deprecated tool aliases from the #120 consolidation are still registered for v3.0.x — slated for removal in v3.1.0 (#178).
 
 ### Security Considerations
 - Pattern validation prevents dangerous patterns (gain > 2.0, eval blocks)
@@ -406,17 +412,25 @@ if (!validation.isValid) {
 ```
 src/
 ├── index.ts                    # Entry point
-├── StrudelController.ts        # Browser automation (756 lines)
-├── AudioAnalyzer.ts            # Audio analysis (804 lines)
-├── PatternStore.ts             # Persistence (205 lines)
+├── StrudelController.ts        # Browser automation (~800 lines)
+├── AudioAnalyzer.ts            # Audio analysis (~800 lines)
+├── PatternStore.ts             # On-disk JSON persistence
 ├── server/
-│   └── server.ts                    # MCP server (2844 lines)
+│   ├── server.ts                    # MCP dispatcher (~510 lines, post-#104)
+│   ├── resources.ts                 # MCP resources (#131)
+│   └── tools/                       # Per-domain handlers (#104)
+│       ├── ai.ts, analysis.ts, capture.ts, compose.ts,
+│       ├── diagnostics.ts, editor.ts, generate.ts, history.ts,
+│       ├── playback.ts, session.ts, storage.ts, transform.ts,
+│       └── types.ts                 # ToolContext, Envelope, helpers
 ├── services/
-│   ├── MusicTheory.ts          # Music theory (204 lines)
-│   ├── PatternGenerator.ts     # Pattern generation (684 lines)
-│   ├── GeminiService.ts        # AI feedback integration
-│   ├── SessionManager.ts       # Multi-session management
-│   ├── AudioCaptureService.ts  # Audio recording
+│   ├── MusicTheory.ts          # Scale/chord/euclidean helpers
+│   ├── PatternGenerator.ts     # Template-based generation (~680 lines)
+│   ├── GeminiService.ts        # Gemini API client (ai_assist)
+│   ├── SessionManager.ts       # Multi-session lifecycle (#108)
+│   ├── AudioCaptureService.ts  # Audio recording (per-session, #180)
+│   ├── StrudelEngine.ts        # @strudel/* wrapper
+│   └── StrudelEngineHelpers.ts # Pure helpers (#107, direct-tested)
 │   └── MIDIExportService.ts    # MIDI export
 ├── utils/
 │   ├── Logger.ts               # Logging (22 lines)
@@ -791,9 +805,10 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ### 11. Concurrency and Parallelism
 
 **Browser Operations:**
-- Single browser instance (avoid race conditions)
-- Sequential pattern writes
-- Parallel file I/O when safe (PatternStore.list)
+- One Chromium process; multiple Playwright `BrowserContext`s — one per session (#108)
+- Within a session: writes are sequential (don't pipeline `writePattern` calls on the same controller)
+- Across sessions: writes can interleave safely; each session has its own page and CodeMirror editor
+- Parallel file I/O when safe (`PatternStore.list`)
 
 **Thread Safety:**
 ```typescript
@@ -1002,8 +1017,7 @@ See GitHub issues for UX improvements:
 - #42: Add high-level compose workflow
 
 ## Future Enhancements
-- Multi-session support
-- WebWorker audio analysis
-- SQLite pattern store
+- WebWorker audio analysis (run FFT off the main thread)
+- SQLite pattern store (replace JSON-per-file when catalogs cross thousands)
 - Improved modal scale detection accuracy
-- MIDI/audio export
+- Per-module envelope migration (#140 was closed as won't-do; revisit if a specific module benefits)

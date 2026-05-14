@@ -2,6 +2,60 @@
 
 All notable changes to this MCP server will be documented in this file.
 
+## [3.0.0] — multi-session, MCP resources, result envelope, tool consolidation
+
+The biggest release since the rename. Everything in `2.0.x` still works during a deprecation window, but the protocol-visible response shape changed (see Breaking below).
+
+### Breaking
+
+- **Result envelope on every `tools/call` response.** Tool responses now wrap their output in a discriminated envelope inside the existing `content[0].text` field:
+  - Success: `{ "ok": true, "data": ... }` (with optional `"empty": true` for valid-empty results)
+  - Failure: `{ "ok": false, "errorCategory": "validation"|"transient"|"business"|"permission"|"internal", "isRetryable": boolean, "message": "..." }`
+
+  Clients that previously displayed the inner text as plain prose to a human will now see JSON. Programmatic clients can branch on `errorCategory` / `isRetryable` instead of regex-matching free text. Filed as #130; designed off @nareto's audit in #127 (findings 4-5).
+
+### Added
+
+- **Multi-session browser support (#108, #142).** Every browser-touching tool accepts an optional `session_id`. Named sessions get isolated `StrudelController` instances, separate undo/redo/history stacks (#179), and separate `AudioCaptureService` instances (#180). Lifecycle via the `session` tool (`action=create|destroy|list|switch`). Max 5 concurrent sessions with 30-min idle eviction.
+- **MCP resources (#131).** Server now advertises four read-only catalogs that agents can list and read without burning tool calls:
+  - `strudel://examples` — bundled example patterns with metadata
+  - `strudel://patterns` — saved patterns from `PatternStore`
+  - `strudel://styles` — supported genres + default BPM
+  - `strudel://docs/tools` — every registered tool with one-line description
+- **Tool consolidation (#120).** 17 mergers shipped across four phases. Each consolidated tool sits alongside its legacy verb aliases during a deprecation window; aliases will be removed in v3.1.0 per #178. Highlights:
+  - `pattern_store(action)` (was save/load/list) — resolves the `list`/`list_sessions` collision
+  - `edit_pattern(mode)` (was write/append/insert/replace/clear)
+  - `transform(op)` (was 8 verbs: transpose/reverse/stretch/quantize/humanize/swing/scale/vary)
+  - `analyze(include[])` (was analyze + 4 detection verbs)
+  - `history(action)` (was undo/redo/list_history/restore_history/compare_patterns)
+  - `diagnostics(level)`, `playback(action)`, `effect(action)`, `shape(dimension)`, `audio_capture(action)`, `browser_window(action)`, `generate_part(role)`, `generate_rhythm(type)`, `music_theory(query)`, `session(action)`, `ai_assist(task)`
+  - `compose` absorbs `generate_pattern` (deprecation only)
+- **Four orphan local-engine tools registered (#124):** `validate_pattern_local`, `analyze_pattern_local`, `query_pattern_events`, `transpile_pattern` — they had complete handlers but were never in `tools/list`.
+- **Branch protection check name corrected (#87).** Required CI context now matches the actual job (`build (22.x)` instead of `CI`), so PRs auto-merge through the normal flow.
+- **Lint blocking in CI (#122).** Was `continue-on-error: true`; now blocks. Errors dropped from 84 to 0; warnings from 728 to ~163.
+- **README tool table generated from source (#123).** Drift guarded by a Jest test plus the existing CI step.
+
+### Refactored
+
+- **`server.ts` split (#104, #133).** From 2963-line monolith to 507-line dispatcher; tool handlers live in `src/server/tools/<domain>.ts`. Each module exports `{ tools, toolNames, execute }`.
+- **StrudelEngine pure helpers extracted (#107, #134).** Six pure functions (parseErrorLocation, getSuggestionsForError, checkCommonIssues, extractBpm, extractFunctionsUsed, calculateComplexity) live in `StrudelEngineHelpers.ts` and have direct Jest coverage — they were previously unreachable because `@strudel/*` is ESM and ts-jest emits CJS.
+- **Dead `requiresInitialization()` pre-flight removed (#141).** Each module's `execute()` does its own session-aware init check.
+
+### Fixed
+
+- **Browser-test failures (#139).** Tempo and spectrum tests in `ExampleValidation.browser.test.ts` had stale assertions (one targeted a non-existent `.spectrum.bands` shape; another's 1500ms wait wasn't enough for headless audio sample accumulation). Bumped to 4500ms, softened the tempo bounds-check, fixed the spectrum shape to match the real `analysis.features.{bass,mid,treble}`. All 31 browser tests pass.
+- **`GenerateExamples.test.ts` no longer mutates tracked fixtures (#129).** Test writes generated examples to a tmp dir per run.
+- **Allstar bot opt-out (#87).** `.allstar/branch_protection.yaml` opts out of the stock policy that expects reviewer approvals (not viable on a single-maintainer repo).
+
+### Numbers
+
+- **84 tools** in `tools/list` (26 consolidated + 58 deprecated aliases that forward; net ~26 after #178 lands in 3.1.0)
+- **4 MCP resources**
+- **1771 tests** pass, 20 skipped (browser, skipped in CI), 0 fail
+- **86.76% statement coverage / 77.32% branch coverage** (services were 100% / 100% on the migration helpers)
+- **0 lint errors**, 163 warnings (mostly `any` in test mocks; lint is now blocking in CI)
+- **`server.ts`: 2963 → 507 lines**
+
 ## [2.0.0] — relicense to AGPL-3.0-or-later
 
 **License changed: MIT → AGPL-3.0-or-later.** Filed and resolved as #125.

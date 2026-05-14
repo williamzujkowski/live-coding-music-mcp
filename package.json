@@ -1,6 +1,6 @@
 {
   "name": "@williamzujkowski/live-coding-music-mcp",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "MCP server (unofficial, fan project) for AI-assisted live-coding music via strudel.cc. Lets Claude drive pattern generation, audio analysis, and MIDI export through the Strudel browser REPL.",
   "type": "module",
   "main": "dist/index.js",

@@ -4,7 +4,7 @@
 >
 > **Unofficial fan project.** Not affiliated with, or endorsed by, the [Strudel project](https://codeberg.org/uzu/strudel). This adapter exists to make live-coding music accessible to beginners who want to try pattern-based music without learning the whole ecosystem first.
 >
-> **Status:** Beta | 77% test coverage | Published to npm | Actively developed
+> **Status:** Beta | 86% statement coverage | Published to npm | Actively developed
 
 <a href="https://glama.ai/mcp/servers/@williamzujkowski/live-coding-music-mcp">
   <img width="380" height="200" src="https://glama.ai/mcp/servers/@williamzujkowski/live-coding-music-mcp/badge" alt="live-coding-music-mcp server" />
@@ -18,11 +18,11 @@
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
 
-**Current State: Beta.** The core workflow (init → generate → write → play → analyze) works reliably with real audio output and has 1470 passing tests covering 77% of statements. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, and Dependabot. Known coverage gaps exist (notably `AudioCaptureService` at 33% and `AudioAnalyzer` branch coverage at 48%) — see [open issues](https://github.com/williamzujkowski/live-coding-music-mcp/issues) for the full list.
+**Current State: Beta.** The core workflow (init → generate → write → play → analyze) works reliably with real audio output. 1771 tests pass, 86.76% statement coverage / 77.32% branch coverage. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
 
 **What "Beta" means here:**
 - Tool schemas are stable within minor versions; breaking changes require a major bump
-- Single-browser-session limitation (multi-session tracked in [#108](https://github.com/williamzujkowski/live-coding-music-mcp/issues/108))
+- Multi-session is supported as of v3.0.0 ([#108](https://github.com/williamzujkowski/live-coding-music-mcp/issues/108)) — named sessions get isolated browser, history, and audio-capture state
 - Upstream `@strudel/*` dependencies pinned to known-good versions; Dependabot bumps gated on CI
 - Expect hands-on iteration for non-standard patterns — report rough edges, they get fixed
 
@@ -44,40 +44,39 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 
 ## Features
 
-### 🎹 Complete Music Control
-- **65 MCP Tools**: Comprehensive suite for music creation and manipulation
-- **Real Browser Automation**: Direct control of Strudel.cc through Playwright
-- **Live Audio Analysis**: Real-time frequency analysis via Web Audio API
-- **Pattern Generation**: AI-powered creation across 8+ music genres
-- **Music Theory Engine**: Scales, chords, progressions, euclidean rhythms
-- **Session Management**: Save, load, undo/redo with pattern storage
+### 🎹 Music control
+- **84 MCP tools** covering pattern editing, playback, audio analysis, generation, history, sessions, and Gemini-backed assists. 26 are the canonical consolidated tools (`pattern_store`, `edit_pattern`, `transform`, `analyze`, `history`, `playback`, `effect`, `shape`, `audio_capture`, `browser_window`, `generate_part`, `generate_rhythm`, `music_theory`, `session`, `ai_assist`, ...); the rest are deprecated aliases kept for one release ([#178](https://github.com/williamzujkowski/live-coding-music-mcp/issues/178)).
+- **4 MCP resources** for catalog browsing without burning tool calls: `strudel://examples`, `strudel://patterns`, `strudel://styles`, `strudel://docs/tools`.
+- **Real browser automation** of Strudel.cc through Playwright.
+- **Multi-session support** — every browser-touching tool accepts an optional `session_id`; sessions have isolated browser pages, undo/redo/history stacks, and audio-capture services.
+- **Audio analysis** via Web Audio API (FFT spectrum, tempo detection, key detection, rhythm complexity).
+- **Template-based pattern generation** across 8 genres (techno, house, dnb, ambient, trap, jungle, jazz, experimental); optional Gemini-backed `ai_assist` for feedback, suggestions, and jamming.
+- **Music theory helpers**: 15+ scales, 8+ chord progression styles, euclidean and polyrhythm generation.
+- **Pattern persistence**: JSON-backed save/load with tags + the in-memory edit history (undo/redo/restore/compare).
+- **Result envelope** on every `tools/call`: clients branch on `{ ok, errorCategory, isRetryable }` instead of parsing free-text.
 
-### 🔧 Testing & Development Status
-- ✅ **Test Suite**: Comprehensive test coverage across unit, integration, and validation tests
-- ✅ **Code Coverage**: Actively tracked via CI
-- ✅ **Browser Integration**: Works with live Strudel.cc website
-- ✅ **Audio Analysis**: Real-time FFT analysis functional
-- ✅ **Pattern Generation**: Core music generation features working
-- ✅ **OIDC Publishing**: Secure npm publishing with provenance attestation
+### 🔧 Testing & CI status
+- **1771 passing tests** across unit, integration, and example-validation suites.
+- **86.76% statement coverage / 77.32% branch coverage**.
+- **Lint blocking in CI**: 0 errors, ~163 warnings (mostly `any` in test mocks).
+- **OIDC trusted publishing** to npm with SLSA build provenance attestation on every release.
 
 **Not Production-Ready:** This is experimental software under active development. Use for exploration and experimentation. Expect breaking changes, bugs, and incomplete features. See [CONTRIBUTING.md](CONTRIBUTING.md) to help improve it.
 
-### 🎼 Example Patterns
+### 🎼 Example patterns
 
-Explore 17 curated example patterns across 10 genres in [`patterns/examples/`](patterns/examples/):
+18 example patterns ship in [`patterns/examples/`](patterns/examples/), grouped by genre:
 
-- **Techno**: Hard techno, minimal techno
-- **House**: Deep house, tech house
-- **Drum & Bass**: Liquid, neurofunk
-- **Ambient**: Dark ambient, drone
-- **Trap**: Modern trap, cloud trap
-- **Jungle**: Classic jungle, ragga jungle
-- **Jazz**: Bebop, modal jazz
-- **Intelligent DnB**: Atmospheric, liquid, LTJ Bukem style
-- **Trip Hop**: Portishead, Massive Attack, Flying Lotus style
-- **Boom Bap**: DJ Premier, Alchemist, golden era hip hop
+- **Techno**: hard-techno, minimal-techno
+- **House**: deep-house, tech-house
+- **Drum & Bass**: liquid-dnb, neurofunk
+- **Ambient**: dark-ambient, drone
+- **Trap**: modern-trap, cloud-trap
+- **Jungle**: classic-jungle, ragga-jungle
+- **Jazz**: bebop, modal-jazz
+- **Longform** (multi-minute pieces): dark-ambient-journey, driving-techno, liquid-dnb-roller, nu-jazz-session
 
-Each example includes pattern code, BPM, key, and description. See [`patterns/examples/README.md`](patterns/examples/README.md) for details.
+Each example is a JSON file with pattern code, BPM, key, and a description. See [`patterns/examples/README.md`](patterns/examples/README.md) for details. Agents can also list these via the `strudel://examples` MCP resource without making any tool calls.
 
 ## Migrating from `@williamzujkowski/strudel-mcp-server`
 
@@ -156,16 +155,21 @@ npm run build
 
 Common commands for immediate use:
 
-| Action | Command |
-|--------|---------|
+| Action | Tool call |
+|---|---|
 | Initialize browser | `init` |
-| Create techno beat | `generate_pattern` with `style: "techno"` |
-| Play pattern | `play` |
-| Stop playback | `stop` |
+| Create a techno beat in one shot | `compose({ style: "techno" })` |
+| Play pattern | `playback({ action: "play" })` |
+| Stop playback | `playback({ action: "stop" })` |
 | Get current pattern | `get_pattern` |
-| Analyze audio | `analyze` |
-| Save pattern | `save` with `name: "my-pattern"` |
-| Undo last change | `undo` |
+| Analyze audio (all features) | `analyze({ include: ["all"] })` |
+| Detect tempo only | `analyze({ include: ["tempo"] })` |
+| Save pattern | `pattern_store({ action: "save", name: "my-pattern" })` |
+| Undo last edit | `history({ action: "undo" })` |
+| Edit current pattern | `edit_pattern({ mode: "write", pattern: "..." })` |
+| Create an isolated session | `session({ action: "create", session_id: "live-1" })` |
+
+The legacy single-verb tools (`play`, `stop`, `save`, `undo`, `write`, `generate_pattern`, ...) still work in v3.0 as deprecated aliases. They forward to the consolidated tools and will be removed in v3.1 ([#178](https://github.com/williamzujkowski/live-coding-music-mcp/issues/178)).
 
 **One-shot workflow:**
 ```
@@ -675,14 +679,15 @@ The Strudel MCP Server is built with a modular architecture that separates conce
 
 ### Core Components
 
-#### 1. **StrudelMCPServer** (`src/server/server.ts`)
+#### 1. **StrudelMCPServer** (`src/server/server.ts`, ~510 lines)
 
-Main MCP server implementation handling:
-- **65 Tool Definitions**: Complete API surface for music control
-- **Request Routing**: Directs tool calls to appropriate handlers
-- **State Management**: Tracks initialization, undo/redo stacks, pattern cache
-- **Error Handling**: Graceful degradation and informative error messages
-- **Lazy Initialization**: Browser starts only when needed
+Thin MCP dispatcher that:
+- Aggregates 84 tool definitions from the per-domain modules in `src/server/tools/` (84 = 26 consolidated tools + 58 deprecated aliases; -58 once #178 lands)
+- Routes `tools/call` requests to the right module's `execute()`
+- Wraps every response in the discriminated result envelope (`{ ok, errorCategory, isRetryable, ... }`)
+- Tracks initialization, per-session history bundles, per-session audio capture services
+- Advertises and serves MCP resources (`strudel://examples`, etc.)
+- Lazy-initializes the default browser controller on first browser-touching call
 
 Key Features:
 ```typescript
@@ -787,28 +792,42 @@ Persistent pattern storage:
 live-coding-music-mcp/
 ├── src/
 │   ├── server/
-│   │   └── server.ts                    # MCP server
+│   │   ├── server.ts                    # MCP dispatcher (~510 lines)
+│   │   ├── resources.ts                 # MCP resources (#131)
+│   │   └── tools/
+│   │       ├── ai.ts, analysis.ts, capture.ts, compose.ts,
+│   │       ├── diagnostics.ts, editor.ts, generate.ts, history.ts,
+│   │       ├── playback.ts, session.ts, storage.ts, transform.ts,
+│   │       └── types.ts                 # ToolContext, Envelope, helpers
 │   ├── services/
-│   │   ├── MusicTheory.ts                # Theory engine
-│   │   └── PatternGenerator.ts           # Pattern creation
+│   │   ├── MusicTheory.ts                # Scale/chord/euclidean helpers
+│   │   ├── PatternGenerator.ts           # Template-based generation
+│   │   ├── SessionManager.ts             # Multi-session lifecycle (#108)
+│   │   ├── AudioCaptureService.ts        # Audio recording
+│   │   ├── MIDIExportService.ts          # MIDI export
+│   │   ├── GeminiService.ts              # Gemini API client (ai_assist)
+│   │   ├── StrudelEngine.ts              # @strudel/* wrapper
+│   │   └── StrudelEngineHelpers.ts       # Pure helpers (#107)
 │   ├── utils/
-│   │   └── Logger.ts                     # Logging utility
-│   ├── types/
-│   │   └── index.ts                      # TypeScript types
-│   ├── StrudelController.ts              # Browser automation
-│   ├── AudioAnalyzer.ts                  # Audio analysis
-│   ├── PatternStore.ts                   # Pattern persistence
+│   │   ├── Logger.ts
+│   │   ├── PatternValidator.ts           # Syntax + safety checks
+│   │   ├── ErrorRecovery.ts              # Retry / backoff
+│   │   ├── PerformanceMonitor.ts
+│   │   └── InputValidator.ts             # Input bound checks
+│   ├── StrudelController.ts              # Browser automation (~800 lines)
+│   ├── AudioAnalyzer.ts                  # Audio analysis (~800 lines)
+│   ├── PatternStore.ts                   # On-disk pattern persistence
 │   └── index.ts                          # Entry point
-├── tests/
-│   ├── browser-test.js                   # Browser integration
-│   ├── integration.test.js               # Integration tests
-│   ├── manual-test.js                    # Manual testing
-│   ├── mcp-tools.test.ts                 # MCP tool tests
-│   └── strudel-integration.js            # Full integration
-├── patterns/                             # Saved patterns
-├── config.json                           # Server configuration
-├── package.json                          # Dependencies
-└── tsconfig.json                         # TypeScript config
+├── src/__tests__/                        # Jest suites (unit + integration + browser)
+├── patterns/
+│   ├── examples/                         # 18 bundled example patterns
+│   └── *.json                            # Saved patterns at runtime
+├── scripts/
+│   ├── generate-tool-docs.ts             # README tool-table generator
+│   └── generate-changelog.ts
+├── config.json                           # Local config (gitignored)
+├── package.json
+└── tsconfig.json
 ```
 
 ### Data Flow
@@ -974,102 +993,49 @@ gh release create v$(node -p "require('./package.json').version") --generate-not
 
 The package uses OIDC trusted publishing with provenance attestation for supply chain security.
 
-### Project Structure
+### Adding new tools
 
-```
-src/
-├── server/
-│   └── server.ts                    # MCP server
-│
-├── services/
-│   ├── MusicTheory.ts                # Music theory engine
-│   │   - 15+ scales (major, minor, modes, etc.)
-│   │   - Chord progressions (jazz, pop, blues, etc.)
-│   │   - Euclidean rhythm generation
-│   │   - Arpeggio generation
-│   │
-│   └── PatternGenerator.ts           # Pattern creation service
-│       - Genre-specific drum patterns
-│       - Bassline generation
-│       - Melody composition
-│       - Pattern variations
-│       - Complete track generation
-│
-├── utils/
-│   ├── Logger.ts                     # Logging utility
-│   ├── PerformanceMonitor.ts         # Performance tracking
-│   ├── PatternValidator.ts           # Pattern syntax validation
-│   └── ErrorRecovery.ts              # Error handling & recovery
-│
-├── types/
-│   └── index.ts                      # TypeScript type definitions
-│
-├── StrudelController.ts              # Browser automation
-│   - Chromium management via Playwright
-│   - CodeMirror editor manipulation
-│   - Playback control
-│   - Pattern validation
-│   - Error recovery
-│
-├── AudioAnalyzer.ts                  # Real-time audio analysis
-│   - Web Audio API injection
-│   - FFT spectral analysis
-│   - Frequency band detection
-│   - Playing state monitoring
-│
-├── PatternStore.ts                   # Pattern persistence
-│   - JSON-based storage
-│   - Tag-based organization
-│   - Metadata tracking
-│   - List caching
-│
-└── index.ts                          # Application entry point
-```
+Tools live in per-domain modules under `src/server/tools/<domain>.ts`. `server.ts` just dispatches. To add a tool:
 
-### Adding New Tools
+1. **Pick the right domain module** (or add a new one). Add the tool definition to that module's `tools` array:
 
-To add a new MCP tool:
+   ```typescript
+   export const tools: Tool[] = [
+     // ...
+     {
+       name: 'my_new_tool',
+       description: 'One-line description; agents read this to pick between adjacent tools',
+       inputSchema: {
+         type: 'object',
+         properties: {
+           param1: { type: 'string', description: 'What it is' },
+           session_id: { type: 'string', description: 'Optional session ID (#108)' },
+         },
+         required: ['param1'],
+       },
+     },
+   ];
+   ```
 
-1. **Define the tool** in `getTools()` method:
-```typescript
-{
-  name: 'my_new_tool',
-  description: 'Description of what it does',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      param1: { type: 'string', description: 'Parameter description' },
-      param2: { type: 'number', description: 'Numeric parameter' }
-    },
-    required: ['param1']
-  }
-}
-```
+2. **Add the case** to the module's `execute()` switch:
 
-2. **Implement the handler** in `executeTool()` switch statement:
-```typescript
-case 'my_new_tool':
-  // Your implementation here
-  return await this.someService.doSomething(args.param1, args.param2);
-```
+   ```typescript
+   case 'my_new_tool':
+     return await ctx.getController(args.session_id).doSomething(args.param1);
+   ```
 
-3. **Add necessary service methods** if needed:
-```typescript
-// In appropriate service file
-async doSomething(param1: string, param2?: number): Promise<string> {
-  // Implementation
-  return `Result: ${param1}`;
-}
-```
+3. **Add a service method** if needed (`MusicTheory`, `PatternGenerator`, etc.) and surface it through `ToolContext` (`src/server/tools/types.ts`) if other modules need it.
 
-4. **Test the tool**:
-```bash
-# Build
-npm run build
+4. **Don't hand-edit the README tool table.** It auto-generates via `npm run build` → `scripts/generate-tool-docs.ts`. A Jest test plus a CI step guard against drift.
 
-# Test via MCP
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"my_new_tool","arguments":{"param1":"test"}},"id":2}' | node dist/index.js
-```
+5. **Use the envelope helpers** for returns: `ok(data)`, `empty(data)`, `err('validation', 'message')` from `src/server/tools/types.ts`. Raw returns still work — the dispatcher normalises them — but native envelope construction is clearer.
+
+6. **Build and test**:
+
+   ```bash
+   npm run build
+   echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"my_new_tool","arguments":{"param1":"test"}},"id":2}' | node dist/index.js
+   ```
 
 ### Testing Strategy
 
@@ -1092,7 +1058,7 @@ npm run test:integration
 # - Pattern generation
 # - Audio analysis
 # - Pattern storage
-# - All 65 tools
+# - All 84 registered tools
 ```
 
 #### 3. Manual Testing
@@ -1307,12 +1273,19 @@ SMOOTHING=0.8
 
 ## Performance
 
-- **Pattern Generation**: <100ms
-- **Browser Initialization**: ~3 seconds
-- **Pattern Writing**: Instant
-- **Playback Start**: ~500ms
-- **Audio Analysis**: Real-time
-- **Memory Usage**: <150MB
+Measured against the current `StrudelController` cache + Strudel.cc on a developer machine:
+
+| Operation | Latency |
+|---|---|
+| Browser initialization | 1.5–2 s (with resource blocking) |
+| Pattern write | 50–80 ms (cached CodeMirror editor access) |
+| Pattern read (cached) | 10–15 ms |
+| Play / pause / stop | 100–150 ms |
+| Audio analysis (single FFT) | 10–15 ms |
+| Tempo detection | <100 ms (onset-based; degraded under headless audio) |
+| Key detection | <100 ms (Krumhansl-Schmuckler) |
+| Pattern generation | <100 ms (template-based) |
+| Process resident memory | ~120–150 MB |
 
 ## Advanced Usage
 
@@ -1573,7 +1546,7 @@ npm run build
 # Check if server responds
 echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | node dist/index.js
 
-# Should return JSON with 65 tools
+# Should return JSON with 84 tools (post-v3.0; ~26 after #178 alias removal)
 
 # Reinstall MCP server in Claude
 claude mcp remove strudel
@@ -1752,6 +1725,6 @@ Earlier versions of this package (including `@williamzujkowski/strudel-mcp-serve
 
 ---
 
-**v2.4.0** - Open Source | Experimental | [Report Issues](https://github.com/williamzujkowski/live-coding-music-mcp/issues) | [Contribute](https://github.com/williamzujkowski/live-coding-music-mcp/pulls)
+**v3.0.0** — Open source, AGPL-3.0-or-later, experimental | [Report issues](https://github.com/williamzujkowski/live-coding-music-mcp/issues) | [Contribute](https://github.com/williamzujkowski/live-coding-music-mcp/pulls)
 
 *This project is under active development. Core features work, but expect bugs and breaking changes. Not recommended for production use.*
