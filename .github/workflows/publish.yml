@@ -33,22 +33,17 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # OIDC trusted publishing needs npm >= 11.5.1. Node 22 bundles npm
+      # 10.x and `npm install -g npm@latest` self-corrupts mid-upgrade
+      # (MODULE_NOT_FOUND: promise-retry). Node 24 ships npm 11.x natively,
+      # so we pin the publish job to Node 24 and skip the upgrade entirely.
+      # CI (ci.yml) still runs on 22 — this job builds + tests before
+      # publishing, so a 24-only regression would be caught here too.
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
-          node-version: '22.x'
+          node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
-
-      # OIDC trusted publishing needs npm >= 11.5.1. The runner's bundled
-      # npm (10.x with Node 22) is too old, but `npm install -g npm@latest`
-      # self-corrupts mid-upgrade (MODULE_NOT_FOUND: promise-retry) because
-      # the old npm can't rebuild the new npm's dependency tree. Corepack
-      # manages the install out-of-band and sidesteps that entirely.
-      - name: Pin npm >= 11.5.1 via corepack (for OIDC trusted publishing)
-        run: |
-          corepack enable
-          corepack install -g npm@latest
-          npm --version
 
       - name: Verify npm version
         run: |
