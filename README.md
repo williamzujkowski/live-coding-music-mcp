@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-75-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-77-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**75 tools** across 15 categories:
+**77 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -291,7 +291,7 @@ Then ask Claude:
 | `add_effect` | [DEPRECATED — use effect({ action: "add" }) instead] Add effect to pattern |
 | `remove_effect` | [DEPRECATED — use effect({ action: "remove" }) instead] Remove effect |
 | `add_swing` | [DEPRECATED — use transform({ op: "swing" }) instead] Add swing to pattern |
-| `set_energy` | Adjust the overall energy level of the current pattern on a 0-10 scale. 0: minimal/ambient, 1-2: sparse, 3-4: light/relaxed, 5-6: normal/moderate, 7-8: driving/intense, 9-10: maximum. Auto-plays after applying energy level. |
+| `set_energy` | [DEPRECATED — use shape({ dimension: "energy" }) instead] Adjust energy level 0-10. Auto-plays after applying. |
 
 </details>
 
@@ -301,8 +301,8 @@ Then ask Claude:
 |------|-------------|
 | `get_pattern_feedback` | Get AI-powered creative feedback on the current pattern using Google Gemini. Analyzes pattern structure and optionally audio. |
 | `jam_with` | AI generates a complementary layer to jam with your pattern. Analyzes current pattern to detect tempo, key, and existing layers, then generates a matching layer that fits musically. |
-| `shift_mood` | Transform current pattern to match a different emotional mood by adjusting tempo, effects, and note choices. Moods: dark, euphoric, melancholic, aggressive, dreamy, peaceful, energetic. |
-| `refine` | Incrementally refine the current pattern with simple directional commands. Supports: faster/slower (tempo), louder/quieter (gain), brighter/darker (filter cutoff), "more reverb"/drier (reverb). Auto-plays after applying refinement. |
+| `shift_mood` | [DEPRECATED — use shape({ dimension: "mood" }) instead] Transform current pattern to match a different emotional mood. Moods: dark, euphoric, melancholic, aggressive, dreamy, peaceful, energetic. |
+| `refine` | [DEPRECATED — use shape({ dimension: "refine" }) instead] Incrementally refine current pattern: faster/slower/louder/quieter/brighter/darker/"more reverb"/drier. |
 
 </details>
 
@@ -362,7 +362,7 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (10)</summary>
+<details><summary><strong>Other</strong> (12)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -377,10 +377,11 @@ Then ask Claude:
 | `pattern_store` | Persist patterns to disk and read them back.  |
 | `transform` | Apply a single transform op to the current session pattern.  |
 | `effect` | Add or remove a Strudel effect on the current session pattern.  |
+| `shape` | Shape the current pattern along one of three high-level dimensions.  |
 
 </details>
 
-_Auto-generated from source. 75 tools registered._
+_Auto-generated from source. 77 tools registered._
 
 <!-- TOOLS:END -->
 

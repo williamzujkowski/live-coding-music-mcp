@@ -237,8 +237,36 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'shape',
+    description:
+      'Shape the current pattern along one of three high-level dimensions. ' +
+      'dimension=mood applies a mood profile (dark/euphoric/melancholic/aggressive/dreamy/peaceful/energetic) with optional intensity 0-1. ' +
+      'dimension=energy applies an energy level (integer 0-10). ' +
+      'dimension=refine applies a directional refinement: faster/slower/louder/quieter/brighter/darker/"more reverb"/drier. ' +
+      'All three auto-play by default. ' +
+      'Example: shape({ dimension: "mood", target_mood: "dark", intensity: 0.8 }). ' +
+      'For raw transform ops use transform; for explicit effects use effect.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dimension: { type: 'string', enum: ['mood', 'energy', 'refine'], description: 'Which dimension to shape along' },
+        target_mood: {
+          type: 'string',
+          enum: ['dark', 'euphoric', 'melancholic', 'aggressive', 'dreamy', 'peaceful', 'energetic'],
+          description: 'dimension=mood: target mood',
+        },
+        intensity: { type: 'number', minimum: 0, maximum: 1, description: 'dimension=mood: intensity 0-1 (default 0.5)' },
+        level: { type: 'number', description: 'dimension=energy: integer level 0-10' },
+        direction: { type: 'string', description: 'dimension=refine: faster, slower, louder, quieter, brighter, darker, "more reverb", drier' },
+        auto_play: { type: 'boolean', description: 'Start playback after shape (default true)' },
+        ...SESSION_ID_PROP,
+      },
+      required: ['dimension'],
+    },
+  },
+  {
     name: 'shift_mood',
-    description: 'Transform current pattern to match a different emotional mood by adjusting tempo, effects, and note choices. Moods: dark, euphoric, melancholic, aggressive, dreamy, peaceful, energetic.',
+    description: '[DEPRECATED — use shape({ dimension: "mood" }) instead] Transform current pattern to match a different emotional mood. Moods: dark, euphoric, melancholic, aggressive, dreamy, peaceful, energetic.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -256,7 +284,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'set_energy',
-    description: 'Adjust the overall energy level of the current pattern on a 0-10 scale. 0: minimal/ambient, 1-2: sparse, 3-4: light/relaxed, 5-6: normal/moderate, 7-8: driving/intense, 9-10: maximum. Auto-plays after applying energy level.',
+    description: '[DEPRECATED — use shape({ dimension: "energy" }) instead] Adjust energy level 0-10. Auto-plays after applying.',
     inputSchema: {
       type: 'object',
       properties: { level: { type: 'number', description: 'Energy level from 0 (minimal) to 10 (maximum)' }, ...SESSION_ID_PROP },
@@ -265,7 +293,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'refine',
-    description: 'Incrementally refine the current pattern with simple directional commands. Supports: faster/slower (tempo), louder/quieter (gain), brighter/darker (filter cutoff), "more reverb"/drier (reverb). Auto-plays after applying refinement.',
+    description: '[DEPRECATED — use shape({ dimension: "refine" }) instead] Incrementally refine current pattern: faster/slower/louder/quieter/brighter/darker/"more reverb"/drier.',
     inputSchema: {
       type: 'object',
       properties: { direction: { type: 'string', description: 'Refinement direction: faster, slower, louder, quieter, brighter, darker, "more reverb", or drier' }, ...SESSION_ID_PROP },
@@ -409,14 +437,19 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       return `Set tempo to ${args.bpm} BPM`;
     }
 
-    case 'shift_mood':
-      return await shiftMood(args, ctx, sid);
-
-    case 'set_energy':
-      return await setEnergyLevel(args.level, ctx, sid);
-
-    case 'refine':
-      return await refinePattern(args.direction, ctx, sid);
+    case 'shape': {
+      const dim = args?.dimension;
+      switch (dim) {
+        case 'mood':   return await shiftMood(args, ctx, sid);
+        case 'energy': return await setEnergyLevel(args.level, ctx, sid);
+        case 'refine': return await refinePattern(args.direction, ctx, sid);
+        default:
+          throw new Error(`Invalid dimension: ${dim}. Must be one of: mood, energy, refine`);
+      }
+    }
+    case 'shift_mood':  return await shiftMood(args, ctx, sid);
+    case 'set_energy':  return await setEnergyLevel(args.level, ctx, sid);
+    case 'refine':      return await refinePattern(args.direction, ctx, sid);
 
     default:
       throw new Error(`transform module does not handle tool: ${name}`);
