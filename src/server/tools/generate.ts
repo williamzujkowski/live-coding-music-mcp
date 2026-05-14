@@ -41,8 +41,34 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'generate_part',
+    description:
+      'Generate a single instrumental layer and append it to the current session pattern. ' +
+      'role=drums takes `style` (e.g. "techno"/"house") and optional `complexity` 0-1. ' +
+      'role=bass takes `key` (e.g. "C") + `style`. ' +
+      'role=melody takes `root`/`scale` (e.g. C/minor) and optional `length` (notes). ' +
+      'role=fill takes `style` and optional `bars`. ' +
+      'Example: generate_part({ role: "drums", style: "techno", complexity: 0.7 }). ' +
+      'For full compositions use compose; for rhythmic patterns use generate_rhythm; for music-theory queries use music_theory.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        role: { type: 'string', enum: ['drums', 'bass', 'melody', 'fill'], description: 'Which part to generate' },
+        style: { type: 'string', description: 'role=drums/bass/fill: musical style' },
+        complexity: { type: 'number', description: 'role=drums: complexity 0-1 (default 0.5)' },
+        key: { type: 'string', description: 'role=bass: musical key' },
+        root: { type: 'string', description: 'role=melody: root note' },
+        scale: { type: 'string', description: 'role=melody: scale name' },
+        length: { type: 'number', description: 'role=melody: number of notes (default 8)' },
+        bars: { type: 'number', description: 'role=fill: number of bars (default 1)' },
+        ...SESSION_ID_PROP,
+      },
+      required: ['role'],
+    },
+  },
+  {
     name: 'generate_drums',
-    description: 'Generate drum pattern',
+    description: '[DEPRECATED — use generate_part({ role: "drums" }) instead] Generate drum pattern',
     inputSchema: {
       type: 'object',
       properties: {
@@ -55,7 +81,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'generate_bassline',
-    description: 'Generate bassline',
+    description: '[DEPRECATED — use generate_part({ role: "bass" }) instead] Generate bassline',
     inputSchema: {
       type: 'object',
       properties: {
@@ -68,7 +94,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'generate_melody',
-    description: 'Generate melody from scale',
+    description: '[DEPRECATED — use generate_part({ role: "melody" }) instead] Generate melody from scale',
     inputSchema: {
       type: 'object',
       properties: {
@@ -177,7 +203,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'generate_fill',
-    description: 'Generate drum fill',
+    description: '[DEPRECATED — use generate_part({ role: "fill" }) instead] Generate drum fill',
     inputSchema: {
       type: 'object',
       properties: {
@@ -230,6 +256,40 @@ async function doPolyrhythm(args: any, ctx: ToolContext, sid?: string): Promise<
   return 'Generated polyrhythm';
 }
 
+async function doDrums(args: any, ctx: ToolContext, sid?: string): Promise<string> {
+  InputValidator.validateStringLength(args.style, 'style', 100, false);
+  if (args.complexity !== undefined) InputValidator.validateNormalizedValue(args.complexity, 'complexity');
+  const drums = ctx.generator.generateDrumPattern(args.style, args.complexity || 0.5);
+  await appendOrSet(drums, ctx, sid);
+  return `Generated ${args.style} drums`;
+}
+
+async function doBassline(args: any, ctx: ToolContext, sid?: string): Promise<string> {
+  InputValidator.validateRootNote(args.key);
+  InputValidator.validateStringLength(args.style, 'style', 100, false);
+  const bass = ctx.generator.generateBassline(args.key, args.style);
+  await appendOrSet(bass, ctx, sid);
+  return `Generated ${args.style} bassline in ${args.key}`;
+}
+
+async function doMelody(args: any, ctx: ToolContext, sid?: string): Promise<string> {
+  InputValidator.validateRootNote(args.root);
+  InputValidator.validateScaleName(args.scale);
+  if (args.length !== undefined) InputValidator.validatePositiveInteger(args.length, 'length');
+  const scale = ctx.theory.generateScale(args.root, args.scale);
+  const melody = ctx.generator.generateMelody(scale, args.length || 8);
+  await appendOrSet(melody, ctx, sid);
+  return `Generated melody in ${args.root} ${args.scale}`;
+}
+
+async function doFill(args: any, ctx: ToolContext, sid?: string): Promise<string> {
+  InputValidator.validateStringLength(args.style, 'style', 100, false);
+  if (args.bars !== undefined) InputValidator.validatePositiveInteger(args.bars, 'bars');
+  const fill = ctx.generator.generateFill(args.style, args.bars || 1);
+  await appendOrSet(fill, ctx, sid);
+  return `Generated ${args.bars || 1} bar fill`;
+}
+
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
   const sid: string | undefined = args?.session_id;
   switch (name) {
@@ -252,31 +312,20 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       return `Generated ${args.style} pattern`;
     }
 
-    case 'generate_drums': {
-      InputValidator.validateStringLength(args.style, 'style', 100, false);
-      if (args.complexity !== undefined) InputValidator.validateNormalizedValue(args.complexity, 'complexity');
-      const drums = ctx.generator.generateDrumPattern(args.style, args.complexity || 0.5);
-      await appendOrSet(drums, ctx, sid);
-      return `Generated ${args.style} drums`;
+    case 'generate_part': {
+      const role = args?.role;
+      switch (role) {
+        case 'drums':  return await doDrums(args, ctx, sid);
+        case 'bass':   return await doBassline(args, ctx, sid);
+        case 'melody': return await doMelody(args, ctx, sid);
+        case 'fill':   return await doFill(args, ctx, sid);
+        default:
+          throw new Error(`Invalid role: ${role}. Must be one of: drums, bass, melody, fill`);
+      }
     }
-
-    case 'generate_bassline': {
-      InputValidator.validateRootNote(args.key);
-      InputValidator.validateStringLength(args.style, 'style', 100, false);
-      const bass = ctx.generator.generateBassline(args.key, args.style);
-      await appendOrSet(bass, ctx, sid);
-      return `Generated ${args.style} bassline in ${args.key}`;
-    }
-
-    case 'generate_melody': {
-      InputValidator.validateRootNote(args.root);
-      InputValidator.validateScaleName(args.scale);
-      if (args.length !== undefined) InputValidator.validatePositiveInteger(args.length, 'length');
-      const scale = ctx.theory.generateScale(args.root, args.scale);
-      const melody = ctx.generator.generateMelody(scale, args.length || 8);
-      await appendOrSet(melody, ctx, sid);
-      return `Generated melody in ${args.root} ${args.scale}`;
-    }
+    case 'generate_drums':    return await doDrums(args, ctx, sid);
+    case 'generate_bassline': return await doBassline(args, ctx, sid);
+    case 'generate_melody':   return await doMelody(args, ctx, sid);
 
     case 'music_theory': {
       const q = args?.query;
@@ -300,13 +349,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
     case 'generate_euclidean':   return await doEuclidean(args, ctx, sid);
     case 'generate_polyrhythm':  return await doPolyrhythm(args, ctx, sid);
 
-    case 'generate_fill': {
-      InputValidator.validateStringLength(args.style, 'style', 100, false);
-      if (args.bars !== undefined) InputValidator.validatePositiveInteger(args.bars, 'bars');
-      const fill = ctx.generator.generateFill(args.style, args.bars || 1);
-      await appendOrSet(fill, ctx, sid);
-      return `Generated ${args.bars || 1} bar fill`;
-    }
+    case 'generate_fill': return await doFill(args, ctx, sid);
 
     default:
       throw new Error(`generate module does not handle tool: ${name}`);

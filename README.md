@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-78-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-80-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**78 tools** across 15 categories:
+**80 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -259,11 +259,11 @@ Then ask Claude:
 |------|-------------|
 | `compose` | Generate, write, and play a complete pattern in one step. Auto-initializes default browser if needed. |
 | `generate_pattern` | Generate complete pattern from style with optional auto-play |
-| `generate_drums` | Generate drum pattern |
-| `generate_bassline` | Generate bassline |
-| `generate_melody` | Generate melody from scale |
+| `generate_drums` | [DEPRECATED — use generate_part({ role: "drums" }) instead] Generate drum pattern |
+| `generate_bassline` | [DEPRECATED — use generate_part({ role: "bass" }) instead] Generate bassline |
+| `generate_melody` | [DEPRECATED — use generate_part({ role: "melody" }) instead] Generate melody from scale |
 | `generate_polyrhythm` | [DEPRECATED — use generate_rhythm({ type: "polyrhythm" }) instead] Generate polyrhythm |
-| `generate_fill` | Generate drum fill |
+| `generate_fill` | [DEPRECATED — use generate_part({ role: "fill" }) instead] Generate drum fill |
 | `generate_variation` | [DEPRECATED — use transform({ op: "vary" }) instead] Create pattern variations (mis-named today; it transforms, not generates) |
 
 </details>
@@ -362,7 +362,7 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (13)</summary>
+<details><summary><strong>Other</strong> (15)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -372,6 +372,7 @@ Then ask Claude:
 | `query_pattern_events` | Enumerate events the pattern would emit between two cycle indices (max 16 cycles) |
 | `transpile_pattern` | Transpile pattern source via StrudelEngine; returns transpiled code or syntax error |
 | `edit_pattern` | Mutate the current session pattern.  |
+| `generate_part` | Generate a single instrumental layer and append it to the current session pattern.  |
 | `music_theory` | Music-theory queries.  |
 | `generate_rhythm` | Generate a rhythmic pattern and append it to the current session.  |
 | `history` | Navigate or inspect the pattern edit history.  |
@@ -383,7 +384,7 @@ Then ask Claude:
 
 </details>
 
-_Auto-generated from source. 78 tools registered._
+_Auto-generated from source. 80 tools registered._
 
 <!-- TOOLS:END -->
 
