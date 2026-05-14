@@ -80,8 +80,9 @@ FUTURE_ENHANCEMENTS.md
 # Development/testing scripts
 play-*.js
 
-# Local Claude settings
+# Local Claude settings + harness state
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # Nexus agents config (local setup)
 nexus-agents.yaml
