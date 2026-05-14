@@ -84,12 +84,19 @@ jobs:
           # Keep it as fallback for transition period
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # Pack the tarball so we can attest + attach it to the GitHub release
+      # Pack the tarball so we can attest + attach it to the GitHub release.
+      # `npm pack` runs the `prepare` hook (npm run build), whose generator
+      # script prints to stdout — so parsing npm's output (even --json) is
+      # fragile. Instead, just glob for the .tgz it produces: npm pack
+      # creates exactly one, named deterministically from package.json.
       - name: Pack tarball for attestation
         id: pack
         run: |
-          TARBALL=$(npm pack --silent)
-          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+          rm -f ./*.tgz
+          npm pack >/dev/null 2>&1
+          TARBALL=$(ls -1 ./*.tgz | head -n1)
+          test -n "${TARBALL}" && test -f "${TARBALL}" || { echo "::error::npm pack produced no .tgz"; exit 1; }
+          echo "tarball=${TARBALL#./}" >> "$GITHUB_OUTPUT"
           echo "Packed: ${TARBALL}"
 
       # GitHub-native SLSA build provenance on the published tarball —
