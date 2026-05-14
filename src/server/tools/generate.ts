@@ -127,8 +127,30 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'generate_rhythm',
+    description:
+      'Generate a rhythmic pattern and append it to the current session. ' +
+      'type=euclidean produces a Euclidean rhythm with `hits` evenly distributed across `steps` (optional `sound` param, default "bd"). ' +
+      'type=polyrhythm overlays multiple sound layers with given pattern numbers. ' +
+      'Example: generate_rhythm({ type: "euclidean", hits: 3, steps: 8, sound: "hh" }). ' +
+      'For complete patterns (drums/bass/melody) use generate_part; for whole compositions use compose.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['euclidean', 'polyrhythm'], description: 'Rhythm type' },
+        hits: { type: 'number', description: 'type=euclidean: hits count' },
+        steps: { type: 'number', description: 'type=euclidean: total steps' },
+        sound: { type: 'string', description: 'type=euclidean: sound to use (default bd)' },
+        sounds: { type: 'array', items: { type: 'string' }, description: 'type=polyrhythm: sounds per layer' },
+        patterns: { type: 'array', items: { type: 'number' }, description: 'type=polyrhythm: pattern numbers per layer' },
+        ...SESSION_ID_PROP,
+      },
+      required: ['type'],
+    },
+  },
+  {
     name: 'generate_euclidean',
-    description: 'Generate Euclidean rhythm',
+    description: '[DEPRECATED — use generate_rhythm({ type: "euclidean" }) instead] Generate Euclidean rhythm',
     inputSchema: {
       type: 'object',
       properties: {
@@ -142,7 +164,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'generate_polyrhythm',
-    description: 'Generate polyrhythm',
+    description: '[DEPRECATED — use generate_rhythm({ type: "polyrhythm" }) instead] Generate polyrhythm',
     inputSchema: {
       type: 'object',
       properties: {
@@ -190,6 +212,22 @@ async function doChordProgression(args: any, ctx: ToolContext, sid?: string): Pr
   const chordPattern = ctx.generator.generateChords(progression);
   await appendOrSet(chordPattern, ctx, sid);
   return `Generated ${args.style} progression in ${args.key}: ${progression}`;
+}
+
+async function doEuclidean(args: any, ctx: ToolContext, sid?: string): Promise<string> {
+  InputValidator.validateEuclidean(args.hits, args.steps);
+  if (args.sound) InputValidator.validateStringLength(args.sound, 'sound', 100, false);
+  const euclidean = ctx.generator.generateEuclideanPattern(args.hits, args.steps, args.sound || 'bd');
+  await appendOrSet(euclidean, ctx, sid);
+  return `Generated Euclidean rhythm (${args.hits}/${args.steps})`;
+}
+
+async function doPolyrhythm(args: any, ctx: ToolContext, sid?: string): Promise<string> {
+  args.sounds.forEach((s: string) => InputValidator.validateStringLength(s, 'sound', 100, false));
+  args.patterns.forEach((p: number) => InputValidator.validatePositiveInteger(p, 'pattern'));
+  const poly = ctx.generator.generatePolyrhythm(args.sounds, args.patterns);
+  await appendOrSet(poly, ctx, sid);
+  return 'Generated polyrhythm';
 }
 
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
@@ -250,25 +288,17 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
     case 'generate_scale':              return doScale(args, ctx);
     case 'generate_chord_progression':  return await doChordProgression(args, ctx, sid);
 
-    case 'generate_euclidean': {
-      InputValidator.validateEuclidean(args.hits, args.steps);
-      if (args.sound) InputValidator.validateStringLength(args.sound, 'sound', 100, false);
-      const euclidean = ctx.generator.generateEuclideanPattern(
-        args.hits,
-        args.steps,
-        args.sound || 'bd',
-      );
-      await appendOrSet(euclidean, ctx, sid);
-      return `Generated Euclidean rhythm (${args.hits}/${args.steps})`;
+    case 'generate_rhythm': {
+      const t = args?.type;
+      if (t !== 'euclidean' && t !== 'polyrhythm') {
+        throw new Error(`Invalid type: ${t}. Must be one of: euclidean, polyrhythm`);
+      }
+      return t === 'euclidean'
+        ? await doEuclidean(args, ctx, sid)
+        : await doPolyrhythm(args, ctx, sid);
     }
-
-    case 'generate_polyrhythm': {
-      args.sounds.forEach((s: string) => InputValidator.validateStringLength(s, 'sound', 100, false));
-      args.patterns.forEach((p: number) => InputValidator.validatePositiveInteger(p, 'pattern'));
-      const poly = ctx.generator.generatePolyrhythm(args.sounds, args.patterns);
-      await appendOrSet(poly, ctx, sid);
-      return 'Generated polyrhythm';
-    }
+    case 'generate_euclidean':   return await doEuclidean(args, ctx, sid);
+    case 'generate_polyrhythm':  return await doPolyrhythm(args, ctx, sid);
 
     case 'generate_fill': {
       InputValidator.validateStringLength(args.style, 'style', 100, false);

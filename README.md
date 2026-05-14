@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-77-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-78-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**77 tools** across 15 categories:
+**78 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -262,7 +262,7 @@ Then ask Claude:
 | `generate_drums` | Generate drum pattern |
 | `generate_bassline` | Generate bassline |
 | `generate_melody` | Generate melody from scale |
-| `generate_polyrhythm` | Generate polyrhythm |
+| `generate_polyrhythm` | [DEPRECATED — use generate_rhythm({ type: "polyrhythm" }) instead] Generate polyrhythm |
 | `generate_fill` | Generate drum fill |
 | `generate_variation` | [DEPRECATED — use transform({ op: "vary" }) instead] Create pattern variations (mis-named today; it transforms, not generates) |
 
@@ -274,7 +274,7 @@ Then ask Claude:
 |------|-------------|
 | `generate_scale` | [DEPRECATED — use music_theory({ query: "scale" }) instead] Generate scale notes |
 | `generate_chord_progression` | [DEPRECATED — use music_theory({ query: "chord_progression" }) instead] Generate chord progression |
-| `generate_euclidean` | Generate Euclidean rhythm |
+| `generate_euclidean` | [DEPRECATED — use generate_rhythm({ type: "euclidean" }) instead] Generate Euclidean rhythm |
 | `apply_scale` | [DEPRECATED — use transform({ op: "scale" }) instead] Apply scale to notes |
 
 </details>
@@ -362,7 +362,7 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (12)</summary>
+<details><summary><strong>Other</strong> (13)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -373,6 +373,7 @@ Then ask Claude:
 | `transpile_pattern` | Transpile pattern source via StrudelEngine; returns transpiled code or syntax error |
 | `edit_pattern` | Mutate the current session pattern.  |
 | `music_theory` | Music-theory queries.  |
+| `generate_rhythm` | Generate a rhythmic pattern and append it to the current session.  |
 | `history` | Navigate or inspect the pattern edit history.  |
 | `playback` | Control transport on the current session.  |
 | `pattern_store` | Persist patterns to disk and read them back.  |
@@ -381,7 +382,7 @@ Then ask Claude:
 
 </details>
 
-_Auto-generated from source. 77 tools registered._
+_Auto-generated from source. 78 tools registered._
 
 <!-- TOOLS:END -->
 
