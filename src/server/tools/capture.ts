@@ -39,8 +39,31 @@ const SESSION_ID_PROP = {
 
 export const tools: Tool[] = [
   {
+    name: 'audio_capture',
+    description:
+      'Record audio output from the live Strudel session. ' +
+      'action=start begins streaming capture (optional `format` webm/opus, default webm). ' +
+      'action=stop ends the stream and returns base64-encoded audio. ' +
+      'action=sample captures a fixed-`duration` window in one call (100-60000ms, default 5000ms). ' +
+      'Example: audio_capture({ action: "sample", duration: 3000 }). ' +
+      'Audio must be playing for capture to record meaningful data. ' +
+      'For MIDI export use export_midi; for runtime diagnostics use diagnostics. ' +
+      'Note: the AudioCaptureService is currently a server-wide singleton — concurrent captures across sessions will conflict.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['start', 'stop', 'sample'], description: 'Capture action' },
+        format: { type: 'string', enum: ['webm', 'opus'], description: 'action=start: audio format (default webm)' },
+        maxDuration: { type: 'number', description: 'action=start: maximum capture duration ms' },
+        duration: { type: 'number', description: 'action=sample: duration ms (100-60000, default 5000)' },
+        ...SESSION_ID_PROP,
+      },
+      required: ['action'],
+    },
+  },
+  {
     name: 'start_audio_capture',
-    description: 'Start capturing audio from Strudel output. Audio must be playing for capture to work.',
+    description: '[DEPRECATED — use audio_capture({ action: "start" }) instead] Start capturing audio. Audio must be playing.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -52,12 +75,12 @@ export const tools: Tool[] = [
   },
   {
     name: 'stop_audio_capture',
-    description: 'Stop audio capture and return the recorded audio as base64-encoded data.',
+    description: '[DEPRECATED — use audio_capture({ action: "stop" }) instead] Stop audio capture and return base64-encoded audio.',
     inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'capture_audio_sample',
-    description: 'Capture a fixed-duration audio sample from Strudel output. Audio must be playing.',
+    description: '[DEPRECATED — use audio_capture({ action: "sample" }) instead] Capture a fixed-duration audio sample.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -90,6 +113,17 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
   // produces a structured { success: false, message } from any error,
   // including AudioCaptureService's "Browser not initialized" throw.
   switch (name) {
+    case 'audio_capture': {
+      const a = args?.action;
+      switch (a) {
+        case 'start':  return await startAudioCapture(args?.format, args?.maxDuration, ctx, sid);
+        case 'stop':   return await stopAudioCapture(ctx, sid);
+        case 'sample': return await captureAudioSample(args?.duration, ctx, sid);
+        default:
+          throw new Error(`Invalid action: ${a}. Must be one of: start, stop, sample`);
+      }
+    }
+
     case 'start_audio_capture':
       return await startAudioCapture(args?.format, args?.maxDuration, ctx, sid);
 

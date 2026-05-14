@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-80-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-81-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**80 tools** across 15 categories:
+**81 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -344,9 +344,9 @@ Then ask Claude:
 
 | Tool | Description |
 |------|-------------|
-| `start_audio_capture` | Start capturing audio from Strudel output. Audio must be playing for capture to work. |
-| `stop_audio_capture` | Stop audio capture and return the recorded audio as base64-encoded data. |
-| `capture_audio_sample` | Capture a fixed-duration audio sample from Strudel output. Audio must be playing. |
+| `start_audio_capture` | [DEPRECATED — use audio_capture({ action: "start" }) instead] Start capturing audio. Audio must be playing. |
+| `stop_audio_capture` | [DEPRECATED — use audio_capture({ action: "stop" }) instead] Stop audio capture and return base64-encoded audio. |
+| `capture_audio_sample` | [DEPRECATED — use audio_capture({ action: "sample" }) instead] Capture a fixed-duration audio sample. |
 
 </details>
 
@@ -362,7 +362,7 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (15)</summary>
+<details><summary><strong>Other</strong> (16)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -371,6 +371,7 @@ Then ask Claude:
 | `analyze_pattern_local` | Static analysis (events/cycle, complexity, optional BPM) without browser playback |
 | `query_pattern_events` | Enumerate events the pattern would emit between two cycle indices (max 16 cycles) |
 | `transpile_pattern` | Transpile pattern source via StrudelEngine; returns transpiled code or syntax error |
+| `audio_capture` | Record audio output from the live Strudel session.  |
 | `edit_pattern` | Mutate the current session pattern.  |
 | `generate_part` | Generate a single instrumental layer and append it to the current session pattern.  |
 | `music_theory` | Music-theory queries.  |
@@ -384,7 +385,7 @@ Then ask Claude:
 
 </details>
 
-_Auto-generated from source. 80 tools registered._
+_Auto-generated from source. 81 tools registered._
 
 <!-- TOOLS:END -->
 
