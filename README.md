@@ -223,7 +223,7 @@ Then ask Claude:
 
 | Tool | Description |
 |------|-------------|
-| `status` | Get current browser and playback status (quick state check) |
+| `status` | [DEPRECATED — use diagnostics({ level: "status" }) instead] Get current browser and playback status (quick state check) |
 | `clear` | Clear the editor |
 | `play` | Start playing pattern |
 | `pause` | Pause playback |
@@ -355,10 +355,10 @@ Then ask Claude:
 | Tool | Description |
 |------|-------------|
 | `show_browser` | Bring browser window to foreground for visual feedback |
-| `performance_report` | Get performance metrics and bottlenecks |
-| `memory_usage` | Get current memory usage statistics |
-| `diagnostics` | Get detailed browser diagnostics including cache, errors, and performance |
-| `show_errors` | Display captured console errors and warnings from Strudel |
+| `diagnostics` | Inspect server and browser state.  |
+| `show_errors` | [DEPRECATED — use diagnostics({ level: "errors" }) instead] Display captured console errors and warnings from Strudel |
+| `performance_report` | [DEPRECATED — use diagnostics({ level: "perf" }) instead] Get performance metrics and bottlenecks |
+| `memory_usage` | [DEPRECATED — use diagnostics({ level: "memory" }) instead] Get current memory usage statistics |
 
 </details>
 
