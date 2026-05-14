@@ -33,7 +33,7 @@ function makeCtx(): { ctx: ToolContext; store: any; pattern: { current: string }
     geminiService: {} as any,
     strudelEngine: {} as any,
     midiExportService: {} as any,
-    getAudioCaptureService: async () => ({}) as any,
+    getAudioCaptureService: async (_sid?: string) => ({}) as any, dropAudioCaptureService: jest.fn(),
     getHistory: () => ({ undoStack: [], redoStack: [], historyStack: [], maxHistory: 100 }), historyEntryId: () => 1, dropHistory: jest.fn(),
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } as any,
     isInitialized: () => true,

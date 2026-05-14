@@ -48,7 +48,13 @@ export class StrudelMCPServer {
   private theory: MusicTheory;
   private generator: PatternGenerator;
   private geminiService: GeminiService;
-  private audioCaptureService: AudioCaptureService | null = null;
+  /**
+   * Per-session AudioCaptureService instances (#180). Keyed by session id
+   * (or 'default' for the legacy/single-session path). Each session's
+   * recorder injects into its own page, so concurrent captures across
+   * sessions no longer conflict.
+   */
+  private audioCaptureServices: Map<string, AudioCaptureService> = new Map();
   private midiExportService: MIDIExportService;
   private sessionManager: SessionManager;
   private logger: Logger;
@@ -347,7 +353,8 @@ export class StrudelMCPServer {
       geminiService: this.geminiService,
       strudelEngine: this.strudelEngine,
       midiExportService: this.midiExportService,
-      getAudioCaptureService: () => this.getAudioCaptureService(),
+      getAudioCaptureService: (sessionId?: string) => this.getAudioCaptureService(sessionId),
+      dropAudioCaptureService: (sessionId: string) => { this.audioCaptureServices.delete(sessionId); },
       getHistory: (sessionId?: string) => {
         const bundle = this.getHistoryBundle(sessionId ?? 'default');
         return {
@@ -449,19 +456,41 @@ export class StrudelMCPServer {
     return this.controller.page;
   }
 
-  // Audio capture + MIDI export logic moved to src/server/tools/capture.ts.
-  // Server still owns the AudioCaptureService lifecycle so tests can mock
-  // the class and the module fetches the (possibly mocked) instance via
-  // ctx.getAudioCaptureService() instead of caching its own.
-  private async getAudioCaptureService(): Promise<AudioCaptureService> {
-    if (!this.isInitialized || !this._page) {
-      throw new Error('Browser not initialized. Run init first.');
+  // Audio capture + MIDI export logic lives in src/server/tools/capture.ts.
+  // Server still owns AudioCaptureService lifecycles so tests can mock
+  // the class. Post-#180: per-session — each session's recorder injects
+  // into its own page; concurrent captures across sessions no longer
+  // share a singleton stream.
+  private async getAudioCaptureService(sessionId?: string): Promise<AudioCaptureService> {
+    // Resolve the right page: explicit session via SessionManager, or
+    // legacy/default via this.controller.
+    let page;
+    let key: string;
+    if (sessionId) {
+      const sessionController = this.sessionManager.getSession(sessionId);
+      if (!sessionController) {
+        throw new Error(`Session '${sessionId}' not found. Create it first with create_session.`);
+      }
+      if (!sessionController.page) {
+        throw new Error(`Session '${sessionId}' has no active page yet.`);
+      }
+      page = sessionController.page;
+      key = sessionId;
+    } else {
+      if (!this.isInitialized || !this._page) {
+        throw new Error('Browser not initialized. Run init first.');
+      }
+      page = this._page;
+      key = 'default';
     }
-    if (!this.audioCaptureService) {
-      this.audioCaptureService = new AudioCaptureService();
-      await this.audioCaptureService.injectRecorder(this._page);
+
+    let service = this.audioCaptureServices.get(key);
+    if (!service) {
+      service = new AudioCaptureService();
+      await service.injectRecorder(page);
+      this.audioCaptureServices.set(key, service);
     }
-    return this.audioCaptureService;
+    return service;
   }
 
   async run() {

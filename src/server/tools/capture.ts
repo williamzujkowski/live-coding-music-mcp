@@ -148,7 +148,7 @@ async function startAudioCapture(
   sid?: string,
 ): Promise<unknown> {
   try {
-    const service = await ctx.getAudioCaptureService();
+    const service = await ctx.getAudioCaptureService(sid);
     if (service.isCapturing()) {
       return { success: false, message: 'Audio capture already in progress. Stop it first.' };
     }
@@ -166,7 +166,7 @@ async function startAudioCapture(
 
 async function stopAudioCapture(ctx: ToolContext, sid?: string): Promise<unknown> {
   try {
-    const service = await ctx.getAudioCaptureService();
+    const service = await ctx.getAudioCaptureService(sid);
     if (!service.isCapturing()) {
       return { success: false, message: 'No audio capture in progress. Start capture first.' };
     }
@@ -192,7 +192,7 @@ async function captureAudioSample(duration: number | undefined, ctx: ToolContext
   }
 
   try {
-    const service = await ctx.getAudioCaptureService();
+    const service = await ctx.getAudioCaptureService(sid);
     if (service.isCapturing()) {
       return { success: false, message: 'Audio capture already in progress. Stop it first.' };
     }

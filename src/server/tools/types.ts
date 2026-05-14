@@ -59,11 +59,14 @@ export interface ToolContext {
   strudelEngine: StrudelEngine;
   midiExportService: MIDIExportService;
   /**
-   * Lazily returns the shared AudioCaptureService (the server owns its
-   * lifecycle). Callers only get a service when init has run and a page
-   * exists; this method throws otherwise.
+   * Lazily returns the per-session AudioCaptureService (#180). When no
+   * `sessionId` is given, returns the default-session service (legacy
+   * single-session behaviour); explicit ids route through SessionManager.
+   * Throws if the targeted session isn't initialised yet.
    */
-  getAudioCaptureService(): Promise<AudioCaptureService>;
+  getAudioCaptureService(sessionId?: string): Promise<AudioCaptureService>;
+  /** Drop a session's AudioCaptureService instance (called by session destroy). */
+  dropAudioCaptureService(sessionId: string): void;
   /**
    * Resolves the per-session HistoryState (#179). Omitting the session id
    * returns the default-session bundle; named sessions get their own
