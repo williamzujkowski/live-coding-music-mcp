@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-71-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-72-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**71 tools** across 15 categories:
+**72 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -246,10 +246,10 @@ Then ask Claude:
 
 | Tool | Description |
 |------|-------------|
-| `undo` | Undo last action |
-| `redo` | Redo action |
-| `list_history` | List recent pattern history with timestamps and previews |
-| `restore_history` | Restore a previous pattern from history by ID |
+| `undo` | [DEPRECATED — use history({ action: "undo" }) instead] Undo last action |
+| `redo` | [DEPRECATED — use history({ action: "redo" }) instead] Redo action |
+| `list_history` | [DEPRECATED — use history({ action: "list" }) instead] List recent pattern history with timestamps and previews |
+| `restore_history` | [DEPRECATED — use history({ action: "restore" }) instead] Restore a previous pattern from history by ID |
 
 </details>
 
@@ -316,7 +316,7 @@ Then ask Claude:
 | `detect_tempo` | BPM detection |
 | `detect_key` | Key detection |
 | `validate_pattern_runtime` | Validate pattern with runtime error checking (monitors Strudel console for errors) |
-| `compare_patterns` | Compare two patterns from history showing differences |
+| `compare_patterns` | [DEPRECATED — use history({ action: "compare" }) instead] Compare two patterns from history showing differences |
 
 </details>
 
@@ -362,7 +362,7 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (6)</summary>
+<details><summary><strong>Other</strong> (7)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -371,11 +371,12 @@ Then ask Claude:
 | `analyze_pattern_local` | Static analysis (events/cycle, complexity, optional BPM) without browser playback |
 | `query_pattern_events` | Enumerate events the pattern would emit between two cycle indices (max 16 cycles) |
 | `transpile_pattern` | Transpile pattern source via StrudelEngine; returns transpiled code or syntax error |
+| `history` | Navigate or inspect the pattern edit history.  |
 | `pattern_store` | Persist patterns to disk and read them back.  |
 
 </details>
 
-_Auto-generated from source. 71 tools registered._
+_Auto-generated from source. 72 tools registered._
 
 <!-- TOOLS:END -->
 
