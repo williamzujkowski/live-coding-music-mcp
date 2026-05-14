@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-81-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-82-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**81 tools** across 15 categories:
+**82 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -299,8 +299,8 @@ Then ask Claude:
 
 | Tool | Description |
 |------|-------------|
-| `get_pattern_feedback` | Get AI-powered creative feedback on the current pattern using Google Gemini. Analyzes pattern structure and optionally audio. |
-| `jam_with` | AI generates a complementary layer to jam with your pattern. Analyzes current pattern to detect tempo, key, and existing layers, then generates a matching layer that fits musically. |
+| `get_pattern_feedback` | [DEPRECATED — use ai_assist({ task: "feedback" }) instead] Get AI-powered creative feedback on the current pattern using Google Gemini. |
+| `jam_with` | [DEPRECATED — use ai_assist({ task: "jam" }) instead] AI generates a complementary layer to jam with your pattern. |
 | `shift_mood` | [DEPRECATED — use shape({ dimension: "mood" }) instead] Transform current pattern to match a different emotional mood. Moods: dark, euphoric, melancholic, aggressive, dreamy, peaceful, energetic. |
 | `refine` | [DEPRECATED — use shape({ dimension: "refine" }) instead] Incrementally refine current pattern: faster/slower/louder/quieter/brighter/darker/"more reverb"/drier. |
 
@@ -362,11 +362,12 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (16)</summary>
+<details><summary><strong>Other</strong> (17)</summary>
 
 | Tool | Description |
 |------|-------------|
-| `suggest_pattern_from_audio` | Analyze the currently playing audio and suggest a complementary Strudel pattern using Gemini AI. Extracts tempo, key, and spectral features locally, then uses AI to generate a matching pattern. Returns pattern text (not auto-executed). |
+| `ai_assist` | Gemini-backed pattern assistance.  |
+| `suggest_pattern_from_audio` | [DEPRECATED — use ai_assist({ task: "suggest" }) instead] Analyze playing audio and suggest a complementary Strudel pattern. |
 | `validate_pattern_local` | Validate pattern syntax against the in-process StrudelEngine (no browser required) |
 | `analyze_pattern_local` | Static analysis (events/cycle, complexity, optional BPM) without browser playback |
 | `query_pattern_events` | Enumerate events the pattern would emit between two cycle indices (max 16 cycles) |
@@ -385,7 +386,7 @@ Then ask Claude:
 
 </details>
 
-_Auto-generated from source. 81 tools registered._
+_Auto-generated from source. 82 tools registered._
 
 <!-- TOOLS:END -->
 

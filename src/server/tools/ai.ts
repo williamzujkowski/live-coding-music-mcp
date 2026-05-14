@@ -29,8 +29,44 @@ const SESSION_ID_PROP = {
 
 export const tools: Tool[] = [
   {
+    name: 'ai_assist',
+    description:
+      'Gemini-backed pattern assistance. ' +
+      'task=feedback returns creative critique on the current pattern (optionally with audio analysis). ' +
+      'task=suggest analyzes the currently playing audio and suggests a complementary Strudel pattern as text (not auto-executed). ' +
+      'task=jam generates a fresh layer (drums/bass/melody/pad/texture) and merges it into the current pattern, then auto-plays. ' +
+      'All three share Gemini auth + rate limiting. ' +
+      'Example: ai_assist({ task: "jam", layer: "bass" }). ' +
+      'Requires GEMINI_API_KEY env var. For non-AI pattern generation use generate_part; for full compositions use compose.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: { type: 'string', enum: ['feedback', 'suggest', 'jam'], description: 'Which AI task' },
+        // feedback args
+        includeAudio: { type: 'boolean', description: 'task=feedback: include audio analysis (default false)' },
+        style: { type: 'string', description: 'task=feedback/suggest: style hint' },
+        // suggest args
+        role: {
+          type: 'string',
+          enum: ['complement', 'bassline', 'melody', 'percussion'],
+          description: 'task=suggest: role the suggested pattern fills (default complement)',
+        },
+        // jam args
+        layer: {
+          type: 'string',
+          enum: ['drums', 'bass', 'melody', 'pad', 'texture'],
+          description: 'task=jam: layer type to generate',
+        },
+        style_hint: { type: 'string', description: 'task=jam: style guidance' },
+        auto_play: { type: 'boolean', description: 'task=jam: start playback after merge (default true)' },
+        ...SESSION_ID_PROP,
+      },
+      required: ['task'],
+    },
+  },
+  {
     name: 'get_pattern_feedback',
-    description: 'Get AI-powered creative feedback on the current pattern using Google Gemini. Analyzes pattern structure and optionally audio.',
+    description: '[DEPRECATED — use ai_assist({ task: "feedback" }) instead] Get AI-powered creative feedback on the current pattern using Google Gemini.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -42,7 +78,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'suggest_pattern_from_audio',
-    description: 'Analyze the currently playing audio and suggest a complementary Strudel pattern using Gemini AI. Extracts tempo, key, and spectral features locally, then uses AI to generate a matching pattern. Returns pattern text (not auto-executed).',
+    description: '[DEPRECATED — use ai_assist({ task: "suggest" }) instead] Analyze playing audio and suggest a complementary Strudel pattern.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -58,7 +94,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'jam_with',
-    description: 'AI generates a complementary layer to jam with your pattern. Analyzes current pattern to detect tempo, key, and existing layers, then generates a matching layer that fits musically.',
+    description: '[DEPRECATED — use ai_assist({ task: "jam" }) instead] AI generates a complementary layer to jam with your pattern.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -81,6 +117,17 @@ export const toolNames = new Set(tools.map(t => t.name));
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
   const sid: string | undefined = args?.session_id;
   switch (name) {
+    case 'ai_assist': {
+      const t = args?.task;
+      switch (t) {
+        case 'feedback': return await getPatternFeedback(args?.includeAudio || false, args?.style, ctx, sid);
+        case 'suggest':  return await suggestPatternFromAudio(args?.style, args?.role || 'complement', ctx, sid);
+        case 'jam':      return await jamWith(args.layer, args.style_hint, args.auto_play, ctx, sid);
+        default:
+          throw new Error(`Invalid task: ${t}. Must be one of: feedback, suggest, jam`);
+      }
+    }
+
     case 'get_pattern_feedback':
       return await getPatternFeedback(args?.includeAudio || false, args?.style, ctx, sid);
 
