@@ -27,7 +27,7 @@ const SESSION_ID_PROP = {
 export const tools: Tool[] = [
   {
     name: 'generate_pattern',
-    description: 'Generate complete pattern from style with optional auto-play',
+    description: '[DEPRECATED — use compose instead, which auto-inits and returns richer metadata] Generate complete pattern from style with optional auto-play.',
     inputSchema: {
       type: 'object',
       properties: {

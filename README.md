@@ -258,7 +258,7 @@ Then ask Claude:
 | Tool | Description |
 |------|-------------|
 | `compose` | Generate, write, and play a complete pattern in one step. Auto-initializes default browser if needed. |
-| `generate_pattern` | Generate complete pattern from style with optional auto-play |
+| `generate_pattern` | [DEPRECATED — use compose instead, which auto-inits and returns richer metadata] Generate complete pattern from style with optional auto-play. |
 | `generate_drums` | [DEPRECATED — use generate_part({ role: "drums" }) instead] Generate drum pattern |
 | `generate_bassline` | [DEPRECATED — use generate_part({ role: "bass" }) instead] Generate bassline |
 | `generate_melody` | [DEPRECATED — use generate_part({ role: "melody" }) instead] Generate melody from scale |
