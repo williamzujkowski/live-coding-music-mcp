@@ -30,12 +30,12 @@ export class MockPage implements Partial<Page> {
     return this;
   }
 
-  async goto(url: string, options?: any): Promise<any> {
+  async goto(url: string, _options?: any): Promise<any> {
     this.url = url;
     return {};
   }
 
-  async waitForSelector(selector: string, options?: any): Promise<any> {
+  async waitForSelector(_selector: string, _options?: any): Promise<any> {
     return {};
   }
 
@@ -43,12 +43,12 @@ export class MockPage implements Partial<Page> {
     return new Promise(resolve => setTimeout(resolve, Math.min(timeout, 10)));
   }
 
-  async waitForFunction(fn: Function, options?: any): Promise<any> {
+  async waitForFunction(_fn: Function, _options?: any): Promise<any> {
     // Mock always succeeds - simulates CodeMirror being ready
     return {};
   }
 
-  async click(selector: string, options?: any): Promise<void> {
+  async click(selector: string, _options?: any): Promise<void> {
     if (selector.includes('play')) {
       this.isPlayingState = true;
     } else if (selector.includes('stop')) {
@@ -56,11 +56,11 @@ export class MockPage implements Partial<Page> {
     }
   }
 
-  async type(text: string, options?: any): Promise<void> {
+  async type(text: string, _options?: any): Promise<void> {
     this.content += text;
   }
 
-  async route(url: string, handler: Function): Promise<void> {
+  async route(_url: string, _handler: Function): Promise<void> {
     // Mock route interception
   }
 
@@ -214,7 +214,7 @@ export class MockBrowserContext implements Partial<BrowserContext> {
 export class MockBrowser implements Partial<Browser> {
   private closed: boolean = false;
 
-  async newContext(options?: any): Promise<any> {
+  async newContext(_options?: any): Promise<any> {
     return new MockBrowserContext();
   }
 

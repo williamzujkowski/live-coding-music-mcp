@@ -47,7 +47,6 @@ import { StrudelMCPServer } from '../../server/server';
 import { StrudelController } from '../../StrudelController';
 import { PatternStore } from '../../PatternStore';
 import { GeminiService, CreativeFeedback, AudioFeedback } from '../../services/GeminiService';
-import { samplePatterns } from '../utils/TestFixtures';
 
 // Test timeouts
 const E2E_TIMEOUT = 30000;

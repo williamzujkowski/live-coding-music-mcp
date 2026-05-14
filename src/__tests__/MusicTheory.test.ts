@@ -190,7 +190,7 @@ describe('MusicTheory', () => {
       const polyrhythm = theory.generatePolyrhythm(3, 5);
       const patterns = polyrhythm.split('], [');
       patterns.forEach(pattern => {
-        const cleaned = pattern.replace(/[\[\]]/g, '');
+        const cleaned = pattern.replace(/[[\]]/g, '');
         expect(cleaned.split(' ')).toHaveLength(16);
       });
     });

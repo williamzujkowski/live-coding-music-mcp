@@ -50,8 +50,7 @@ jobs:
       - name: Check TypeScript types
         run: npx tsc --noEmit
 
-      - name: Lint (non-blocking)
-        continue-on-error: true
+      - name: Lint
         run: npm run lint
 
       - name: Verify tool documentation freshness

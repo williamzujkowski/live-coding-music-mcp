@@ -689,7 +689,7 @@ Focus on:
   }
 
   private buildVariationPrompt(pattern: string, style?: string): string {
-    let prompt = `You are an expert in Strudel.cc live coding music.
+    const prompt = `You are an expert in Strudel.cc live coding music.
 
 Given this pattern:
 \`\`\`javascript

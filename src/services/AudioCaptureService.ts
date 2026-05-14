@@ -142,7 +142,7 @@ export class AudioCaptureService {
               }
             };
 
-            capture.recorder.onerror = (event: Event) => {
+            capture.recorder.onerror = (_event: Event) => {
               capture.error = 'MediaRecorder error occurred';
               capture.isCapturing = false;
             };
@@ -230,10 +230,11 @@ export class AudioCaptureService {
    * Starts audio capture on the page.
    *
    * @param page - Playwright page instance
-   * @param config - Optional capture configuration
+   * @param _config - Optional capture configuration (currently unused;
+   *   recorder config is fixed at injectRecorder time)
    * @throws {Error} When capture fails to start
    */
-  async startCapture(page: Page, config?: AudioCaptureConfig): Promise<void> {
+  async startCapture(page: Page, _config?: AudioCaptureConfig): Promise<void> {
     const result = await page.evaluate(/* istanbul ignore next */ () => {
       const capture = (window as any).strudelAudioCapture;
       if (!capture) {

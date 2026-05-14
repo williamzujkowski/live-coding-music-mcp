@@ -290,7 +290,7 @@ export class MIDIExportService {
 
       // Handle sub-patterns in brackets [c4 e4]
       if (part.startsWith('[')) {
-        const subContent = part.replace(/[\[\]]/g, '');
+        const subContent = part.replace(/[[\]]/g, '');
         const subParts = subContent.split(/[\s,]+/);
         subParts.forEach(subPart => {
           const midi = asMidiNumbers
@@ -366,7 +366,7 @@ export class MIDIExportService {
     const notes: NoteEvent[] = [];
 
     // Find quoted strings that look like note sequences
-    const quotedRegex = /["'`]([a-g][#b]?\d[\s,a-g#b0-9~\-\[\]]+)["'`]/gi;
+    const quotedRegex = /["'`]([a-g][#b]?\d[\s,a-g#b0-9~\-[\]]+)["'`]/gi;
     let match;
 
     while ((match = quotedRegex.exec(pattern)) !== null) {
@@ -408,9 +408,6 @@ export class MIDIExportService {
     // Create track
     const track = midi.addTrack();
     track.name = trackName;
-
-    // Calculate PPQ (pulses per quarter note) from the header
-    const ppq = midi.header.ppq;
 
     // Add notes to track
     notes.forEach(noteEvent => {

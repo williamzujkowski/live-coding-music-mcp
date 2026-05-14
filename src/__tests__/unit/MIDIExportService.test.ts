@@ -9,7 +9,7 @@
  * - Error handling
  */
 
-import { MIDIExportService, NoteEvent, MIDIExportOptions } from '../../services/MIDIExportService';
+import { MIDIExportService, NoteEvent } from '../../services/MIDIExportService';
 import { unlinkSync, existsSync } from 'fs';
 
 describe('MIDIExportService', () => {

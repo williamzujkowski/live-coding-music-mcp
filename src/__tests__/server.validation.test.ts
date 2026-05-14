@@ -25,7 +25,7 @@ describe('StrudelMCPServer - Parameter Validation', () => {
           { bpm: 'fast' as any, reason: 'string' }
         ];
 
-        invalidBPMs.forEach(({ bpm, reason }) => {
+        invalidBPMs.forEach(({ bpm, reason: _reason }) => {
           expect(() => InputValidator.validateBPM(bpm)).toThrow();
         });
       });

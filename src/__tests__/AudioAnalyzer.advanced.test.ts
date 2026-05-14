@@ -17,35 +17,6 @@ import { createMockPage } from './utils/MockPlaywright';
 // TYPE DEFINITIONS
 // ============================================================================
 
-interface TempoAnalysis {
-  bpm: number;
-  confidence: number;
-  method?: 'autocorrelation' | 'onset' | 'spectral';
-}
-
-interface KeyAnalysis {
-  key: string;
-  scale: 'major' | 'minor' | 'dorian' | 'phrygian' | 'lydian' | 'mixolydian' | 'locrian';
-  confidence: number;
-  alternatives?: Array<{ key: string; scale: string; confidence: number }>;
-}
-
-interface RhythmAnalysis {
-  pattern: string;
-  complexity: number; // 0-1 scale
-  density: number; // events per second
-  syncopation: number; // 0-1 scale
-  onsets: number[];
-  isRegular: boolean;
-}
-
-interface AdvancedAudioAnalysis {
-  tempo?: TempoAnalysis;
-  key?: KeyAnalysis;
-  rhythm?: RhythmAnalysis;
-  timestamp: number;
-}
-
 // ============================================================================
 // MOCK DATA FIXTURES
 // ============================================================================

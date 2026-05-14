@@ -36,7 +36,7 @@ const createMockPage = (overrides: Partial<{
   };
 
   return {
-    evaluate: jest.fn().mockImplementation(async (fn: Function, ...args: any[]) => {
+    evaluate: jest.fn().mockImplementation(async (fn: Function, ..._args: any[]) => {
       // Simulate different behaviors based on the function being called
       const fnStr = fn.toString();
 

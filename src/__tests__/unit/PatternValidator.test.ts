@@ -3,7 +3,7 @@
  * Tests for pattern validation, syntax checking, safety checks, and auto-fix functionality
  */
 
-import { PatternValidator, ValidationResult } from '../../utils/PatternValidator';
+import { PatternValidator } from '../../utils/PatternValidator';
 
 describe('PatternValidator', () => {
   let validator: PatternValidator;

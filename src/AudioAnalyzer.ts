@@ -743,7 +743,6 @@ export class AudioAnalyzer {
     let syncopationScore = 0;
 
     for (let i = 1; i < onsets.length; i++) {
-      const interval = onsets[i] - onsets[i - 1];
       const phase = (onsets[i] % (meanInterval * 4)) / meanInterval;
 
       // Check if onset is on an off-beat (not on 0, 1, 2, 3)

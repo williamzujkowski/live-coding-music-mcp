@@ -122,7 +122,6 @@ export class PatternStore {
 
     try {
       const files = await fs.readdir(this.basePath);
-      const patterns: PatternData[] = [];
 
       // Parallel file reading for better performance
       const readPromises = files

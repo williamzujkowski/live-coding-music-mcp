@@ -10,10 +10,9 @@
 
 import { StrudelController } from '../../StrudelController';
 import { PatternStore } from '../../PatternStore';
-import { AudioAnalyzer } from '../../AudioAnalyzer';
 import { chromium } from 'playwright';
 import { MockBrowser, MockPage, createMockPage } from '../utils/MockPlaywright';
-import { samplePatterns, audioFeatures, createTestPatternData } from '../utils/TestFixtures';
+import { samplePatterns } from '../utils/TestFixtures';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { tmpdir } from 'os';
@@ -28,7 +27,6 @@ jest.mock('playwright', () => ({
 describe('E2E Browser Integration Tests', () => {
   let controller: StrudelController;
   let store: PatternStore;
-  let analyzer: AudioAnalyzer;
   let mockBrowser: MockBrowser;
   let mockPage: MockPage;
   let testDir: string;
@@ -53,7 +51,6 @@ describe('E2E Browser Integration Tests', () => {
     // Initialize components
     controller = new StrudelController(true); // headless mode
     store = new PatternStore(testDir);
-    analyzer = new AudioAnalyzer();
   });
 
   afterEach(async () => {

@@ -179,7 +179,7 @@ async function captureAudioSampleForFeedback(ctx: ToolContext): Promise<Blob | n
           const chunks: Blob[] = [];
           mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
           mediaRecorder.onstop = async () => {
-            try { analyzer.analyser.disconnect(destination); } catch {}
+            try { analyzer.analyser.disconnect(destination); } catch { /* already disconnected */ }
             if (chunks.length === 0) { resolve(null); return; }
             const blob = new Blob(chunks, { type: 'audio/webm' });
             const reader = new FileReader();

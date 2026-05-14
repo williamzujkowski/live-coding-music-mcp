@@ -16,7 +16,7 @@
 // Use the mock implementation to avoid ES module issues with Jest
 jest.mock('../../services/StrudelEngine');
 
-import { StrudelEngine, LocalValidationResult, PatternMetadata } from '../../services/StrudelEngine';
+import { StrudelEngine } from '../../services/StrudelEngine';
 import { PatternValidator, ValidationResult } from '../../utils/PatternValidator';
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -131,7 +131,7 @@ stack(
     test('should handle edge case: pattern without sound function', () => {
       const pattern = 'setcpm(120)';
 
-      const localResult = strudelEngine.validate(pattern);
+      strudelEngine.validate(pattern); // sanity — syntactically valid
       const patternValidatorResult = patternValidator.validate(pattern);
 
       // Syntactically valid but missing sound source

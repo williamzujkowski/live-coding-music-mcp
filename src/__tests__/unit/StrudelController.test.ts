@@ -1,7 +1,7 @@
 import { StrudelController } from '../../StrudelController';
 import { chromium } from 'playwright';
 import { MockBrowser, MockPage, createMockPage } from '../utils/MockPlaywright';
-import { samplePatterns, audioFeatures } from '../utils/TestFixtures';
+import { samplePatterns } from '../utils/TestFixtures';
 
 // Mock Playwright
 jest.mock('playwright', () => ({

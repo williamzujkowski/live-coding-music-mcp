@@ -9,7 +9,7 @@ declare module '@strudel/core' {
   export const Pattern: any;
   export function reify(pattern: any): any;
   export function silence(): any;
-  export function register(name: string, fn: Function): void;
+  export function register(name: string, fn: (...args: unknown[]) => unknown): void;
   export function queryArc(begin: number, end: number): any[];
   export class Hap {
     part: { begin: { valueOf: () => number }; end: { valueOf: () => number } };

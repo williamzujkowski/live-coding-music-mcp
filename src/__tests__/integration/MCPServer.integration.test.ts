@@ -16,10 +16,8 @@ jest.mock('@modelcontextprotocol/sdk/types.js', () => ({
 }));
 
 import { StrudelMCPServer } from '../../server/server';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { chromium } from 'playwright';
 import { MockBrowser, createMockPage } from '../utils/MockPlaywright';
-import { mcpRequests, samplePatterns } from '../utils/TestFixtures';
 
 // Mock other dependencies
 jest.mock('playwright');
@@ -296,10 +294,7 @@ describe('MCP Server Integration Tests', () => {
     test('should generate and apply variations', async () => {
       const serverAny = server as any;
 
-      const basePattern = await serverAny.executeTool('generate_drums', {
-        style: 'house',
-        complexity: 0.5
-      });
+      await serverAny.executeTool('generate_drums', { style: 'house', complexity: 0.5 });
 
       const varied = await serverAny.executeTool('generate_variation', {
         variationType: 'subtle'

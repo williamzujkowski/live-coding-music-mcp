@@ -77,11 +77,13 @@ export class SessionManager {
   /**
    * Creates a new isolated Strudel session
    * @param id - Unique session identifier
-   * @param headless - Override headless mode for this session (unused, uses shared browser)
+   * @param _headless - Override headless mode for this session (currently a
+   *   no-op; sessions share the constructor's browser instance). Kept in the
+   *   signature for API stability until multi-session work in #108 lands.
    * @returns Initialized StrudelController for the session
    * @throws {Error} When max sessions limit reached or session ID already exists
    */
-  async createSession(id: string, headless?: boolean): Promise<StrudelController> {
+  async createSession(id: string, _headless?: boolean): Promise<StrudelController> {
     // Validate session ID
     if (!id || typeof id !== 'string') {
       throw new Error('Session ID must be a non-empty string');

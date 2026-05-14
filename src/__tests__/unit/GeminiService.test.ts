@@ -1,4 +1,4 @@
-import { GeminiService, AudioFeedback, CreativeFeedback, PatternSuggestion } from '../../services/GeminiService.js';
+import { GeminiService } from '../../services/GeminiService.js';
 import * as path from 'path';
 import * as os from 'os';
 
