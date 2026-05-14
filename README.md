@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-73-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-75-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -197,7 +197,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**73 tools** across 15 categories:
+**75 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -288,8 +288,8 @@ Then ask Claude:
 | `stretch` | [DEPRECATED — use transform({ op: "stretch" }) instead] Time stretch pattern |
 | `quantize` | [DEPRECATED — use transform({ op: "quantize" }) instead] Quantize to grid |
 | `humanize` | [DEPRECATED — use transform({ op: "humanize" }) instead] Add human timing variation |
-| `add_effect` | Add effect to pattern |
-| `remove_effect` | Remove effect |
+| `add_effect` | [DEPRECATED — use effect({ action: "add" }) instead] Add effect to pattern |
+| `remove_effect` | [DEPRECATED — use effect({ action: "remove" }) instead] Remove effect |
 | `add_swing` | [DEPRECATED — use transform({ op: "swing" }) instead] Add swing to pattern |
 | `set_energy` | Adjust the overall energy level of the current pattern on a 0-10 scale. 0: minimal/ambient, 1-2: sparse, 3-4: light/relaxed, 5-6: normal/moderate, 7-8: driving/intense, 9-10: maximum. Auto-plays after applying energy level. |
 
@@ -362,7 +362,7 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Other</strong> (8)</summary>
+<details><summary><strong>Other</strong> (10)</summary>
 
 | Tool | Description |
 |------|-------------|
@@ -375,10 +375,11 @@ Then ask Claude:
 | `history` | Navigate or inspect the pattern edit history.  |
 | `pattern_store` | Persist patterns to disk and read them back.  |
 | `transform` | Apply a single transform op to the current session pattern.  |
+| `effect` | Add or remove a Strudel effect on the current session pattern.  |
 
 </details>
 
-_Auto-generated from source. 73 tools registered._
+_Auto-generated from source. 75 tools registered._
 
 <!-- TOOLS:END -->
 

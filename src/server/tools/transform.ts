@@ -165,8 +165,27 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'effect',
+    description:
+      'Add or remove a Strudel effect on the current session pattern. ' +
+      'action=add appends `.<effect>(<params>)`. ' +
+      'action=remove strips the last `.<effect>(...)` call from the pattern. ' +
+      'Example: effect({ action: "add", effect: "lpf", params: "1000" }). ' +
+      'For higher-level effect bundles (mood/energy/refine) use shape; for raw transforms use transform.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['add', 'remove'], description: 'add or remove the effect' },
+        effect: { type: 'string', description: 'Effect name (e.g. lpf, room, delay)' },
+        params: { type: 'string', description: 'Effect parameters (action=add only)' },
+        ...SESSION_ID_PROP,
+      },
+      required: ['action', 'effect'],
+    },
+  },
+  {
     name: 'add_effect',
-    description: 'Add effect to pattern',
+    description: '[DEPRECATED — use effect({ action: "add" }) instead] Add effect to pattern',
     inputSchema: {
       type: 'object',
       properties: {
@@ -179,7 +198,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'remove_effect',
-    description: 'Remove effect',
+    description: '[DEPRECATED — use effect({ action: "remove" }) instead] Remove effect',
     inputSchema: {
       type: 'object',
       properties: { effect: { type: 'string', description: 'Effect to remove' }, ...SESSION_ID_PROP },
@@ -318,6 +337,27 @@ async function opScale(args: any, ctx: ToolContext, sid?: string): Promise<unkno
   return `Applied ${args.root} ${args.scale} scale`;
 }
 
+async function opEffectAdd(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
+  InputValidator.validateStringLength(args.effect, 'effect', 100, false);
+  if (args.params) InputValidator.validateStringLength(args.params, 'params', 1000, true);
+  const p = await ctx.getCurrentPatternSafe(sid);
+  const withEffect = args.params
+    ? p + `.${args.effect}(${args.params})`
+    : p + `.${args.effect}()`;
+  await ctx.writePatternSafe(withEffect, sid);
+  return `Added ${args.effect} effect`;
+}
+
+async function opEffectRemove(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
+  InputValidator.validateStringLength(args.effect, 'effect', 100, false);
+  const p = await ctx.getCurrentPatternSafe(sid);
+  const regex = new RegExp(`\\.${args.effect}\\([^)]*\\)`, 'g');
+  const stripped = p.replace(regex, '');
+  if (stripped === p) return `No ${args.effect} effect found to remove`;
+  await ctx.writePatternSafe(stripped, sid);
+  return `Removed ${args.effect} effect`;
+}
+
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
   const sid: string | undefined = args?.session_id;
   if (!sid && !ctx.isInitialized()) {
@@ -350,26 +390,17 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
     case 'add_swing':          return await opSwing(args, ctx, sid);
     case 'apply_scale':        return await opScale(args, ctx, sid);
 
-    case 'add_effect': {
-      InputValidator.validateStringLength(args.effect, 'effect', 100, false);
-      if (args.params) InputValidator.validateStringLength(args.params, 'params', 1000, true);
-      const p = await ctx.getCurrentPatternSafe(sid);
-      const withEffect = args.params
-        ? p + `.${args.effect}(${args.params})`
-        : p + `.${args.effect}()`;
-      await ctx.writePatternSafe(withEffect, sid);
-      return `Added ${args.effect} effect`;
+    case 'effect': {
+      const a = args?.action;
+      if (a !== 'add' && a !== 'remove') {
+        throw new Error(`Invalid action: ${a}. Must be one of: add, remove`);
+      }
+      return a === 'add'
+        ? await opEffectAdd(args, ctx, sid)
+        : await opEffectRemove(args, ctx, sid);
     }
-
-    case 'remove_effect': {
-      InputValidator.validateStringLength(args.effect, 'effect', 100, false);
-      const p = await ctx.getCurrentPatternSafe(sid);
-      const regex = new RegExp(`\\.${args.effect}\\([^)]*\\)`, 'g');
-      const stripped = p.replace(regex, '');
-      if (stripped === p) return `No ${args.effect} effect found to remove`;
-      await ctx.writePatternSafe(stripped, sid);
-      return `Removed ${args.effect} effect`;
-    }
+    case 'add_effect':    return await opEffectAdd(args, ctx, sid);
+    case 'remove_effect': return await opEffectRemove(args, ctx, sid);
 
     case 'set_tempo': {
       InputValidator.validateBPM(args.bpm);
