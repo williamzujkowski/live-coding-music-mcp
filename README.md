@@ -1090,33 +1090,11 @@ If you encounter issues not covered here:
 
 ## 🤝 Contributing
 
-**We need your help!** This project is actively developed and welcomes contributions of all kinds:
+PRs welcome — bug fixes, docs, tests, new tools. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the contribution guide and **[DEVELOPMENT.md](DEVELOPMENT.md)** for setup and workflow.
 
-### Ways to Contribute
-- **Report Bugs**: Found an issue? [Open a bug report](https://github.com/williamzujkowski/live-coding-music-mcp/issues/new)
-- **Suggest Features**: Have ideas? [Create a feature request](https://github.com/williamzujkowski/live-coding-music-mcp/issues/new)
-- **Improve Docs**: Fix typos, add examples, clarify confusing sections
-- **Write Tests**: Help us improve test coverage
-- **Fix Issues**: Check [open issues](https://github.com/williamzujkowski/live-coding-music-mcp/issues) for bugs to fix
-- **Add Features**: Implement new tools or improve existing ones
+For non-trivial work, open a GitHub issue first ([issue policy in CLAUDE.md](CLAUDE.md#github-issues-workflow)). For typos and small fixes, a PR directly is fine.
 
-### Quick Start for Contributors
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes and add tests
-4. Ensure tests pass (`npm test`)
-5. Commit with clear messages (`git commit -m 'fix: resolve audio analysis bug'`)
-6. Push to your fork (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-**First time contributor?** Look for issues labeled `good-first-issue` or `help-wanted`.
-
-### Feedback Welcome
-- Questions? Open a [Discussion](https://github.com/williamzujkowski/live-coding-music-mcp/discussions)
-- Found something confusing? Tell us!
-- Have a use case we haven't considered? Share it!
-
-We review PRs promptly and welcome contributors of all skill levels. See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed setup instructions.
+[GitHub Discussions](https://github.com/williamzujkowski/live-coding-music-mcp/discussions) are open for use-case questions and design conversations.
 
 ## 📄 License
 
