@@ -54,17 +54,4 @@ describe('effect consolidation (#153)', () => {
     const { ctx } = makeCtx();
     await expect(execute('effect', { action: 'toggle', effect: 'lpf' }, ctx)).rejects.toThrow(/Invalid action/);
   });
-
-  it('add_effect alias forwards', async () => {
-    const { ctx, pattern } = makeCtx();
-    await execute('add_effect', { effect: 'room', params: '0.5' }, ctx);
-    expect(pattern()).toContain('.room(0.5)');
-  });
-
-  it('remove_effect alias forwards', async () => {
-    const { ctx } = makeCtx();
-    await execute('add_effect', { effect: 'delay', params: '0.3' }, ctx);
-    const result = await execute('remove_effect', { effect: 'delay' }, ctx);
-    expect(result).toBe('Removed delay effect');
-  });
 });

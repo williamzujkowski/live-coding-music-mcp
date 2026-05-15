@@ -213,23 +213,15 @@ describe('StrudelMCPServer', () => {
         expect(result).toContain('initialized');
       });
 
-      test('should load pending patterns after init', async () => {
-        // Generate a pattern before init
-        await (server as any).executeTool('generate_pattern', { style: 'techno' });
-        const result = await (server as any).executeTool('init', {});
-
-        expect(result).toContain('Loaded generated pattern');
-        expect(mockController.writePattern).toHaveBeenCalled();
-      });
     });
 
-    describe('write', () => {
+    describe('edit_pattern write', () => {
       beforeEach(async () => {
         await (server as any).executeTool('init', {});
       });
 
       test('should write pattern', async () => {
-        const result = await (server as any).executeTool('write', { pattern: 's("bd*4")' });
+        const result = await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
 
         expect(mockController.writePattern).toHaveBeenCalledWith('s("bd*4")');
         expect(result).toContain('Pattern written');
@@ -239,26 +231,26 @@ describe('StrudelMCPServer', () => {
         const longPattern = 'a'.repeat(10001);
 
         await expect(
-          (server as any).executeTool('write', { pattern: longPattern })
+          (server as any).executeTool('edit_pattern', { mode: 'write', pattern: longPattern })
         ).rejects.toThrow('pattern too long');
       });
 
       test('should save to undo stack', async () => {
-        await (server as any).executeTool('write', { pattern: 's("bd*4")' });
+        await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
 
-        const undoResult = await (server as any).executeTool('undo', {});
+        const undoResult = await (server as any).executeTool('history', { action: 'undo' });
         expect(undoResult).toBe('Undone');
       });
 
       test('should require initialization for write', async () => {
         const uninitServer = new StrudelMCPServer();
-        const result = await (uninitServer as any).executeTool('write', { pattern: 's("bd*4")' });
+        const result = await (uninitServer as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
 
         expect(result).toContain('not initialized');
       });
     });
 
-    describe('append', () => {
+    describe('edit_pattern append', () => {
       beforeEach(async () => {
         await (server as any).executeTool('init', {});
       });
@@ -266,7 +258,7 @@ describe('StrudelMCPServer', () => {
       test('should append to current pattern', async () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        await (server as any).executeTool('append', { code: 's("cp*2")' });
+        await (server as any).executeTool('edit_pattern', { mode: 'append', code: 's("cp*2")' });
 
         expect(mockController.writePattern).toHaveBeenCalledWith('s("bd*4")\ns("cp*2")');
       });
@@ -275,12 +267,12 @@ describe('StrudelMCPServer', () => {
         const longCode = 'a'.repeat(10001);
 
         await expect(
-          (server as any).executeTool('append', { code: longCode })
+          (server as any).executeTool('edit_pattern', { mode: 'append', code: longCode })
         ).rejects.toThrow('code too long');
       });
     });
 
-    describe('insert', () => {
+    describe('edit_pattern insert', () => {
       beforeEach(async () => {
         await (server as any).executeTool('init', {});
       });
@@ -288,25 +280,25 @@ describe('StrudelMCPServer', () => {
       test('should insert at specific line', async () => {
         mockController.getCurrentPattern.mockResolvedValue('line1\nline3');
 
-        await (server as any).executeTool('insert', { position: 1, code: 'line2' });
+        await (server as any).executeTool('edit_pattern', { mode: 'insert', position: 1, code: 'line2' });
 
         expect(mockController.writePattern).toHaveBeenCalledWith('line1\nline2\nline3');
       });
 
       test('should validate position is positive integer', async () => {
         await expect(
-          (server as any).executeTool('insert', { position: -1, code: 'test' })
+          (server as any).executeTool('edit_pattern', { mode: 'insert', position: -1, code: 'test' })
         ).rejects.toThrow();
       });
 
       test('should validate position is integer', async () => {
         await expect(
-          (server as any).executeTool('insert', { position: 1.5, code: 'test' })
+          (server as any).executeTool('edit_pattern', { mode: 'insert', position: 1.5, code: 'test' })
         ).rejects.toThrow('integer');
       });
     });
 
-    describe('replace', () => {
+    describe('edit_pattern replace', () => {
       beforeEach(async () => {
         await (server as any).executeTool('init', {});
       });
@@ -314,7 +306,7 @@ describe('StrudelMCPServer', () => {
       test('should replace text in pattern', async () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        await (server as any).executeTool('replace', { search: 'bd', replace: 'cp' });
+        await (server as any).executeTool('edit_pattern', { mode: 'replace', search: 'bd', replace: 'cp' });
 
         expect(mockController.writePattern).toHaveBeenCalledWith('s("cp*4")');
       });
@@ -323,45 +315,45 @@ describe('StrudelMCPServer', () => {
         const longSearch = 'a'.repeat(1001);
 
         await expect(
-          (server as any).executeTool('replace', { search: longSearch, replace: 'test' })
+          (server as any).executeTool('edit_pattern', { mode: 'replace', search: longSearch, replace: 'test' })
         ).rejects.toThrow();
       });
     });
 
-    describe('play/pause/stop', () => {
+    describe('playback play/pause/stop', () => {
       beforeEach(async () => {
         await (server as any).executeTool('init', {});
       });
 
       test('should start playback', async () => {
-        const result = await (server as any).executeTool('play', {});
+        const result = await (server as any).executeTool('playback', { action: 'play' });
 
         expect(mockController.play).toHaveBeenCalled();
         expect(result).toBe('Playing');
       });
 
       test('should stop playback with stop', async () => {
-        const result = await (server as any).executeTool('stop', {});
+        const result = await (server as any).executeTool('playback', { action: 'stop' });
 
         expect(mockController.stop).toHaveBeenCalled();
         expect(result).toBe('Stopped');
       });
 
       test('should stop playback with pause', async () => {
-        const result = await (server as any).executeTool('pause', {});
+        const result = await (server as any).executeTool('playback', { action: 'pause' });
 
         expect(mockController.stop).toHaveBeenCalled();
         expect(result).toBe('Stopped');
       });
     });
 
-    describe('clear', () => {
+    describe('edit_pattern clear', () => {
       beforeEach(async () => {
         await (server as any).executeTool('init', {});
       });
 
       test('should clear editor', async () => {
-        await (server as any).executeTool('clear', {});
+        await (server as any).executeTool('edit_pattern', { mode: 'clear' });
 
         expect(mockController.writePattern).toHaveBeenCalledWith('');
       });
@@ -383,56 +375,58 @@ describe('StrudelMCPServer', () => {
   });
 
   describe('Pattern Generation Tools', () => {
-    describe('generate_pattern', () => {
-      test('should generate pattern without initialization', async () => {
-        const result = await (server as any).executeTool('generate_pattern', {
+    describe('compose', () => {
+      test('should generate pattern with auto-init', async () => {
+        const result = await (server as any).executeTool('compose', {
           style: 'techno'
         });
 
-        expect(mockGenerator.generateCompletePattern).toHaveBeenCalledWith('techno', 'C', 120);
-        expect(result).toContain('Generated techno pattern');
+        expect(mockGenerator.generateCompletePattern).toHaveBeenCalledWith('techno', 'C', 130);
+        expect(result.success).toBe(true);
+        expect(result.metadata.style).toBe('techno');
       });
 
       test('should validate style', async () => {
         await expect(
-          (server as any).executeTool('generate_pattern', { style: '' })
+          (server as any).executeTool('compose', { style: '' })
         ).rejects.toThrow('cannot be empty');
       });
 
       test('should validate BPM when provided', async () => {
         await expect(
-          (server as any).executeTool('generate_pattern', { style: 'techno', bpm: 500 })
+          (server as any).executeTool('compose', { style: 'techno', tempo: 500 })
         ).rejects.toThrow('BPM');
       });
 
       test('should validate key when provided', async () => {
         await expect(
-          (server as any).executeTool('generate_pattern', { style: 'techno', key: 'X' })
+          (server as any).executeTool('compose', { style: 'techno', key: 'X' })
         ).rejects.toThrow('Invalid root note');
       });
 
       test('should use default values', async () => {
-        await (server as any).executeTool('generate_pattern', { style: 'house' });
+        await (server as any).executeTool('compose', { style: 'house' });
 
-        expect(mockGenerator.generateCompletePattern).toHaveBeenCalledWith('house', 'C', 120);
+        expect(mockGenerator.generateCompletePattern).toHaveBeenCalledWith('house', 'C', 125);
       });
     });
 
-    describe('generate_drums', () => {
+    describe('generate_part drums', () => {
       test('should generate drums', async () => {
-        await (server as any).executeTool('generate_drums', { style: 'techno' });
+        await (server as any).executeTool('generate_part', { role: 'drums', style: 'techno' });
 
         expect(mockGenerator.generateDrumPattern).toHaveBeenCalledWith('techno', 0.5);
       });
 
       test('should validate complexity range', async () => {
         await expect(
-          (server as any).executeTool('generate_drums', { style: 'techno', complexity: 1.5 })
+          (server as any).executeTool('generate_part', { role: 'drums', style: 'techno', complexity: 1.5 })
         ).rejects.toThrow('between 0 and 1');
       });
 
       test('should use provided complexity', async () => {
-        await (server as any).executeTool('generate_drums', {
+        await (server as any).executeTool('generate_part', {
+          role: 'drums',
           style: 'techno',
           complexity: 0.8
         });
@@ -441,9 +435,10 @@ describe('StrudelMCPServer', () => {
       });
     });
 
-    describe('generate_bassline', () => {
+    describe('generate_part bass', () => {
       test('should generate bassline', async () => {
-        const result = await (server as any).executeTool('generate_bassline', {
+        const result = await (server as any).executeTool('generate_part', {
+          role: 'bass',
           key: 'C',
           style: 'acid'
         });
@@ -454,14 +449,15 @@ describe('StrudelMCPServer', () => {
 
       test('should validate key', async () => {
         await expect(
-          (server as any).executeTool('generate_bassline', { key: 'X', style: 'acid' })
+          (server as any).executeTool('generate_part', { role: 'bass', key: 'X', style: 'acid' })
         ).rejects.toThrow('Invalid root note');
       });
     });
 
-    describe('generate_melody', () => {
+    describe('generate_part melody', () => {
       test('should generate melody', async () => {
-        await (server as any).executeTool('generate_melody', {
+        await (server as any).executeTool('generate_part', {
+          role: 'melody',
           root: 'C',
           scale: 'major',
           length: 16
@@ -475,7 +471,8 @@ describe('StrudelMCPServer', () => {
       });
 
       test('should use default length', async () => {
-        await (server as any).executeTool('generate_melody', {
+        await (server as any).executeTool('generate_part', {
+          role: 'melody',
           root: 'D',
           scale: 'minor'
         });
@@ -485,7 +482,8 @@ describe('StrudelMCPServer', () => {
 
       test('should validate length is positive', async () => {
         await expect(
-          (server as any).executeTool('generate_melody', {
+          (server as any).executeTool('generate_part', {
+            role: 'melody',
             root: 'C',
             scale: 'major',
             length: 0
@@ -494,9 +492,10 @@ describe('StrudelMCPServer', () => {
       });
     });
 
-    describe('generate_scale', () => {
+    describe('music_theory scale', () => {
       test('should return scale notes', async () => {
-        const result = await (server as any).executeTool('generate_scale', {
+        const result = await (server as any).executeTool('music_theory', {
+          query: 'scale',
           root: 'C',
           scale: 'major'
         });
@@ -507,14 +506,15 @@ describe('StrudelMCPServer', () => {
 
       test('should validate scale name', async () => {
         await expect(
-          (server as any).executeTool('generate_scale', { root: 'C', scale: 'invalid' })
+          (server as any).executeTool('music_theory', { query: 'scale', root: 'C', scale: 'invalid' })
         ).rejects.toThrow('Invalid scale name');
       });
     });
 
-    describe('generate_chord_progression', () => {
+    describe('music_theory chord_progression', () => {
       test('should generate chord progression', async () => {
-        const result = await (server as any).executeTool('generate_chord_progression', {
+        const result = await (server as any).executeTool('music_theory', {
+          query: 'chord_progression',
           key: 'C',
           style: 'pop'
         });
@@ -525,7 +525,8 @@ describe('StrudelMCPServer', () => {
 
       test('should validate chord style', async () => {
         await expect(
-          (server as any).executeTool('generate_chord_progression', {
+          (server as any).executeTool('music_theory', {
+            query: 'chord_progression',
             key: 'C',
             style: 'invalid'
           })
@@ -533,9 +534,10 @@ describe('StrudelMCPServer', () => {
       });
     });
 
-    describe('generate_euclidean', () => {
+    describe('generate_rhythm euclidean', () => {
       test('should generate euclidean pattern', async () => {
-        const result = await (server as any).executeTool('generate_euclidean', {
+        const result = await (server as any).executeTool('generate_rhythm', {
+          type: 'euclidean',
           hits: 3,
           steps: 8,
           sound: 'bd'
@@ -546,21 +548,22 @@ describe('StrudelMCPServer', () => {
       });
 
       test('should use default sound', async () => {
-        await (server as any).executeTool('generate_euclidean', { hits: 5, steps: 16 });
+        await (server as any).executeTool('generate_rhythm', { type: 'euclidean', hits: 5, steps: 16 });
 
         expect(mockGenerator.generateEuclideanPattern).toHaveBeenCalledWith(5, 16, 'bd');
       });
 
       test('should validate hits <= steps', async () => {
         await expect(
-          (server as any).executeTool('generate_euclidean', { hits: 10, steps: 8 })
+          (server as any).executeTool('generate_rhythm', { type: 'euclidean', hits: 10, steps: 8 })
         ).rejects.toThrow('cannot exceed steps');
       });
     });
 
-    describe('generate_polyrhythm', () => {
+    describe('generate_rhythm polyrhythm', () => {
       test('should generate polyrhythm', async () => {
-        await (server as any).executeTool('generate_polyrhythm', {
+        await (server as any).executeTool('generate_rhythm', {
+          type: 'polyrhythm',
           sounds: ['bd', 'cp', 'hh'],
           patterns: [3, 5, 7]
         });
@@ -573,7 +576,8 @@ describe('StrudelMCPServer', () => {
 
       test('should validate pattern numbers are positive', async () => {
         await expect(
-          (server as any).executeTool('generate_polyrhythm', {
+          (server as any).executeTool('generate_rhythm', {
+            type: 'polyrhythm',
             sounds: ['bd'],
             patterns: [0]
           })
@@ -581,9 +585,10 @@ describe('StrudelMCPServer', () => {
       });
     });
 
-    describe('generate_fill', () => {
+    describe('generate_part fill', () => {
       test('should generate fill', async () => {
-        const result = await (server as any).executeTool('generate_fill', {
+        const result = await (server as any).executeTool('generate_part', {
+          role: 'fill',
           style: 'techno',
           bars: 2
         });
@@ -593,7 +598,7 @@ describe('StrudelMCPServer', () => {
       });
 
       test('should use default bars', async () => {
-        await (server as any).executeTool('generate_fill', { style: 'house' });
+        await (server as any).executeTool('generate_part', { role: 'fill', style: 'house' });
 
         expect(mockGenerator.generateFill).toHaveBeenCalledWith('house', 1);
       });
@@ -605,76 +610,77 @@ describe('StrudelMCPServer', () => {
       await (server as any).executeTool('init', {});
     });
 
-    describe('transpose', () => {
+    describe('transform transpose', () => {
       test('should transpose pattern', async () => {
         mockController.getCurrentPattern.mockResolvedValue('note("c4 d4 e4")');
 
-        const result = await (server as any).executeTool('transpose', { semitones: 5 });
+        const result = await (server as any).executeTool('transform', { op: 'transpose', semitones: 5 });
 
         expect(result).toContain('Transposed 5 semitones');
       });
 
       test('should accept negative semitones', async () => {
-        const result = await (server as any).executeTool('transpose', { semitones: -3 });
+        const result = await (server as any).executeTool('transform', { op: 'transpose', semitones: -3 });
 
         expect(result).toContain('Transposed -3 semitones');
       });
 
       test('should validate semitones is integer', async () => {
         await expect(
-          (server as any).executeTool('transpose', { semitones: 2.5 })
+          (server as any).executeTool('transform', { op: 'transpose', semitones: 2.5 })
         ).rejects.toThrow('integer');
       });
     });
 
-    describe('reverse', () => {
+    describe('transform reverse', () => {
       test('should add reverse modifier', async () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        await (server as any).executeTool('reverse', {});
+        await (server as any).executeTool('transform', { op: 'reverse' });
 
         expect(mockController.writePattern).toHaveBeenCalledWith('s("bd*4").rev');
       });
     });
 
-    describe('stretch', () => {
+    describe('transform stretch', () => {
       test('should add slow modifier', async () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        await (server as any).executeTool('stretch', { factor: 2 });
+        await (server as any).executeTool('transform', { op: 'stretch', factor: 2 });
 
         expect(mockController.writePattern).toHaveBeenCalledWith('s("bd*4").slow(2)');
       });
 
       test('should validate factor is positive', async () => {
         await expect(
-          (server as any).executeTool('stretch', { factor: -1 })
+          (server as any).executeTool('transform', { op: 'stretch', factor: -1 })
         ).rejects.toThrow();
       });
     });
 
-    describe('humanize', () => {
+    describe('transform humanize', () => {
       test('should add humanize effect', async () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('humanize', { amount: 0.05 });
+        const result = await (server as any).executeTool('transform', { op: 'humanize', amount: 0.05 });
 
         expect(mockController.writePattern).toHaveBeenCalled();
         expect(result).toBe('Added human timing');
       });
 
       test('should use default amount', async () => {
-        const result = await (server as any).executeTool('humanize', {});
+        const result = await (server as any).executeTool('transform', { op: 'humanize' });
 
         expect(result).toBe('Added human timing');
       });
     });
 
-    describe('generate_variation', () => {
+    describe('transform vary', () => {
       test('should generate variation', async () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('generate_variation', {
+        const result = await (server as any).executeTool('transform', {
+          op: 'vary',
           type: 'extreme'
         });
 
@@ -683,7 +689,7 @@ describe('StrudelMCPServer', () => {
       });
 
       test('should use default type', async () => {
-        await (server as any).executeTool('generate_variation', {});
+        await (server as any).executeTool('transform', { op: 'vary' });
 
         expect(mockGenerator.generateVariation).toHaveBeenCalledWith(expect.any(String), 'subtle');
       });
@@ -695,11 +701,12 @@ describe('StrudelMCPServer', () => {
       await (server as any).executeTool('init', {});
     });
 
-    describe('add_effect', () => {
+    describe('effect add', () => {
       test('should add effect with params', async () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('add_effect', {
+        const result = await (server as any).executeTool('effect', {
+          action: 'add',
           effect: 'reverb',
           params: '0.5'
         });
@@ -711,17 +718,17 @@ describe('StrudelMCPServer', () => {
       test('should add effect without params', async () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        await (server as any).executeTool('add_effect', { effect: 'distortion' });
+        await (server as any).executeTool('effect', { action: 'add', effect: 'distortion' });
 
         expect(mockController.writePattern).toHaveBeenCalledWith('s("bd*4").distortion()');
       });
     });
 
-    describe('add_swing', () => {
+    describe('transform swing', () => {
       test('should add swing', async () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('add_swing', { amount: 0.6 });
+        const result = await (server as any).executeTool('transform', { op: 'swing', amount: 0.6 });
 
         expect(mockController.writePattern).toHaveBeenCalledWith('s("bd*4").swing(0.6)');
         expect(result).toContain('Added swing: 0.6');
@@ -729,7 +736,7 @@ describe('StrudelMCPServer', () => {
 
       test('should validate amount range', async () => {
         await expect(
-          (server as any).executeTool('add_swing', { amount: 1.5 })
+          (server as any).executeTool('transform', { op: 'swing', amount: 1.5 })
         ).rejects.toThrow('between 0 and 1');
       });
     });
@@ -773,98 +780,98 @@ describe('StrudelMCPServer', () => {
       });
     });
 
-    describe('analyze_spectrum', () => {
+    describe('analyze spectrum', () => {
       test('should return spectrum features', async () => {
-        const result = await (server as any).executeTool('analyze_spectrum', {});
+        const result = await (server as any).executeTool('analyze', { include: ['spectrum'] });
 
-        expect(result).toHaveProperty('bass');
-        expect(result).toHaveProperty('mid');
-        expect(result).toHaveProperty('treble');
+        expect(result.spectrum).toHaveProperty('bass');
+        expect(result.spectrum).toHaveProperty('mid');
+        expect(result.spectrum).toHaveProperty('treble');
       });
     });
 
-    describe('analyze_rhythm', () => {
+    describe('analyze rhythm', () => {
       test('should return rhythm analysis', async () => {
-        const result = await (server as any).executeTool('analyze_rhythm', {});
+        const result = await (server as any).executeTool('analyze', { include: ['rhythm'] });
 
-        expect(result).toHaveProperty('complexity');
-        expect(result).toHaveProperty('density');
-        expect(result).toHaveProperty('syncopation');
-        expect(result).toHaveProperty('onsets');
-        expect(result).toHaveProperty('isRegular');
+        expect(result.rhythm).toHaveProperty('complexity');
+        expect(result.rhythm).toHaveProperty('density');
+        expect(result.rhythm).toHaveProperty('syncopation');
+        expect(result.rhythm).toHaveProperty('onsets');
+        expect(result.rhythm).toHaveProperty('isRegular');
       });
     });
 
-    describe('detect_tempo', () => {
+    describe('analyze tempo', () => {
       test('should detect tempo successfully', async () => {
-        const result = await (server as any).executeTool('detect_tempo', {});
+        const result = await (server as any).executeTool('analyze', { include: ['tempo'] });
 
-        expect(result.bpm).toBe(120);
-        expect(result.confidence).toBe(0.85);
-        expect(result.method).toBe('autocorrelation');
-        expect(result.message).toContain('120 BPM');
+        expect(result.tempo.bpm).toBe(120);
+        expect(result.tempo.confidence).toBe(0.85);
+        expect(result.tempo.method).toBe('autocorrelation');
+        expect(result.tempo.message).toContain('120 BPM');
       });
 
       test('should handle no tempo detected', async () => {
         mockController.detectTempo.mockResolvedValue({ bpm: 0, confidence: 0 });
 
-        const result = await (server as any).executeTool('detect_tempo', {});
+        const result = await (server as any).executeTool('analyze', { include: ['tempo'] });
 
-        expect(result.bpm).toBe(0);
-        expect(result.message).toContain('No tempo detected');
+        expect(result.tempo.bpm).toBe(0);
+        expect(result.tempo.message).toContain('No tempo detected');
       });
 
       test('should handle null tempo result', async () => {
         mockController.detectTempo.mockResolvedValue(null);
 
-        const result = await (server as any).executeTool('detect_tempo', {});
+        const result = await (server as any).executeTool('analyze', { include: ['tempo'] });
 
-        expect(result.bpm).toBe(0);
-        expect(result.message).toContain('No tempo detected');
+        expect(result.tempo.bpm).toBe(0);
+        expect(result.tempo.message).toContain('No tempo detected');
       });
 
       test('should handle detection error', async () => {
         mockController.detectTempo.mockRejectedValue(new Error('Detection failed'));
 
-        const result = await (server as any).executeTool('detect_tempo', {});
+        const result = await (server as any).executeTool('analyze', { include: ['tempo'] });
 
-        expect(result.bpm).toBe(0);
-        expect(result.error).toContain('Detection failed');
+        expect(result.tempo.bpm).toBe(0);
+        expect(result.tempo.error).toContain('Detection failed');
       });
 
       test('should require initialization', async () => {
         const uninitServer = new StrudelMCPServer();
-        const result = await (uninitServer as any).executeTool('detect_tempo', {});
+        const result = await (uninitServer as any).executeTool('analyze', { include: ['tempo'] });
 
         expect(result).toContain('not initialized');
       });
     });
 
-    describe('detect_key', () => {
+    describe('analyze key', () => {
       test('should detect key successfully', async () => {
-        const result = await (server as any).executeTool('detect_key', {});
+        const result = await (server as any).executeTool('analyze', { include: ['key'] });
 
-        expect(result.key).toBe('C');
-        expect(result.scale).toBe('major');
-        expect(result.confidence).toBe(0.85);
+        expect(result.key.key).toBe('C');
+        expect(result.key.scale).toBe('major');
+        expect(result.key.confidence).toBe(0.85);
       });
 
       test('should handle no key detected', async () => {
         mockController.detectKey.mockResolvedValue({ key: 'Unknown', scale: 'unknown', confidence: 0.05 });
 
-        const result = await (server as any).executeTool('detect_key', {});
+        const result = await (server as any).executeTool('analyze', { include: ['key'] });
 
-        expect(result.key).toBe('Unknown');
-        expect(result.message).toContain('No clear key detected');
+        expect(result.key.key).toBe('Unknown');
+        expect(result.key.message).toContain('No clear key detected');
       });
 
       test('should handle detection error', async () => {
         mockController.detectKey.mockRejectedValue(new Error('Key detection failed'));
 
-        const result = await (server as any).executeTool('detect_key', {});
+        const result = await (server as any).executeTool('analyze', { include: ['key'] });
 
-        expect(result.key).toBe('Unknown');
-        expect(result.error).toContain('Key detection failed');
+        expect(result.key.key).toBe('Unknown');
+        expect(result.key.error).toContain('Key detection failed');
       });
 
       test('should include alternatives when available', async () => {
@@ -875,15 +882,15 @@ describe('StrudelMCPServer', () => {
           alternatives: [{ key: 'A', scale: 'minor', confidence: 0.65 }]
         });
 
-        const result = await (server as any).executeTool('detect_key', {});
+        const result = await (server as any).executeTool('analyze', { include: ['key'] });
 
-        expect(result.alternatives).toBeDefined();
-        expect(result.alternatives[0].key).toBe('A');
+        expect(result.key.alternatives).toBeDefined();
+        expect(result.key.alternatives[0].key).toBe('A');
       });
 
       test('should require initialization', async () => {
         const uninitServer = new StrudelMCPServer();
-        const result = await (uninitServer as any).executeTool('detect_key', {});
+        const result = await (uninitServer as any).executeTool('analyze', { include: ['key'] });
 
         expect(result).toContain('not initialized');
       });
@@ -895,11 +902,12 @@ describe('StrudelMCPServer', () => {
       await (server as any).executeTool('init', {});
     });
 
-    describe('save', () => {
+    describe('pattern_store save', () => {
       test('should save pattern', async () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('save', {
+        const result = await (server as any).executeTool('pattern_store', {
+          action: 'save',
           name: 'my-pattern',
           tags: ['techno', 'drums']
         });
@@ -915,7 +923,7 @@ describe('StrudelMCPServer', () => {
       test('should handle empty pattern', async () => {
         mockController.getCurrentPattern.mockResolvedValue('');
 
-        const result = await (server as any).executeTool('save', { name: 'test' });
+        const result = await (server as any).executeTool('pattern_store', { action: 'save', name: 'test' });
 
         expect(result).toBe('No pattern to save');
       });
@@ -924,14 +932,14 @@ describe('StrudelMCPServer', () => {
         const longName = 'a'.repeat(256);
 
         await expect(
-          (server as any).executeTool('save', { name: longName })
+          (server as any).executeTool('pattern_store', { action: 'save', name: longName })
         ).rejects.toThrow();
       });
     });
 
-    describe('load', () => {
+    describe('pattern_store load', () => {
       test('should load pattern', async () => {
-        const result = await (server as any).executeTool('load', { name: 'test-pattern' });
+        const result = await (server as any).executeTool('pattern_store', { action: 'load', name: 'test-pattern' });
 
         expect(mockStore.load).toHaveBeenCalledWith('test-pattern');
         expect(mockController.writePattern).toHaveBeenCalledWith('s("bd cp")');
@@ -941,22 +949,22 @@ describe('StrudelMCPServer', () => {
       test('should handle pattern not found', async () => {
         mockStore.load.mockResolvedValue(null);
 
-        const result = await (server as any).executeTool('load', { name: 'nonexistent' });
+        const result = await (server as any).executeTool('pattern_store', { action: 'load', name: 'nonexistent' });
 
         expect(result).toContain('not found');
       });
     });
 
-    describe('list', () => {
+    describe('pattern_store list', () => {
       test('should list patterns', async () => {
-        const result = await (server as any).executeTool('list', {});
+        const result = await (server as any).executeTool('pattern_store', { action: 'list' });
 
         expect(mockStore.list).toHaveBeenCalledWith(undefined);
         expect(result).toContain('pattern1');
       });
 
       test('should filter by tag', async () => {
-        await (server as any).executeTool('list', { tag: 'techno' });
+        await (server as any).executeTool('pattern_store', { action: 'list', tag: 'techno' });
 
         expect(mockStore.list).toHaveBeenCalledWith('techno');
       });
@@ -964,50 +972,50 @@ describe('StrudelMCPServer', () => {
       test('should handle empty list', async () => {
         mockStore.list.mockResolvedValue([]);
 
-        const result = await (server as any).executeTool('list', {});
+        const result = await (server as any).executeTool('pattern_store', { action: 'list' });
 
         expect(result).toContain('No patterns found');
       });
     });
 
-    describe('undo', () => {
+    describe('history undo', () => {
       test('should undo changes', async () => {
         // First make a change
-        await (server as any).executeTool('write', { pattern: 's("bd*4")' });
+        await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('undo', {});
+        const result = await (server as any).executeTool('history', { action: 'undo' });
 
         expect(result).toBe('Undone');
       });
 
       test('should handle empty undo stack', async () => {
-        const result = await (server as any).executeTool('undo', {});
+        const result = await (server as any).executeTool('history', { action: 'undo' });
 
         expect(result).toBe('Nothing to undo');
       });
 
       test('should require initialization', async () => {
         const uninitServer = new StrudelMCPServer();
-        const result = await (uninitServer as any).executeTool('undo', {});
+        const result = await (uninitServer as any).executeTool('history', { action: 'undo' });
 
         expect(result).toContain('not initialized');
       });
     });
 
-    describe('redo', () => {
+    describe('history redo', () => {
       test('should redo changes', async () => {
         // Setup: write, undo, then redo
-        await (server as any).executeTool('write', { pattern: 's("bd*4")' });
-        await (server as any).executeTool('undo', {});
+        await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
+        await (server as any).executeTool('history', { action: 'undo' });
 
-        const result = await (server as any).executeTool('redo', {});
+        const result = await (server as any).executeTool('history', { action: 'redo' });
 
         expect(result).toBe('Redone');
       });
 
       test('should handle empty redo stack', async () => {
-        const result = await (server as any).executeTool('redo', {});
+        const result = await (server as any).executeTool('history', { action: 'redo' });
 
         expect(result).toBe('Nothing to redo');
       });
@@ -1015,17 +1023,17 @@ describe('StrudelMCPServer', () => {
   });
 
   describe('Performance Monitoring Tools', () => {
-    describe('performance_report', () => {
+    describe('diagnostics perf', () => {
       test('should return performance report', async () => {
-        const result = await (server as any).executeTool('performance_report', {});
+        const result = await (server as any).executeTool('diagnostics', { level: 'perf' });
 
         expect(result).toContain('Bottlenecks');
       });
     });
 
-    describe('memory_usage', () => {
+    describe('diagnostics memory', () => {
       test('should return memory usage', async () => {
-        const result = await (server as any).executeTool('memory_usage', {});
+        const result = await (server as any).executeTool('diagnostics', { level: 'memory' });
 
         // Result depends on PerformanceMonitor implementation
         expect(result).toBeDefined();
@@ -1091,7 +1099,7 @@ describe('StrudelMCPServer', () => {
     test('should require initialization for browser tools', async () => {
       const uninitServer = new StrudelMCPServer();
 
-      const result = await (uninitServer as any).executeTool('play', {});
+      const result = await (uninitServer as any).executeTool('playback', { action: 'play' });
 
       expect(result).toContain('not initialized');
     });
@@ -1101,7 +1109,7 @@ describe('StrudelMCPServer', () => {
       mockController.play.mockRejectedValue(new Error('Playback failed'));
 
       await expect(
-        (server as any).executeTool('play', {})
+        (server as any).executeTool('playback', { action: 'play' })
       ).rejects.toThrow('Playback failed');
     });
   });
@@ -1113,29 +1121,29 @@ describe('StrudelMCPServer', () => {
 
     test('should maintain undo/redo stack', async () => {
       // Write pattern 1
-      await (server as any).executeTool('write', { pattern: 's("bd*4")' });
+      await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
 
       // Write pattern 2
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
-      await (server as any).executeTool('write', { pattern: 's("cp*2")' });
+      await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("cp*2")' });
 
       // Undo should restore pattern 1
-      const undoResult = await (server as any).executeTool('undo', {});
+      const undoResult = await (server as any).executeTool('history', { action: 'undo' });
       expect(undoResult).toBe('Undone');
 
       // Redo should restore pattern 2
-      const redoResult = await (server as any).executeTool('redo', {});
+      const redoResult = await (server as any).executeTool('history', { action: 'redo' });
       expect(redoResult).toBe('Redone');
     });
 
     test('should clear redo stack on new write', async () => {
-      await (server as any).executeTool('write', { pattern: 's("bd*4")' });
-      await (server as any).executeTool('undo', {});
+      await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
+      await (server as any).executeTool('history', { action: 'undo' });
 
       // New write should clear redo stack
-      await (server as any).executeTool('write', { pattern: 's("cp*2")' });
+      await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("cp*2")' });
 
-      const redoResult = await (server as any).executeTool('redo', {});
+      const redoResult = await (server as any).executeTool('history', { action: 'redo' });
       expect(redoResult).toBe('Nothing to redo');
     });
   });
@@ -1145,14 +1153,15 @@ describe('StrudelMCPServer', () => {
       await (server as any).executeTool('init', {});
 
       // Generate pattern
-      await (server as any).executeTool('generate_pattern', { style: 'techno' });
+      await (server as any).executeTool('compose', { style: 'techno' });
 
       // Add effect
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
-      await (server as any).executeTool('add_effect', { effect: 'reverb', params: '0.5' });
+      await (server as any).executeTool('effect', { action: 'add', effect: 'reverb', params: '0.5' });
 
       // Save
-      const saveResult = await (server as any).executeTool('save', {
+      const saveResult = await (server as any).executeTool('pattern_store', {
+        action: 'save',
         name: 'techno-reverb',
         tags: ['techno']
       });
@@ -1166,32 +1175,32 @@ describe('StrudelMCPServer', () => {
     describe('Browser Control (#37)', () => {
       test('show_browser should bring window to foreground', async () => {
         await (server as any).executeTool('init', {});
-        const result = await (server as any).executeTool('show_browser', {});
+        const result = await (server as any).executeTool('browser_window', { action: 'show' });
         expect(result).toContain('foreground');
         expect(mockController.showBrowser).toHaveBeenCalled();
       });
 
       test('show_browser should require initialization', async () => {
-        const result = await (server as any).executeTool('show_browser', {});
+        const result = await (server as any).executeTool('browser_window', { action: 'show' });
         expect(result).toContain('not initialized');
       });
 
       test('screenshot should save browser state', async () => {
         await (server as any).executeTool('init', {});
-        const result = await (server as any).executeTool('screenshot', { filename: 'test.png' });
+        const result = await (server as any).executeTool('browser_window', { action: 'screenshot', filename: 'test.png' });
         expect(result).toContain('Screenshot');
         expect(mockController.takeScreenshot).toHaveBeenCalledWith('test.png');
       });
 
       test('screenshot should require initialization', async () => {
-        const result = await (server as any).executeTool('screenshot', {});
+        const result = await (server as any).executeTool('browser_window', { action: 'screenshot' });
         expect(result).toContain('not initialized');
       });
     });
 
     describe('Status & Diagnostics (#39)', () => {
       test('status should return current state', async () => {
-        const result = await (server as any).executeTool('status', {});
+        const result = await (server as any).executeTool('diagnostics', { level: 'status' });
         expect(result).toHaveProperty('initialized');
         expect(result).toHaveProperty('playing');
         expect(result).toHaveProperty('errorCount');
@@ -1215,7 +1224,7 @@ describe('StrudelMCPServer', () => {
         mockController.getConsoleErrors.mockReturnValue(['Error 1', 'Error 2']);
         mockController.getConsoleWarnings.mockReturnValue(['Warning 1']);
 
-        const result = await (server as any).executeTool('show_errors', {});
+        const result = await (server as any).executeTool('diagnostics', { level: 'errors' });
         expect(result).toContain('Errors');
         expect(result).toContain('Error 1');
         expect(result).toContain('Warning 1');
@@ -1225,7 +1234,7 @@ describe('StrudelMCPServer', () => {
         mockController.getConsoleErrors.mockReturnValue([]);
         mockController.getConsoleWarnings.mockReturnValue([]);
 
-        const result = await (server as any).executeTool('show_errors', {});
+        const result = await (server as any).executeTool('diagnostics', { level: 'errors' });
         expect(result).toContain('No errors');
       });
     });
@@ -1233,7 +1242,8 @@ describe('StrudelMCPServer', () => {
     describe('Auto-play (#38)', () => {
       test('write with auto_play should start playback', async () => {
         await (server as any).executeTool('init', {});
-        const result = await (server as any).executeTool('write', {
+        const result = await (server as any).executeTool('edit_pattern', {
+          mode: 'write',
           pattern: 's("bd*4")',
           auto_play: true
         });
@@ -1244,7 +1254,8 @@ describe('StrudelMCPServer', () => {
       test('write without auto_play should not start playback', async () => {
         await (server as any).executeTool('init', {});
         mockController.play.mockClear();
-        const result = await (server as any).executeTool('write', {
+        const result = await (server as any).executeTool('edit_pattern', {
+          mode: 'write',
           pattern: 's("bd*4")',
           auto_play: false
         });
@@ -1252,14 +1263,14 @@ describe('StrudelMCPServer', () => {
         expect(mockController.play).not.toHaveBeenCalled();
       });
 
-      test('generate_pattern with auto_play should start playback', async () => {
+      test('compose with auto_play should start playback', async () => {
         await (server as any).executeTool('init', {});
         mockController.play.mockClear();
-        const result = await (server as any).executeTool('generate_pattern', {
+        const result = await (server as any).executeTool('compose', {
           style: 'techno',
           auto_play: true
         });
-        expect(result).toContain('Playing');
+        expect(result.status).toBe('playing');
         expect(mockController.play).toHaveBeenCalled();
       });
     });
@@ -1269,7 +1280,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.validatePattern.mockClear();
 
-        await (server as any).executeTool('write', {
+        await (server as any).executeTool('edit_pattern', {
+          mode: 'write',
           pattern: 's("bd*4")',
           validate: false
         });
@@ -1281,7 +1293,7 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.validatePattern.mockClear();
 
-        await (server as any).executeTool('write', { pattern: 's("bd*4")' });
+        await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
 
         expect(mockController.validatePattern).toHaveBeenCalled();
       });
@@ -1295,7 +1307,7 @@ describe('StrudelMCPServer', () => {
           suggestions: ['Check syntax']
         });
 
-        const result = await (server as any).executeTool('write', { pattern: 'invalid{' });
+        const result = await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 'invalid{' });
 
         expect(result.success).toBe(false);
         expect(result.errors).toContain('Syntax error');
@@ -1409,7 +1421,7 @@ describe('StrudelMCPServer', () => {
     describe('Pattern History (#41)', () => {
       test('list_history should return empty message when no history', async () => {
         const newServer = new StrudelMCPServer();
-        const result = await (newServer as any).executeTool('list_history', {});
+        const result = await (newServer as any).executeTool('history', { action: 'list' });
 
         expect(result).toContain('No pattern history yet');
       });
@@ -1419,10 +1431,10 @@ describe('StrudelMCPServer', () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
         // Make some edits to build history
-        await (server as any).executeTool('write', { pattern: 's("bd*4")' });
-        await (server as any).executeTool('write', { pattern: 's("hh*8")' });
+        await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
+        await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("hh*8")' });
 
-        const result = await (server as any).executeTool('list_history', {});
+        const result = await (server as any).executeTool('history', { action: 'list' });
 
         expect(result.count).toBeGreaterThan(0);
         expect(result.entries).toBeDefined();
@@ -1438,10 +1450,10 @@ describe('StrudelMCPServer', () => {
 
         // Make several edits
         for (let i = 0; i < 5; i++) {
-          await (server as any).executeTool('write', { pattern: `s("bd*${i}")` });
+          await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: `s("bd*${i}")` });
         }
 
-        const result = await (server as any).executeTool('list_history', { limit: 2 });
+        const result = await (server as any).executeTool('history', { action: 'list', limit: 2 });
 
         expect(result.entries.length).toBe(2);
       });
@@ -1451,14 +1463,15 @@ describe('StrudelMCPServer', () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
         // Make an edit to create history
-        await (server as any).executeTool('write', { pattern: 's("cp*2")' });
+        await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("cp*2")' });
 
         // Get the history
-        const history = await (server as any).executeTool('list_history', {});
+        const history = await (server as any).executeTool('history', { action: 'list' });
         const firstEntry = history.entries[history.entries.length - 1];
 
         // Restore from history
-        const result = await (server as any).executeTool('restore_history', {
+        const result = await (server as any).executeTool('history', {
+          action: 'restore',
           id: firstEntry.id
         });
 
@@ -1469,7 +1482,8 @@ describe('StrudelMCPServer', () => {
       test('restore_history should return error for invalid ID', async () => {
         await (server as any).executeTool('init', {});
 
-        const result = await (server as any).executeTool('restore_history', {
+        const result = await (server as any).executeTool('history', {
+          action: 'restore',
           id: 99999
         });
 
@@ -1478,7 +1492,8 @@ describe('StrudelMCPServer', () => {
 
       test('restore_history should require initialization', async () => {
         const uninitServer = new StrudelMCPServer();
-        const result = await (uninitServer as any).executeTool('restore_history', {
+        const result = await (uninitServer as any).executeTool('history', {
+          action: 'restore',
           id: 1
         });
 
@@ -1492,15 +1507,16 @@ describe('StrudelMCPServer', () => {
           .mockResolvedValueOnce('s("hh*8")');
 
         // Make edits to create history
-        await (server as any).executeTool('write', { pattern: 's("bd*4")' });
-        await (server as any).executeTool('write', { pattern: 's("hh*8")' });
+        await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
+        await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("hh*8")' });
 
         // Get history IDs
-        const history = await (server as any).executeTool('list_history', {});
+        const history = await (server as any).executeTool('history', { action: 'list' });
         const id1 = history.entries[history.entries.length - 1].id;
 
         // Compare with current
-        const result = await (server as any).executeTool('compare_patterns', {
+        const result = await (server as any).executeTool('history', {
+          action: 'compare',
           id1: id1
         });
 
@@ -1512,7 +1528,8 @@ describe('StrudelMCPServer', () => {
       test('compare_patterns should return error for invalid ID', async () => {
         await (server as any).executeTool('init', {});
 
-        const result = await (server as any).executeTool('compare_patterns', {
+        const result = await (server as any).executeTool('history', {
+          action: 'compare',
           id1: 99999
         });
 
@@ -1552,7 +1569,7 @@ describe('StrudelMCPServer', () => {
 
       test('start_audio_capture should require initialization', async () => {
         const uninitServer = new StrudelMCPServer();
-        const result = await (uninitServer as any).executeTool('start_audio_capture', {});
+        const result = await (uninitServer as any).executeTool('audio_capture', { action: 'start' });
 
         expect(result.success).toBe(false);
         expect(result.message).toContain('not initialized');
@@ -1560,7 +1577,7 @@ describe('StrudelMCPServer', () => {
 
       test('start_audio_capture should start capture when initialized', async () => {
         await (server as any).executeTool('init', {});
-        const result = await (server as any).executeTool('start_audio_capture', {});
+        const result = await (server as any).executeTool('audio_capture', { action: 'start' });
 
         expect(result.success).toBe(true);
         expect(result.message).toContain('Audio capture started');
@@ -1569,7 +1586,8 @@ describe('StrudelMCPServer', () => {
 
       test('start_audio_capture should use custom format', async () => {
         await (server as any).executeTool('init', {});
-        const result = await (server as any).executeTool('start_audio_capture', {
+        const result = await (server as any).executeTool('audio_capture', {
+          action: 'start',
           format: 'opus'
         });
 
@@ -1581,7 +1599,7 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockAudioCaptureService.isCapturing.mockReturnValue(true);
 
-        const result = await (server as any).executeTool('start_audio_capture', {});
+        const result = await (server as any).executeTool('audio_capture', { action: 'start' });
 
         expect(result.success).toBe(false);
         expect(result.message).toContain('already in progress');
@@ -1589,7 +1607,7 @@ describe('StrudelMCPServer', () => {
 
       test('stop_audio_capture should require initialization', async () => {
         const uninitServer = new StrudelMCPServer();
-        const result = await (uninitServer as any).executeTool('stop_audio_capture', {});
+        const result = await (uninitServer as any).executeTool('audio_capture', { action: 'stop' });
 
         expect(result.success).toBe(false);
         expect(result.message).toContain('not initialized');
@@ -1598,10 +1616,10 @@ describe('StrudelMCPServer', () => {
       test('stop_audio_capture should return encoded audio', async () => {
         await (server as any).executeTool('init', {});
         // Start capture first
-        await (server as any).executeTool('start_audio_capture', {});
+        await (server as any).executeTool('audio_capture', { action: 'start' });
         mockAudioCaptureService.isCapturing.mockReturnValue(true);
 
-        const result = await (server as any).executeTool('stop_audio_capture', {});
+        const result = await (server as any).executeTool('audio_capture', { action: 'stop' });
 
         expect(result.success).toBe(true);
         expect(result.audio).toBeDefined();
@@ -1613,7 +1631,7 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockAudioCaptureService.isCapturing.mockReturnValue(false);
 
-        const result = await (server as any).executeTool('stop_audio_capture', {});
+        const result = await (server as any).executeTool('audio_capture', { action: 'stop' });
 
         expect(result.success).toBe(false);
         expect(result.message).toContain('No audio capture in progress');
@@ -1621,7 +1639,7 @@ describe('StrudelMCPServer', () => {
 
       test('capture_audio_sample should require initialization', async () => {
         const uninitServer = new StrudelMCPServer();
-        const result = await (uninitServer as any).executeTool('capture_audio_sample', {});
+        const result = await (uninitServer as any).executeTool('audio_capture', { action: 'sample' });
 
         expect(result.success).toBe(false);
         expect(result.message).toContain('not initialized');
@@ -1629,7 +1647,7 @@ describe('StrudelMCPServer', () => {
 
       test('capture_audio_sample should capture with default duration', async () => {
         await (server as any).executeTool('init', {});
-        const result = await (server as any).executeTool('capture_audio_sample', {});
+        const result = await (server as any).executeTool('audio_capture', { action: 'sample' });
 
         expect(result.success).toBe(true);
         expect(result.audio).toBeDefined();
@@ -1642,7 +1660,8 @@ describe('StrudelMCPServer', () => {
 
       test('capture_audio_sample should capture with custom duration', async () => {
         await (server as any).executeTool('init', {});
-        const result = await (server as any).executeTool('capture_audio_sample', {
+        const result = await (server as any).executeTool('audio_capture', {
+          action: 'sample',
           duration: 3000
         });
 
@@ -1657,14 +1676,16 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
 
         // Too short
-        const resultShort = await (server as any).executeTool('capture_audio_sample', {
+        const resultShort = await (server as any).executeTool('audio_capture', {
+          action: 'sample',
           duration: 50
         });
         expect(resultShort.success).toBe(false);
         expect(resultShort.message).toContain('Duration must be between');
 
         // Too long
-        const resultLong = await (server as any).executeTool('capture_audio_sample', {
+        const resultLong = await (server as any).executeTool('audio_capture', {
+          action: 'sample',
           duration: 120000
         });
         expect(resultLong.success).toBe(false);
@@ -1675,7 +1696,7 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockAudioCaptureService.isCapturing.mockReturnValue(true);
 
-        const result = await (server as any).executeTool('capture_audio_sample', {});
+        const result = await (server as any).executeTool('audio_capture', { action: 'sample' });
 
         expect(result.success).toBe(false);
         expect(result.message).toContain('already in progress');
@@ -1685,7 +1706,7 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockAudioCaptureService.startCapture.mockRejectedValue(new Error('Audio not connected'));
 
-        const result = await (server as any).executeTool('start_audio_capture', {});
+        const result = await (server as any).executeTool('audio_capture', { action: 'start' });
 
         expect(result.success).toBe(false);
         expect(result.message).toContain('Failed to start audio capture');
@@ -1696,7 +1717,7 @@ describe('StrudelMCPServer', () => {
         mockAudioCaptureService.isCapturing.mockReturnValue(true);
         mockAudioCaptureService.stopCapture.mockRejectedValue(new Error('No data captured'));
 
-        const result = await (server as any).executeTool('stop_audio_capture', {});
+        const result = await (server as any).executeTool('audio_capture', { action: 'stop' });
 
         expect(result.success).toBe(false);
         expect(result.message).toContain('Failed to stop audio capture');
@@ -1706,7 +1727,7 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockAudioCaptureService.captureForDuration.mockRejectedValue(new Error('Capture failed'));
 
-        const result = await (server as any).executeTool('capture_audio_sample', {});
+        const result = await (server as any).executeTool('audio_capture', { action: 'sample' });
 
         expect(result.success).toBe(false);
         expect(result.message).toContain('Failed to capture audio sample');
@@ -1715,7 +1736,7 @@ describe('StrudelMCPServer', () => {
 
     describe('Multi-Session Management (#75)', () => {
       test('create_session should create a new session', async () => {
-        const result = await (server as any).executeTool('create_session', { session_id: 'test-session' });
+        const result = await (server as any).executeTool('session', { action: 'create', session_id: 'test-session' });
 
         expect(mockSessionManager.createSession).toHaveBeenCalledWith('test-session');
         expect(result.success).toBe(true);
@@ -1725,14 +1746,14 @@ describe('StrudelMCPServer', () => {
       test('create_session should handle errors', async () => {
         mockSessionManager.createSession.mockRejectedValue(new Error('Session already exists'));
 
-        const result = await (server as any).executeTool('create_session', { session_id: 'duplicate' });
+        const result = await (server as any).executeTool('session', { action: 'create', session_id: 'duplicate' });
 
         expect(result.success).toBe(false);
         expect(result.error).toContain('Session already exists');
       });
 
       test('destroy_session should destroy a session', async () => {
-        const result = await (server as any).executeTool('destroy_session', { session_id: 'test-session' });
+        const result = await (server as any).executeTool('session', { action: 'destroy', session_id: 'test-session' });
 
         expect(mockSessionManager.destroySession).toHaveBeenCalledWith('test-session');
         expect(result.success).toBe(true);
@@ -1741,7 +1762,7 @@ describe('StrudelMCPServer', () => {
       test('destroy_session should handle errors', async () => {
         mockSessionManager.destroySession.mockRejectedValue(new Error('Session not found'));
 
-        const result = await (server as any).executeTool('destroy_session', { session_id: 'nonexistent' });
+        const result = await (server as any).executeTool('session', { action: 'destroy', session_id: 'nonexistent' });
 
         expect(result.success).toBe(false);
         expect(result.error).toContain('Session not found');
@@ -1757,7 +1778,7 @@ describe('StrudelMCPServer', () => {
           }
         ]);
 
-        const result = await (server as any).executeTool('list_sessions', {});
+        const result = await (server as any).executeTool('session', { action: 'list' });
 
         expect(result.count).toBe(1);
         expect(result.sessions).toHaveLength(1);
@@ -1774,14 +1795,14 @@ describe('StrudelMCPServer', () => {
           }
         ]);
 
-        const result = await (server as any).executeTool('list_sessions', {});
+        const result = await (server as any).executeTool('session', { action: 'list' });
 
         expect(result.default_session).toBe('default');
         expect(result.sessions[0].is_default).toBe(true);
       });
 
       test('switch_session should change default session', async () => {
-        const result = await (server as any).executeTool('switch_session', { session_id: 'new-default' });
+        const result = await (server as any).executeTool('session', { action: 'switch', session_id: 'new-default' });
 
         expect(mockSessionManager.setDefaultSession).toHaveBeenCalledWith('new-default');
         expect(result.success).toBe(true);
@@ -1793,7 +1814,7 @@ describe('StrudelMCPServer', () => {
           throw new Error('Session not found');
         });
 
-        const result = await (server as any).executeTool('switch_session', { session_id: 'nonexistent' });
+        const result = await (server as any).executeTool('session', { action: 'switch', session_id: 'nonexistent' });
 
         expect(result.success).toBe(false);
         expect(result.error).toContain('Session not found');
@@ -1807,7 +1828,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('');
 
-        const result = await (server as any).executeTool('shift_mood', {
+        const result = await (server as any).executeTool('shape', {
+          dimension: 'mood',
           target_mood: 'dark'
         });
 
@@ -1819,7 +1841,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('shift_mood', {
+        const result = await (server as any).executeTool('shape', {
+          dimension: 'mood',
           target_mood: 'dark'
         });
 
@@ -1835,7 +1858,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('note("c4 e4 g4")');
 
-        const result = await (server as any).executeTool('shift_mood', {
+        const result = await (server as any).executeTool('shape', {
+          dimension: 'mood',
           target_mood: 'euphoric',
           intensity: 0.8
         });
@@ -1852,7 +1876,8 @@ describe('StrudelMCPServer', () => {
         const validMoods = ['dark', 'euphoric', 'melancholic', 'aggressive', 'dreamy', 'peaceful', 'energetic'];
 
         for (const mood of validMoods) {
-          const result = await (server as any).executeTool('shift_mood', {
+          const result = await (server as any).executeTool('shape', {
+            dimension: 'mood',
             target_mood: mood
           });
           expect(result.success).toBe(true);
@@ -1864,7 +1889,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('shift_mood', {
+        const result = await (server as any).executeTool('shape', {
+          dimension: 'mood',
           target_mood: 'invalid_mood'
         });
 
@@ -1877,7 +1903,8 @@ describe('StrudelMCPServer', () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
         mockController.play.mockClear();
 
-        const result = await (server as any).executeTool('shift_mood', {
+        const result = await (server as any).executeTool('shape', {
+          dimension: 'mood',
           target_mood: 'peaceful',
           auto_play: false
         });
@@ -1890,7 +1917,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('shift_mood', {
+        const result = await (server as any).executeTool('shape', {
+          dimension: 'mood',
           target_mood: 'melancholic'
         });
 
@@ -1902,7 +1930,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('shift_mood', {
+        const result = await (server as any).executeTool('shape', {
+          dimension: 'mood',
           target_mood: 'aggressive',
           intensity: 1.5
         });
@@ -1915,7 +1944,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('shift_mood', {
+        const result = await (server as any).executeTool('shape', {
+          dimension: 'mood',
           target_mood: 'dreamy',
           intensity: 1.0
         });
@@ -1932,7 +1962,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'invalid'
         });
 
@@ -1944,7 +1975,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'drums'
         });
 
@@ -1956,7 +1988,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('note("c3 d3 e3").s("sine")');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'drums'
         });
 
@@ -1970,7 +2003,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'bass'
         });
 
@@ -1983,7 +2017,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'melody'
         });
 
@@ -1995,7 +2030,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'pad'
         });
 
@@ -2007,7 +2043,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'texture'
         });
 
@@ -2019,7 +2056,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('setcpm(140)\ns("bd*4")');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'bass'
         });
 
@@ -2031,7 +2069,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('note("a3 c4 e4").s("sine")');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'bass'
         });
 
@@ -2043,7 +2082,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4, hh*8")');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'bass'
         });
 
@@ -2055,7 +2095,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'melody',
           style_hint: 'jazz'
         });
@@ -2068,7 +2109,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        await (server as any).executeTool('jam_with', {
+        await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'drums'
         });
 
@@ -2080,7 +2122,8 @@ describe('StrudelMCPServer', () => {
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
         mockController.play.mockClear();
 
-        await (server as any).executeTool('jam_with', {
+        await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'drums',
           auto_play: false
         });
@@ -2092,7 +2135,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('stack(\n  s("bd*4"),\n  s("hh*8")\n)');
 
-        const result = await (server as any).executeTool('jam_with', {
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'bass'
         });
 
@@ -2106,7 +2150,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-        await (server as any).executeTool('jam_with', {
+        await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'bass'
         });
 
@@ -2119,7 +2164,8 @@ describe('StrudelMCPServer', () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('setcpm(140)\ns("bd*4")');
 
-        await (server as any).executeTool('jam_with', {
+        await (server as any).executeTool('ai_assist', {
+          task: 'jam',
           layer: 'bass'
         });
 

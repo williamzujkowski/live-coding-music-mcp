@@ -1,8 +1,10 @@
 /**
- * Unit tests for the get_pattern_feedback MCP tool
+ * Unit tests for the pattern-feedback path of the ai_assist MCP tool.
  *
- * Tests the AI-powered pattern analysis via GeminiService integration
- * Covers success cases, error handling, and parameter variations
+ * get_pattern_feedback was consolidated into ai_assist({ task: 'feedback' })
+ * (#178). These tests exercise the same underlying handler in depth:
+ * AI-powered pattern analysis via GeminiService integration, covering
+ * success cases, error handling, and parameter variations.
  */
 
 import { StrudelMCPServer } from '../../server/server';
@@ -139,7 +141,7 @@ describe('get_pattern_feedback Tool', () => {
     });
 
     test('should return pattern analysis when Gemini is available', async () => {
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(mockGeminiService.getCreativeFeedback).toHaveBeenCalled();
       expect(result.gemini_available).toBe(true);
@@ -151,7 +153,8 @@ describe('get_pattern_feedback Tool', () => {
     });
 
     test('should handle style parameter in analysis', async () => {
-      const result = await (server as any).executeTool('get_pattern_feedback', {
+      const result = await (server as any).executeTool('ai_assist', {
+        task: 'feedback',
         style: 'techno'
       });
 
@@ -161,7 +164,8 @@ describe('get_pattern_feedback Tool', () => {
     });
 
     test('should return only pattern analysis when includeAudio is false', async () => {
-      const result = await (server as any).executeTool('get_pattern_feedback', {
+      const result = await (server as any).executeTool('ai_assist', {
+        task: 'feedback',
         includeAudio: false
       });
 
@@ -171,7 +175,8 @@ describe('get_pattern_feedback Tool', () => {
     });
 
     test('should attempt audio analysis when includeAudio is true', async () => {
-      const result = await (server as any).executeTool('get_pattern_feedback', {
+      const result = await (server as any).executeTool('ai_assist', {
+        task: 'feedback',
         includeAudio: true
       });
 
@@ -184,7 +189,7 @@ describe('get_pattern_feedback Tool', () => {
     test('should use current pattern from editor', async () => {
       mockController.getCurrentPattern.mockResolvedValue('note("c4 e4 g4")');
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.pattern_analysis).toBeDefined();
       expect(mockGeminiService.getCreativeFeedback).toHaveBeenCalled();
@@ -200,7 +205,7 @@ describe('get_pattern_feedback Tool', () => {
     });
 
     test('should return error message when Gemini API key not configured', async () => {
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.gemini_available).toBe(false);
       expect(result.error).toBeDefined();
@@ -208,7 +213,7 @@ describe('get_pattern_feedback Tool', () => {
     });
 
     test('should indicate Gemini unavailable when API not configured', async () => {
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.gemini_available).toBe(false);
     });
@@ -224,7 +229,7 @@ describe('get_pattern_feedback Tool', () => {
         new Error('Rate limit exceeded (10 requests/minute). Wait 45 seconds before retrying.')
       );
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.error).toBeDefined();
       expect(result.error.toLowerCase()).toContain('rate limit');
@@ -235,7 +240,7 @@ describe('get_pattern_feedback Tool', () => {
         new Error('Rate limit exceeded (10 requests/minute). Wait 45 seconds before retrying.')
       );
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       // Error message should provide actionable guidance (case insensitive)
       expect(result.error.toLowerCase()).toContain('wait');
@@ -246,7 +251,7 @@ describe('get_pattern_feedback Tool', () => {
         new Error('Rate limit exceeded (10 requests/minute). Wait 30 seconds before retrying.')
       );
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.error).toContain('seconds');
     });
@@ -260,7 +265,7 @@ describe('get_pattern_feedback Tool', () => {
     test('should return appropriate error for empty pattern', async () => {
       mockController.getCurrentPattern.mockResolvedValue('');
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.error).toBeDefined();
       expect(result.error.toLowerCase()).toContain('pattern');
@@ -269,7 +274,7 @@ describe('get_pattern_feedback Tool', () => {
     test('should return appropriate error for whitespace-only pattern', async () => {
       mockController.getCurrentPattern.mockResolvedValue('   \n\t  ');
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.error).toBeDefined();
       expect(result.error.toLowerCase()).toContain('pattern');
@@ -286,7 +291,7 @@ describe('get_pattern_feedback Tool', () => {
         new Error('Creative feedback failed: Network error')
       );
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('Network error');
@@ -297,7 +302,7 @@ describe('get_pattern_feedback Tool', () => {
         new Error('Creative feedback failed: API quota exceeded')
       );
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('quota exceeded');
@@ -308,7 +313,7 @@ describe('get_pattern_feedback Tool', () => {
         new Error('Creative feedback timed out. The pattern may be too complex. Try a simpler pattern.')
       );
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('timed out');
@@ -319,7 +324,7 @@ describe('get_pattern_feedback Tool', () => {
         new Error('Creative feedback timed out. The pattern may be too complex. Try a simpler pattern.')
       );
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.error.toLowerCase()).toContain('pattern');
     });
@@ -331,7 +336,8 @@ describe('get_pattern_feedback Tool', () => {
     });
 
     test('should pass style context to audio analysis when provided', async () => {
-      const result = await (server as any).executeTool('get_pattern_feedback', {
+      const result = await (server as any).executeTool('ai_assist', {
+        task: 'feedback',
         includeAudio: true,
         style: 'techno'
       });
@@ -346,7 +352,8 @@ describe('get_pattern_feedback Tool', () => {
       // Create new server without initialization
       const uninitServer = new StrudelMCPServer();
 
-      const result = await (uninitServer as any).executeTool('get_pattern_feedback', {
+      const result = await (uninitServer as any).executeTool('ai_assist', {
+        task: 'feedback',
         includeAudio: true
       });
 
@@ -366,7 +373,7 @@ describe('get_pattern_feedback Tool', () => {
     });
 
     test('should return properly structured response', async () => {
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       // Verify required fields
       expect(result).toHaveProperty('gemini_available');
@@ -389,12 +396,12 @@ describe('get_pattern_feedback Tool', () => {
 
     test('should return gemini_available flag in all responses', async () => {
       // Success case
-      let result = await (server as any).executeTool('get_pattern_feedback', {});
+      let result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
       expect(result).toHaveProperty('gemini_available');
 
       // Error case - empty pattern
       mockController.getCurrentPattern.mockResolvedValue('');
-      result = await (server as any).executeTool('get_pattern_feedback', {});
+      result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
       expect(result).toHaveProperty('gemini_available');
     });
   });
@@ -404,7 +411,8 @@ describe('get_pattern_feedback Tool', () => {
       // Server not initialized, but has generated patterns
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {
+      const result = await (server as any).executeTool('ai_assist', {
+        task: 'feedback',
         includeAudio: false
       });
 
@@ -416,7 +424,8 @@ describe('get_pattern_feedback Tool', () => {
     test('should handle uninitialized browser for audio requests', async () => {
       const uninitServer = new StrudelMCPServer();
 
-      const result = await (uninitServer as any).executeTool('get_pattern_feedback', {
+      const result = await (uninitServer as any).executeTool('ai_assist', {
+        task: 'feedback',
         includeAudio: true
       });
 
@@ -442,7 +451,7 @@ describe('get_pattern_feedback Tool', () => {
         suggestions: []
       });
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.pattern_analysis).toBeDefined();
       expect(result.pattern_analysis.strengths).toEqual([]);
@@ -452,7 +461,7 @@ describe('get_pattern_feedback Tool', () => {
     test('should handle very long patterns', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")'.repeat(500));
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       // Should not throw, should return analysis
       expect(result.gemini_available).toBe(true);
@@ -462,7 +471,7 @@ describe('get_pattern_feedback Tool', () => {
     test('should handle patterns with special characters', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4 <sd cp>").euclidean(3,8,"r")');
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.gemini_available).toBe(true);
       expect(mockGeminiService.getCreativeFeedback).toHaveBeenCalled();
@@ -477,13 +486,14 @@ describe('get_pattern_feedback Tool', () => {
     test('should call GeminiService.getCreativeFeedback with pattern', async () => {
       mockController.getCurrentPattern.mockResolvedValue('note("c4 e4 g4")');
 
-      await (server as any).executeTool('get_pattern_feedback', {});
+      await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(mockGeminiService.getCreativeFeedback).toHaveBeenCalledWith('note("c4 e4 g4")');
     });
 
     test('should not call audio analysis when includeAudio is false', async () => {
-      await (server as any).executeTool('get_pattern_feedback', {
+      await (server as any).executeTool('ai_assist', {
+        task: 'feedback',
         includeAudio: false
       });
 
@@ -493,7 +503,7 @@ describe('get_pattern_feedback Tool', () => {
     test('should handle GeminiService throwing unexpected error', async () => {
       mockGeminiService.getCreativeFeedback.mockRejectedValue(new Error('Unexpected internal error'));
 
-      const result = await (server as any).executeTool('get_pattern_feedback', {});
+      const result = await (server as any).executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('Unexpected internal error');
@@ -502,36 +512,39 @@ describe('get_pattern_feedback Tool', () => {
 });
 
 describe('get_pattern_feedback Tool - Tool Definition', () => {
-  test('tool should be registered in server tools list', () => {
+  // get_pattern_feedback was consolidated into ai_assist({ task: 'feedback' }) (#178).
+  test('ai_assist tool should be registered in server tools list', () => {
     const server = new StrudelMCPServer();
     const tools = (server as any).getTools();
 
-    const feedbackTool = tools.find((t: any) => t.name === 'get_pattern_feedback');
+    const aiTool = tools.find((t: any) => t.name === 'ai_assist');
 
-    expect(feedbackTool).toBeDefined();
-    expect(feedbackTool.description).toContain('feedback');
+    expect(aiTool).toBeDefined();
+    expect(aiTool.description).toContain('feedback');
+    expect(aiTool.inputSchema.properties.task.enum).toContain('feedback');
   });
 
-  test('tool should have correct input schema', () => {
+  test('ai_assist tool should have correct input schema for feedback task', () => {
     const server = new StrudelMCPServer();
     const tools = (server as any).getTools();
 
-    const feedbackTool = tools.find((t: any) => t.name === 'get_pattern_feedback');
-    const schema = feedbackTool.inputSchema;
+    const aiTool = tools.find((t: any) => t.name === 'ai_assist');
+    const schema = aiTool.inputSchema;
 
     expect(schema.type).toBe('object');
+    expect(schema.required).toContain('task');
     expect(schema.properties).toHaveProperty('includeAudio');
     expect(schema.properties.includeAudio.type).toBe('boolean');
     expect(schema.properties).toHaveProperty('style');
     expect(schema.properties.style.type).toBe('string');
   });
 
-  test('tool should have description mentioning Gemini', () => {
+  test('ai_assist tool should have description mentioning Gemini', () => {
     const server = new StrudelMCPServer();
     const tools = (server as any).getTools();
 
-    const feedbackTool = tools.find((t: any) => t.name === 'get_pattern_feedback');
+    const aiTool = tools.find((t: any) => t.name === 'ai_assist');
 
-    expect(feedbackTool.description.toLowerCase()).toContain('gemini');
+    expect(aiTool.description.toLowerCase()).toContain('gemini');
   });
 });

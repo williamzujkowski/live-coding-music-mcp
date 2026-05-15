@@ -54,20 +54,4 @@ describe('music_theory consolidation (#150)', () => {
     const { ctx } = makeCtx();
     await expect(execute('music_theory', { query: 'cadence' }, ctx)).rejects.toThrow(/Invalid query/);
   });
-
-  it('generate_scale alias matches music_theory(query=scale)', async () => {
-    const { ctx: a } = makeCtx();
-    const { ctx: b } = makeCtx();
-    const alias = await execute('generate_scale', { root: 'D', scale: 'minor' }, a);
-    const direct = await execute('music_theory', { query: 'scale', root: 'D', scale: 'minor' }, b);
-    expect(alias).toBe(direct);
-  });
-
-  it('generate_chord_progression alias matches music_theory(query=chord_progression)', async () => {
-    const { ctx: a, pattern: pa } = makeCtx();
-    const { ctx: b, pattern: pb } = makeCtx();
-    await execute('generate_chord_progression', { key: 'C', style: 'pop' }, a);
-    await execute('music_theory', { query: 'chord_progression', key: 'C', style: 'pop' }, b);
-    expect(pa()).toBe(pb());
-  });
 });

@@ -133,8 +133,8 @@ describe('MCP resources', () => {
     it('returns every registered tool with a description', async () => {
       const result = await readResource('strudel://docs/tools', ctx);
       const data = JSON.parse(result.text);
-      // 70 tool defs after #133 + the unlisted `init` we prepend = 71
-      expect(data.count).toBeGreaterThanOrEqual(70);
+      // 25 consolidated tool defs + the unlisted `init` we prepend = 26
+      expect(data.count).toBe(26);
       const initTool = data.tools.find((t: any) => t.name === 'init');
       expect(initTool).toBeDefined();
       const compose = data.tools.find((t: any) => t.name === 'compose');

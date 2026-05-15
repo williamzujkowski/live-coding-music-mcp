@@ -1,11 +1,7 @@
 /**
  * playback domain — transport controls.
  *
- * Owns one consolidated tool (`playback(action)`) plus three deprecated
- * aliases (play, pause, stop) per #120 / #152.
- *
- * Aliases forward to `playback` and will be removed in a future release
- * per the deprecation policy.
+ * Owns one consolidated tool (`playback(action)`) with play/pause/stop.
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -41,21 +37,6 @@ export const tools: Tool[] = [
       required: ['action'],
     },
   },
-  {
-    name: 'play',
-    description: '[DEPRECATED — use playback({ action: "play" }) instead] Start playing pattern',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'pause',
-    description: '[DEPRECATED — use playback({ action: "pause" }) instead] Pause playback',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'stop',
-    description: '[DEPRECATED — use playback({ action: "stop" }) instead] Stop playback',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
 ];
 
 export const toolNames = new Set(tools.map(t => t.name));
@@ -67,7 +48,10 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
   }
   const controller = ctx.getController(sid);
 
-  const action = name === 'playback' ? args?.action : name;
+  if (name !== 'playback') {
+    throw new Error(`playback module does not handle tool: ${name}`);
+  }
+  const action = args?.action;
   switch (action) {
     case 'play':
       return await controller.play();

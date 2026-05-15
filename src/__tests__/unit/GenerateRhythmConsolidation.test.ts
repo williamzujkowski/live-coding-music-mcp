@@ -53,20 +53,4 @@ describe('generate_rhythm consolidation (#151)', () => {
     const { ctx } = makeCtx();
     await expect(execute('generate_rhythm', { type: 'random' }, ctx)).rejects.toThrow(/Invalid type/);
   });
-
-  it('generate_euclidean alias matches generate_rhythm(type=euclidean)', async () => {
-    const { ctx: a, pattern: pa } = makeCtx();
-    const { ctx: b, pattern: pb } = makeCtx();
-    await execute('generate_euclidean', { hits: 3, steps: 8 }, a);
-    await execute('generate_rhythm', { type: 'euclidean', hits: 3, steps: 8 }, b);
-    expect(pa()).toBe(pb());
-  });
-
-  it('generate_polyrhythm alias matches generate_rhythm(type=polyrhythm)', async () => {
-    const { ctx: a, pattern: pa } = makeCtx();
-    const { ctx: b, pattern: pb } = makeCtx();
-    await execute('generate_polyrhythm', { sounds: ['bd', 'hh'], patterns: [3, 5] }, a);
-    await execute('generate_rhythm', { type: 'polyrhythm', sounds: ['bd', 'hh'], patterns: [3, 5] }, b);
-    expect(pa()).toBe(pb());
-  });
 });

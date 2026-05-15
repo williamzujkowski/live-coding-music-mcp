@@ -1,12 +1,9 @@
 /**
  * editor domain — pattern editing in the CodeMirror editor.
  *
- * Owns one consolidated mutation tool (`edit_pattern(mode)`) plus
- * `get_pattern` (kept separate, hot read path) and five deprecated
- * aliases (write/append/insert/replace/clear) per #120 / #148.
- *
- * Aliases forward to `edit_pattern` and will be removed in a future
- * release per the deprecation policy.
+ * Owns one consolidated mutation tool (`edit_pattern(mode)`) with
+ * write/append/insert/replace/clear modes, plus `get_pattern` (kept
+ * separate — hot read path).
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -54,60 +51,6 @@ export const tools: Tool[] = [
   {
     name: 'get_pattern',
     description: 'Get current pattern code',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'write',
-    description: '[DEPRECATED — use edit_pattern({ mode: "write" }) instead] Write pattern to editor with optional auto-play and validation',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        pattern: { type: 'string', description: 'Pattern code' },
-        auto_play: { type: 'boolean', description: 'Start playback immediately after writing (default: false)' },
-        validate: { type: 'boolean', description: 'Validate pattern before writing (default: true)' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['pattern'],
-    },
-  },
-  {
-    name: 'append',
-    description: '[DEPRECATED — use edit_pattern({ mode: "append" }) instead] Append code to current pattern',
-    inputSchema: {
-      type: 'object',
-      properties: { code: { type: 'string', description: 'Code to append' }, ...SESSION_ID_PROP },
-      required: ['code'],
-    },
-  },
-  {
-    name: 'insert',
-    description: '[DEPRECATED — use edit_pattern({ mode: "insert" }) instead] Insert code at specific line',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        position: { type: 'number', description: 'Line number' },
-        code: { type: 'string', description: 'Code to insert' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['position', 'code'],
-    },
-  },
-  {
-    name: 'replace',
-    description: '[DEPRECATED — use edit_pattern({ mode: "replace" }) instead] Replace pattern section',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        search: { type: 'string', description: 'Text to replace' },
-        replace: { type: 'string', description: 'Replacement text' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['search', 'replace'],
-    },
-  },
-  {
-    name: 'clear',
-    description: '[DEPRECATED — use edit_pattern({ mode: "clear" }) instead] Clear the editor',
     inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
 ];
@@ -193,13 +136,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
           throw new Error(`Invalid mode: ${mode}. Must be one of: write, append, insert, replace, clear`);
       }
     }
-
-    // Deprecated aliases — forward to consolidated handler.
-    case 'write':   return await doWrite(args, ctx, sid);
-    case 'append':  return await doAppend(args, ctx, sid);
-    case 'insert':  return await doInsert(args, ctx, sid);
-    case 'replace': return await doReplace(args, ctx, sid);
-    case 'clear':   return await doClear(ctx, sid);
 
     case 'get_pattern':
       return await ctx.getCurrentPatternSafe(sid);

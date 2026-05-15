@@ -226,7 +226,7 @@ Closes #123"
 ## Core Architecture
 
 ```
-MCP Protocol Layer (84 tools + 4 resources)
+MCP Protocol Layer (26 tools + 4 resources)
     ↓ dispatcher in src/server/server.ts
 Per-domain tool modules (src/server/tools/*.ts)
     ↓
@@ -453,13 +453,13 @@ src/
 DEBUG=* node dist/index.js
 
 # Test specific tool
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"generate_drums","arguments":{"style":"techno"}},"id":1}' | node dist/index.js
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"generate_part","arguments":{"role":"drums","style":"techno"}},"id":1}' | node dist/index.js
 
 # Browser debugging (headful mode)
 # Set headless: false in config
 
 # Performance monitoring
-# Use performance_report tool via MCP
+# Use diagnostics({ level: "perf" }) via MCP
 ```
 
 ## Critical Code Locations
@@ -687,9 +687,9 @@ describe('AudioAnalyzer - Tempo Detection', () => {
 ### 7. API Design (MCP Tools)
 
 **Tool Naming:**
-- Use snake_case: `detect_tempo`, `generate_pattern`
-- Verbs for actions: `write`, `play`, `stop`, `analyze`
-- Nouns for queries: `get_pattern`, `list`
+- Use snake_case: `edit_pattern`, `generate_part`
+- Consolidated tools take an enum discriminator (`action`/`mode`/`op`/`level`/`role`/`task`/`include`)
+- Nouns for queries: `get_pattern`, `music_theory`
 
 **Tool Design Principles:**
 ```typescript

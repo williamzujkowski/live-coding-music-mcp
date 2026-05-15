@@ -112,7 +112,7 @@ describe('refine Tool (#78)', () => {
     test('should apply faster refinement with .fast(1.1)', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('refine', { direction: 'faster' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'faster' });
 
       expect(result.success).toBe(true);
       expect(result.direction).toBe('faster');
@@ -123,7 +123,7 @@ describe('refine Tool (#78)', () => {
     test('should apply slower refinement with .slow(1.1)', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('refine', { direction: 'slower' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'slower' });
 
       expect(result.success).toBe(true);
       expect(result.direction).toBe('slower');
@@ -140,7 +140,7 @@ describe('refine Tool (#78)', () => {
     test('should apply louder refinement with .gain(1.1)', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('refine', { direction: 'louder' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'louder' });
 
       expect(result.success).toBe(true);
       expect(result.direction).toBe('louder');
@@ -151,7 +151,7 @@ describe('refine Tool (#78)', () => {
     test('should apply quieter refinement with .gain(0.9)', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('refine', { direction: 'quieter' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'quieter' });
 
       expect(result.success).toBe(true);
       expect(result.direction).toBe('quieter');
@@ -168,7 +168,7 @@ describe('refine Tool (#78)', () => {
     test('should apply brighter refinement with .lpf(2000)', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('refine', { direction: 'brighter' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'brighter' });
 
       expect(result.success).toBe(true);
       expect(result.direction).toBe('brighter');
@@ -179,7 +179,7 @@ describe('refine Tool (#78)', () => {
     test('should apply darker refinement with .lpf(800)', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('refine', { direction: 'darker' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'darker' });
 
       expect(result.success).toBe(true);
       expect(result.direction).toBe('darker');
@@ -196,7 +196,7 @@ describe('refine Tool (#78)', () => {
     test('should apply more reverb with .room(0.5)', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('refine', { direction: 'more reverb' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'more reverb' });
 
       expect(result.success).toBe(true);
       expect(result.direction).toBe('more reverb');
@@ -207,7 +207,7 @@ describe('refine Tool (#78)', () => {
     test('should apply drier refinement with .room(0.1)', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('refine', { direction: 'drier' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'drier' });
 
       expect(result.success).toBe(true);
       expect(result.direction).toBe('drier');
@@ -224,7 +224,7 @@ describe('refine Tool (#78)', () => {
     test('should return error for unknown direction', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('refine', { direction: 'make it groovy' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'make it groovy' });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Unknown refinement direction');
@@ -234,7 +234,7 @@ describe('refine Tool (#78)', () => {
     test('should list supported directions in error message', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('refine', { direction: 'something random' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'something random' });
 
       expect(result.error).toContain('faster');
       expect(result.error).toContain('slower');
@@ -251,7 +251,7 @@ describe('refine Tool (#78)', () => {
     test('should auto-play after refinement when initialized', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      await (server as any).executeTool('refine', { direction: 'faster' });
+      await (server as any).executeTool('shape', { dimension: 'refine', direction: 'faster' });
 
       expect(mockController.play).toHaveBeenCalled();
     });
@@ -265,7 +265,7 @@ describe('refine Tool (#78)', () => {
     test('should return error for empty pattern', async () => {
       mockController.getCurrentPattern.mockResolvedValue('');
 
-      const result = await (server as any).executeTool('refine', { direction: 'faster' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'faster' });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('No pattern');
@@ -274,7 +274,7 @@ describe('refine Tool (#78)', () => {
     test('should return error for whitespace-only pattern', async () => {
       mockController.getCurrentPattern.mockResolvedValue('   \n\t  ');
 
-      const result = await (server as any).executeTool('refine', { direction: 'faster' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'faster' });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('No pattern');
@@ -283,7 +283,7 @@ describe('refine Tool (#78)', () => {
     test('should handle case-insensitive directions', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('refine', { direction: 'FASTER' });
+      const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'FASTER' });
 
       expect(result.success).toBe(true);
       expect(result.direction).toBe('faster');
@@ -367,7 +367,7 @@ describe('set_energy Tool (#81)', () => {
     test('should apply minimal/ambient settings at level 0', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('set_energy', { level: 0 });
+      const result = await (server as any).executeTool('shape', { dimension: 'energy', level: 0 });
 
       expect(result.success).toBe(true);
       expect(result.level).toBe(0);
@@ -377,7 +377,7 @@ describe('set_energy Tool (#81)', () => {
     test('should add slow modifier for minimal energy', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      await (server as any).executeTool('set_energy', { level: 0 });
+      await (server as any).executeTool('shape', { dimension: 'energy', level: 0 });
 
       // Should have .slow(4) for level 0
       expect(mockController.writePattern).toHaveBeenCalledWith(expect.stringContaining('.slow(4)'));
@@ -386,7 +386,7 @@ describe('set_energy Tool (#81)', () => {
     test('should add high reverb for minimal energy', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      await (server as any).executeTool('set_energy', { level: 0 });
+      await (server as any).executeTool('shape', { dimension: 'energy', level: 0 });
 
       expect(mockController.writePattern).toHaveBeenCalledWith(expect.stringContaining('.room(0.5)'));
     });
@@ -400,7 +400,7 @@ describe('set_energy Tool (#81)', () => {
     test('should apply normal settings at level 5', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('set_energy', { level: 5 });
+      const result = await (server as any).executeTool('shape', { dimension: 'energy', level: 5 });
 
       expect(result.success).toBe(true);
       expect(result.level).toBe(5);
@@ -410,7 +410,7 @@ describe('set_energy Tool (#81)', () => {
     test('should not add density modifier at normal level', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      await (server as any).executeTool('set_energy', { level: 5 });
+      await (server as any).executeTool('shape', { dimension: 'energy', level: 5 });
 
       // Should just add room but no fast/slow
       expect(mockController.writePattern).toHaveBeenCalledWith('s("bd*4").room(0.1)');
@@ -425,7 +425,7 @@ describe('set_energy Tool (#81)', () => {
     test('should apply maximum settings at level 10', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      const result = await (server as any).executeTool('set_energy', { level: 10 });
+      const result = await (server as any).executeTool('shape', { dimension: 'energy', level: 10 });
 
       expect(result.success).toBe(true);
       expect(result.level).toBe(10);
@@ -435,7 +435,7 @@ describe('set_energy Tool (#81)', () => {
     test('should add fast(2) for maximum energy', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      await (server as any).executeTool('set_energy', { level: 10 });
+      await (server as any).executeTool('shape', { dimension: 'energy', level: 10 });
 
       expect(mockController.writePattern).toHaveBeenCalledWith(expect.stringContaining('.fast(2)'));
     });
@@ -443,7 +443,7 @@ describe('set_energy Tool (#81)', () => {
     test('should add minimal reverb for dry/punchy sound', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      await (server as any).executeTool('set_energy', { level: 10 });
+      await (server as any).executeTool('shape', { dimension: 'energy', level: 10 });
 
       expect(mockController.writePattern).toHaveBeenCalledWith(expect.stringContaining('.room(0.01)'));
     });
@@ -455,21 +455,21 @@ describe('set_energy Tool (#81)', () => {
     });
 
     test('should reject energy level below 0', async () => {
-      const result = await (server as any).executeTool('set_energy', { level: -1 });
+      const result = await (server as any).executeTool('shape', { dimension: 'energy', level: -1 });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('integer from 0 to 10');
     });
 
     test('should reject energy level above 10', async () => {
-      const result = await (server as any).executeTool('set_energy', { level: 11 });
+      const result = await (server as any).executeTool('shape', { dimension: 'energy', level: 11 });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('integer from 0 to 10');
     });
 
     test('should reject non-integer energy level', async () => {
-      const result = await (server as any).executeTool('set_energy', { level: 5.5 });
+      const result = await (server as any).executeTool('shape', { dimension: 'energy', level: 5.5 });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('integer');
@@ -479,7 +479,7 @@ describe('set_energy Tool (#81)', () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
       for (let level = 0; level <= 10; level++) {
-        const result = await (server as any).executeTool('set_energy', { level });
+        const result = await (server as any).executeTool('shape', { dimension: 'energy', level });
         expect(result.success).toBe(true);
         expect(result.level).toBe(level);
       }
@@ -494,7 +494,7 @@ describe('set_energy Tool (#81)', () => {
     test('should return error for empty pattern', async () => {
       mockController.getCurrentPattern.mockResolvedValue('');
 
-      const result = await (server as any).executeTool('set_energy', { level: 5 });
+      const result = await (server as any).executeTool('shape', { dimension: 'energy', level: 5 });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('No pattern');
@@ -503,7 +503,7 @@ describe('set_energy Tool (#81)', () => {
     test('should return error for whitespace-only pattern', async () => {
       mockController.getCurrentPattern.mockResolvedValue('   \n\t  ');
 
-      const result = await (server as any).executeTool('set_energy', { level: 5 });
+      const result = await (server as any).executeTool('shape', { dimension: 'energy', level: 5 });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('No pattern');
@@ -518,7 +518,7 @@ describe('set_energy Tool (#81)', () => {
     test('should auto-play after setting energy when initialized', async () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
-      await (server as any).executeTool('set_energy', { level: 7 });
+      await (server as any).executeTool('shape', { dimension: 'energy', level: 7 });
 
       expect(mockController.play).toHaveBeenCalled();
     });
@@ -547,7 +547,7 @@ describe('set_energy Tool (#81)', () => {
       mockController.getCurrentPattern.mockResolvedValue('s("bd*4")');
 
       for (const [level, description] of Object.entries(levelDescriptions)) {
-        const result = await (server as any).executeTool('set_energy', { level: parseInt(level) });
+        const result = await (server as any).executeTool('shape', { dimension: 'energy', level: parseInt(level) });
         expect(result.description).toBe(description);
       }
     });
@@ -555,49 +555,32 @@ describe('set_energy Tool (#81)', () => {
 });
 
 describe('Tool Definitions', () => {
-  test('refine tool should be registered in server tools list', () => {
+  // refine and set_energy were consolidated into shape({ dimension }) (#178).
+  test('shape tool should be registered in server tools list', () => {
     const server = new StrudelMCPServer();
     const tools = (server as any).getTools();
 
-    const refineTool = tools.find((t: any) => t.name === 'refine');
+    const shapeTool = tools.find((t: any) => t.name === 'shape');
 
-    expect(refineTool).toBeDefined();
-    expect(refineTool.description).toContain('refine');
-    expect(refineTool.inputSchema.required).toContain('direction');
+    expect(shapeTool).toBeDefined();
+    expect(shapeTool.description).toContain('refine');
+    expect(shapeTool.description).toContain('energy');
+    expect(shapeTool.inputSchema.required).toContain('dimension');
   });
 
-  test('set_energy tool should be registered in server tools list', () => {
+  test('shape tool should expose refine and energy dimensions', () => {
     const server = new StrudelMCPServer();
     const tools = (server as any).getTools();
 
-    const energyTool = tools.find((t: any) => t.name === 'set_energy');
-
-    expect(energyTool).toBeDefined();
-    expect(energyTool.description).toContain('energy');
-    expect(energyTool.description).toContain('0-10');
-    expect(energyTool.inputSchema.required).toContain('level');
-  });
-
-  test('refine tool should have correct input schema', () => {
-    const server = new StrudelMCPServer();
-    const tools = (server as any).getTools();
-
-    const refineTool = tools.find((t: any) => t.name === 'refine');
-    const schema = refineTool.inputSchema;
+    const shapeTool = tools.find((t: any) => t.name === 'shape');
+    const schema = shapeTool.inputSchema;
 
     expect(schema.type).toBe('object');
+    expect(schema.properties).toHaveProperty('dimension');
+    expect(schema.properties.dimension.enum).toContain('refine');
+    expect(schema.properties.dimension.enum).toContain('energy');
     expect(schema.properties).toHaveProperty('direction');
     expect(schema.properties.direction.type).toBe('string');
-  });
-
-  test('set_energy tool should have correct input schema', () => {
-    const server = new StrudelMCPServer();
-    const tools = (server as any).getTools();
-
-    const energyTool = tools.find((t: any) => t.name === 'set_energy');
-    const schema = energyTool.inputSchema;
-
-    expect(schema.type).toBe('object');
     expect(schema.properties).toHaveProperty('level');
     expect(schema.properties.level.type).toBe('number');
   });

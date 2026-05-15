@@ -3,7 +3,6 @@
  */
 
 import { execute as composeExecute } from '../../server/tools/compose';
-import { execute as diagnosticsExecute } from '../../server/tools/diagnostics';
 import type { ToolContext } from '../../server/tools/types';
 
 function makeCtx() {
@@ -51,17 +50,5 @@ describe('browser_window consolidation (#156)', () => {
   it('throws on invalid action', async () => {
     const { ctx } = makeCtx();
     await expect(composeExecute('browser_window', { action: 'hide' }, ctx)).rejects.toThrow(/Invalid action/);
-  });
-
-  it('show_browser alias still works (deprecated)', async () => {
-    const { ctx, controller } = makeCtx();
-    await composeExecute('show_browser', {}, ctx);
-    expect(controller.showBrowser).toHaveBeenCalledTimes(1);
-  });
-
-  it('screenshot alias still works (deprecated) via diagnostics module', async () => {
-    const { ctx, controller } = makeCtx();
-    await diagnosticsExecute('screenshot', { filename: 'x.png' }, ctx);
-    expect(controller.takeScreenshot).toHaveBeenCalledWith('x.png');
   });
 });

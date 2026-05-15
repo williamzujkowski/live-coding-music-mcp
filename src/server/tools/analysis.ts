@@ -1,9 +1,8 @@
 /**
  * analysis domain — audio analysis + pattern validation (browser + local).
  *
- * Owns (10 tools):
- *   browser-required: analyze, analyze_spectrum, analyze_rhythm,
- *                     detect_tempo, detect_key, validate_pattern_runtime
+ * Owns (6 tools):
+ *   browser-required: analyze (include[] filter), validate_pattern_runtime
  *   browser-free:     validate_pattern_local, analyze_pattern_local,
  *                     query_pattern_events, transpile_pattern
  *
@@ -11,10 +10,6 @@
  * pairs naturally with validate_pattern_runtime (which monitors the
  * actual Strudel console). They were orphan handlers — implementations
  * present but not registered in tools/list — until #124.
- *
- * Post-consolidation (per #110 audit): a single `analyze` tool with
- * an `include[]` filter absorbs the 4 audio detection tools.
- * Local-engine tools stay distinct — different subsystem.
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -52,26 +47,6 @@ export const tools: Tool[] = [
         ...SESSION_ID_PROP,
       },
     },
-  },
-  {
-    name: 'analyze_spectrum',
-    description: '[DEPRECATED — use analyze({ include: ["spectrum"] }) instead] FFT spectrum analysis',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'analyze_rhythm',
-    description: '[DEPRECATED — use analyze({ include: ["rhythm"] }) instead] Rhythm analysis',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'detect_tempo',
-    description: '[DEPRECATED — use analyze({ include: ["tempo"] }) instead] BPM detection',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'detect_key',
-    description: '[DEPRECATED — use analyze({ include: ["key"] }) instead] Key detection',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'validate_pattern_runtime',
@@ -247,12 +222,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
   switch (name) {
     case 'analyze':
       return await doAnalyze(args, controller!);
-
-    // Deprecated aliases — forward to consolidated handler.
-    case 'analyze_spectrum': return await getSpectrum(controller!);
-    case 'analyze_rhythm':   return await getRhythm(controller!);
-    case 'detect_tempo':     return await getTempo(controller!);
-    case 'detect_key':       return await getKey(controller!);
 
     case 'validate_pattern_runtime': {
       InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);

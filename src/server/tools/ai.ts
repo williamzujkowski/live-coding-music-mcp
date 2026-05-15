@@ -1,16 +1,12 @@
 /**
  * ai domain — AI-powered feedback, pattern suggestion, and jamming.
  *
- * Owns (3 tools): get_pattern_feedback, suggest_pattern_from_audio,
- * jam_with.
+ * Owns one consolidated tool (`ai_assist(task=feedback|suggest|jam)`) —
+ * all three tasks share Gemini's rate limiting and auth.
  *
- * Per the #110 audit, these collapse into a single `ai_assist(task=...)`
- * tool — they all share Gemini's rate limiting and auth, so the merge
- * is natural. Deferred until external contracts stabilize.
- *
- * `jam_with` carries six private helpers that analyze the current
+ * The `jam` task carries six private helpers that analyze the current
  * pattern (tempo/key/style detection, layer detection, merge logic)
- * and that are used only by this tool. They live here.
+ * and that are used only here. They live in this module.
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -64,52 +60,6 @@ export const tools: Tool[] = [
       required: ['task'],
     },
   },
-  {
-    name: 'get_pattern_feedback',
-    description: '[DEPRECATED — use ai_assist({ task: "feedback" }) instead] Get AI-powered creative feedback on the current pattern using Google Gemini.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        includeAudio: { type: 'boolean', description: 'Include audio analysis (plays pattern briefly). Default: false' },
-        style: { type: 'string', description: 'Optional style hint for context (e.g., "techno", "ambient")' },
-        ...SESSION_ID_PROP,
-      },
-    },
-  },
-  {
-    name: 'suggest_pattern_from_audio',
-    description: '[DEPRECATED — use ai_assist({ task: "suggest" }) instead] Analyze playing audio and suggest a complementary Strudel pattern.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        style: { type: 'string', description: 'Optional style hint (e.g., "ambient", "techno", "jazz")' },
-        role: {
-          type: 'string',
-          enum: ['complement', 'bassline', 'melody', 'percussion'],
-          description: 'What role the suggested pattern should fill. Default: complement',
-        },
-        ...SESSION_ID_PROP,
-      },
-    },
-  },
-  {
-    name: 'jam_with',
-    description: '[DEPRECATED — use ai_assist({ task: "jam" }) instead] AI generates a complementary layer to jam with your pattern.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        layer: {
-          type: 'string',
-          enum: ['drums', 'bass', 'melody', 'pad', 'texture'],
-          description: 'Type of layer to add: drums, bass, melody, pad, or texture',
-        },
-        style_hint: { type: 'string', description: 'Optional style guidance (e.g., "funky", "minimal", "atmospheric")' },
-        auto_play: { type: 'boolean', description: 'Start playback after adding layer (default: true)' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['layer'],
-    },
-  },
 ];
 
 export const toolNames = new Set(tools.map(t => t.name));
@@ -127,15 +77,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
           throw new Error(`Invalid task: ${t}. Must be one of: feedback, suggest, jam`);
       }
     }
-
-    case 'get_pattern_feedback':
-      return await getPatternFeedback(args?.includeAudio || false, args?.style, ctx, sid);
-
-    case 'suggest_pattern_from_audio':
-      return await suggestPatternFromAudio(args?.style, args?.role || 'complement', ctx, sid);
-
-    case 'jam_with':
-      return await jamWith(args.layer, args.style_hint, args.auto_play, ctx, sid);
 
     default:
       throw new Error(`ai module does not handle tool: ${name}`);
@@ -339,7 +280,7 @@ Example patterns:
       style: style || 'auto',
       valid: validation.valid,
       validation_errors: validation.valid ? [] : validation.errors,
-      usage: 'Use write tool to load this pattern, then play to hear it.',
+      usage: 'Use edit_pattern({ mode: "write" }) to load this pattern, then playback({ action: "play" }) to hear it.',
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

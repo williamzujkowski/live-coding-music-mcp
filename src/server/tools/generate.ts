@@ -1,16 +1,13 @@
 /**
  * generate domain — pattern and music-theory generation (no browser needed).
  *
- * Owns (9 tools):
- *   generate_pattern, generate_drums, generate_bassline, generate_melody,
- *   generate_fill, generate_scale, generate_chord_progression,
- *   generate_euclidean, generate_polyrhythm
+ * Owns (3 tools):
+ *   generate_part(role)   — drums/bass/melody/fill layers
+ *   music_theory(query)   — scale notes, chord progressions
+ *   generate_rhythm(type) — euclidean / polyrhythm patterns
  *
- * `compose` stays in server.ts for now — it orchestrates init + generate
- * + play + optional AI feedback and pairs with ai.ts when that extraction
- * happens. Per the #110 audit, compose eventually absorbs generate_pattern
- * and the four generate_* drums/bass/melody/fill tools collapse into
- * `generate_part(role)`, while scale+chord_prog become `music_theory`.
+ * Full-composition generation lives in `compose` (compose.ts), which
+ * orchestrates init + generate + play + optional AI feedback.
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -25,21 +22,6 @@ const SESSION_ID_PROP = {
 };
 
 export const tools: Tool[] = [
-  {
-    name: 'generate_pattern',
-    description: '[DEPRECATED — use compose instead, which auto-inits and returns richer metadata] Generate complete pattern from style with optional auto-play.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        style: { type: 'string', description: 'Music style (techno/house/dnb/ambient/etc)' },
-        key: { type: 'string', description: 'Musical key' },
-        bpm: { type: 'number', description: 'Tempo in BPM' },
-        auto_play: { type: 'boolean', description: 'Start playback immediately (default: false)' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['style'],
-    },
-  },
   {
     name: 'generate_part',
     description:
@@ -67,51 +49,11 @@ export const tools: Tool[] = [
     },
   },
   {
-    name: 'generate_drums',
-    description: '[DEPRECATED — use generate_part({ role: "drums" }) instead] Generate drum pattern',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        style: { type: 'string', description: 'Drum style' },
-        complexity: { type: 'number', description: 'Complexity (0-1)' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['style'],
-    },
-  },
-  {
-    name: 'generate_bassline',
-    description: '[DEPRECATED — use generate_part({ role: "bass" }) instead] Generate bassline',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        key: { type: 'string', description: 'Musical key' },
-        style: { type: 'string', description: 'Bass style' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['key', 'style'],
-    },
-  },
-  {
-    name: 'generate_melody',
-    description: '[DEPRECATED — use generate_part({ role: "melody" }) instead] Generate melody from scale',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        scale: { type: 'string', description: 'Scale name' },
-        root: { type: 'string', description: 'Root note' },
-        length: { type: 'number', description: 'Number of notes' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['scale', 'root'],
-    },
-  },
-  {
     name: 'music_theory',
     description:
       'Music-theory queries. ' +
       'query=scale returns the notes of a scale (e.g. "C major scale: C, D, E, F, G, A, B"). ' +
-      'query=chord_progression returns a chord progression for the key/style AND writes the resulting chord pattern into the current session (matches the pre-consolidation behaviour of generate_chord_progression). ' +
+      'query=chord_progression returns a chord progression for the key/style AND writes the resulting chord pattern into the current session. ' +
       'Example: music_theory({ query: "scale", root: "C", scale: "major" }). ' +
       'For pattern generation (drums/bass/melody) use generate_part; for rhythmic patterns use generate_rhythm.',
     inputSchema: {
@@ -125,31 +67,6 @@ export const tools: Tool[] = [
         ...SESSION_ID_PROP,
       },
       required: ['query'],
-    },
-  },
-  {
-    name: 'generate_scale',
-    description: '[DEPRECATED — use music_theory({ query: "scale" }) instead] Generate scale notes',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        root: { type: 'string', description: 'Root note' },
-        scale: { type: 'string', description: 'Scale type' },
-      },
-      required: ['root', 'scale'],
-    },
-  },
-  {
-    name: 'generate_chord_progression',
-    description: '[DEPRECATED — use music_theory({ query: "chord_progression" }) instead] Generate chord progression',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        key: { type: 'string', description: 'Key' },
-        style: { type: 'string', description: 'Style (pop/jazz/blues/etc)' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['key', 'style'],
     },
   },
   {
@@ -172,46 +89,6 @@ export const tools: Tool[] = [
         ...SESSION_ID_PROP,
       },
       required: ['type'],
-    },
-  },
-  {
-    name: 'generate_euclidean',
-    description: '[DEPRECATED — use generate_rhythm({ type: "euclidean" }) instead] Generate Euclidean rhythm',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        hits: { type: 'number', description: 'Number of hits' },
-        steps: { type: 'number', description: 'Total steps' },
-        sound: { type: 'string', description: 'Sound to use' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['hits', 'steps'],
-    },
-  },
-  {
-    name: 'generate_polyrhythm',
-    description: '[DEPRECATED — use generate_rhythm({ type: "polyrhythm" }) instead] Generate polyrhythm',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        sounds: { type: 'array', items: { type: 'string' }, description: 'Sounds to use' },
-        patterns: { type: 'array', items: { type: 'number' }, description: 'Pattern numbers' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['sounds', 'patterns'],
-    },
-  },
-  {
-    name: 'generate_fill',
-    description: '[DEPRECATED — use generate_part({ role: "fill" }) instead] Generate drum fill',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        style: { type: 'string', description: 'Fill style' },
-        bars: { type: 'number', description: 'Number of bars' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['style'],
     },
   },
 ];
@@ -293,25 +170,6 @@ async function doFill(args: any, ctx: ToolContext, sid?: string): Promise<string
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
   const sid: string | undefined = args?.session_id;
   switch (name) {
-    case 'generate_pattern': {
-      InputValidator.validateStringLength(args.style, 'style', 100, false);
-      if (args.key) InputValidator.validateRootNote(args.key);
-      if (args.bpm !== undefined) InputValidator.validateBPM(args.bpm);
-
-      const generated = ctx.generator.generateCompletePattern(
-        args.style,
-        args.key || 'C',
-        args.bpm || 120,
-      );
-      await ctx.writePatternSafe(generated, sid);
-
-      if (args.auto_play && (sid || ctx.isInitialized())) {
-        await ctx.getController(sid).play();
-        return `Generated ${args.style} pattern. Playing.`;
-      }
-      return `Generated ${args.style} pattern`;
-    }
-
     case 'generate_part': {
       const role = args?.role;
       switch (role) {
@@ -323,9 +181,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
           throw new Error(`Invalid role: ${role}. Must be one of: drums, bass, melody, fill`);
       }
     }
-    case 'generate_drums':    return await doDrums(args, ctx, sid);
-    case 'generate_bassline': return await doBassline(args, ctx, sid);
-    case 'generate_melody':   return await doMelody(args, ctx, sid);
 
     case 'music_theory': {
       const q = args?.query;
@@ -334,8 +189,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       }
       return q === 'scale' ? doScale(args, ctx) : await doChordProgression(args, ctx, sid);
     }
-    case 'generate_scale':              return doScale(args, ctx);
-    case 'generate_chord_progression':  return await doChordProgression(args, ctx, sid);
 
     case 'generate_rhythm': {
       const t = args?.type;
@@ -346,10 +199,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
         ? await doEuclidean(args, ctx, sid)
         : await doPolyrhythm(args, ctx, sid);
     }
-    case 'generate_euclidean':   return await doEuclidean(args, ctx, sid);
-    case 'generate_polyrhythm':  return await doPolyrhythm(args, ctx, sid);
-
-    case 'generate_fill': return await doFill(args, ctx, sid);
 
     default:
       throw new Error(`generate module does not handle tool: ${name}`);

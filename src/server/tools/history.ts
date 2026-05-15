@@ -1,15 +1,13 @@
 /**
  * history domain — undo/redo stacks and the pattern history browser.
  *
- * Owns (5 tools): undo, redo, list_history, restore_history,
- * compare_patterns. Post-consolidation target per the #110 audit:
- * single `history` tool with an `action` enum. For now we keep the
- * individual verbs.
+ * Owns one consolidated tool (`history(action)`) with undo/redo/list/
+ * restore/compare actions.
  *
  * The history module mutates the three state arrays (undoStack,
- * redoStack, historyStack) passed through ctx.history. The outer
- * server pushes onto these arrays on write/append/insert/replace/clear,
- * so all mutations share the same underlying storage.
+ * redoStack, historyStack) reached through ctx.getHistory(). The outer
+ * server pushes onto these arrays on every edit_pattern call, so all
+ * mutations share the same underlying storage.
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -49,51 +47,6 @@ export const tools: Tool[] = [
         ...SESSION_ID_PROP,
       },
       required: ['action'],
-    },
-  },
-  {
-    name: 'undo',
-    description: '[DEPRECATED — use history({ action: "undo" }) instead] Undo last action',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'redo',
-    description: '[DEPRECATED — use history({ action: "redo" }) instead] Redo action',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'list_history',
-    description: '[DEPRECATED — use history({ action: "list" }) instead] List recent pattern history with timestamps and previews',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        limit: { type: 'number', description: 'Maximum entries to return (default: 10)' },
-      },
-    },
-  },
-  {
-    name: 'restore_history',
-    description: '[DEPRECATED — use history({ action: "restore" }) instead] Restore a previous pattern from history by ID',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'number', description: 'History entry ID to restore' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['id'],
-    },
-  },
-  {
-    name: 'compare_patterns',
-    description: '[DEPRECATED — use history({ action: "compare" }) instead] Compare two patterns from history showing differences',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id1: { type: 'number', description: 'First pattern ID' },
-        id2: { type: 'number', description: 'Second pattern ID (default: current pattern)' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['id1'],
     },
   },
 ];
@@ -255,13 +208,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
           throw new Error(`Invalid action: ${action}. Must be one of: undo, redo, list, restore, compare`);
       }
     }
-
-    // Deprecated aliases — forward to consolidated handler.
-    case 'undo':             return await doUndo(ctx, sid);
-    case 'redo':             return await doRedo(ctx, sid);
-    case 'list_history':     return doList(args, ctx, sid);
-    case 'restore_history':  return await doRestore(args, ctx, sid);
-    case 'compare_patterns': return await doCompare(args, ctx, sid);
 
     default:
       throw new Error(`history module does not handle tool: ${name}`);

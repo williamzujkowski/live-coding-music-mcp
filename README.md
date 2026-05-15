@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-84-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-26-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -169,7 +169,7 @@ Common commands for immediate use:
 | Edit current pattern | `edit_pattern({ mode: "write", pattern: "..." })` |
 | Create an isolated session | `session({ action: "create", session_id: "live-1" })` |
 
-The legacy single-verb tools (`play`, `stop`, `save`, `undo`, `write`, `generate_pattern`, ...) still work in v3.0 as deprecated aliases. They forward to the consolidated tools and will be removed in v3.1 ([#178](https://github.com/williamzujkowski/live-coding-music-mcp/issues/178)).
+The legacy single-verb tools (`play`, `stop`, `save`, `undo`, `write`, `generate_pattern`, ...) were deprecated aliases during the `3.0.x` line and were removed in v4.0.0 ([#178](https://github.com/williamzujkowski/live-coding-music-mcp/issues/178)). Use the consolidated tools above.
 
 **One-shot workflow:**
 ```
@@ -201,7 +201,7 @@ Then ask Claude:
 
 <!-- TOOLS:START -->
 
-**84 tools** across 15 categories:
+**26 tools** across 14 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -211,127 +211,94 @@ Then ask Claude:
 
 </details>
 
-<details><summary><strong>Pattern Editing</strong> (5)</summary>
+<details><summary><strong>Pattern Editing</strong> (2)</summary>
 
 | Tool | Description |
 |------|-------------|
+| `edit_pattern` | Mutate the current session pattern.  |
 | `get_pattern` | Get current pattern code |
-| `write` | [DEPRECATED — use edit_pattern({ mode: "write" }) instead] Write pattern to editor with optional auto-play and validation |
-| `append` | [DEPRECATED — use edit_pattern({ mode: "append" }) instead] Append code to current pattern |
-| `insert` | [DEPRECATED — use edit_pattern({ mode: "insert" }) instead] Insert code at specific line |
-| `replace` | [DEPRECATED — use edit_pattern({ mode: "replace" }) instead] Replace pattern section |
 
 </details>
 
-<details><summary><strong>Playback</strong> (6)</summary>
+<details><summary><strong>Playback</strong> (2)</summary>
 
 | Tool | Description |
 |------|-------------|
-| `status` | [DEPRECATED — use diagnostics({ level: "status" }) instead] Get current browser and playback status (quick state check) |
-| `clear` | [DEPRECATED — use edit_pattern({ mode: "clear" }) instead] Clear the editor |
-| `play` | [DEPRECATED — use playback({ action: "play" }) instead] Start playing pattern |
-| `pause` | [DEPRECATED — use playback({ action: "pause" }) instead] Pause playback |
-| `stop` | [DEPRECATED — use playback({ action: "stop" }) instead] Stop playback |
+| `playback` | Control transport on the current session.  |
 | `set_tempo` | Set BPM |
 
 </details>
 
-<details><summary><strong>Storage</strong> (3)</summary>
+<details><summary><strong>Storage</strong> (1)</summary>
 
 | Tool | Description |
 |------|-------------|
-| `save` | [DEPRECATED — use pattern_store({ action: "save" }) instead] Save pattern with metadata |
-| `load` | [DEPRECATED — use pattern_store({ action: "load" }) instead] Load saved pattern |
-| `list` | [DEPRECATED — use pattern_store({ action: "list" }) instead] List saved patterns |
+| `pattern_store` | Persist patterns to disk and read them back.  |
 
 </details>
 
-<details><summary><strong>History</strong> (4)</summary>
+<details><summary><strong>History</strong> (1)</summary>
 
 | Tool | Description |
 |------|-------------|
-| `undo` | [DEPRECATED — use history({ action: "undo" }) instead] Undo last action |
-| `redo` | [DEPRECATED — use history({ action: "redo" }) instead] Redo action |
-| `list_history` | [DEPRECATED — use history({ action: "list" }) instead] List recent pattern history with timestamps and previews |
-| `restore_history` | [DEPRECATED — use history({ action: "restore" }) instead] Restore a previous pattern from history by ID |
+| `history` | Navigate or inspect the pattern edit history.  |
 
 </details>
 
-<details><summary><strong>Generation</strong> (8)</summary>
+<details><summary><strong>Generation</strong> (3)</summary>
 
 | Tool | Description |
 |------|-------------|
 | `compose` | Generate, write, and play a complete pattern in one step. Auto-initializes default browser if needed. |
-| `generate_pattern` | [DEPRECATED — use compose instead, which auto-inits and returns richer metadata] Generate complete pattern from style with optional auto-play. |
-| `generate_drums` | [DEPRECATED — use generate_part({ role: "drums" }) instead] Generate drum pattern |
-| `generate_bassline` | [DEPRECATED — use generate_part({ role: "bass" }) instead] Generate bassline |
-| `generate_melody` | [DEPRECATED — use generate_part({ role: "melody" }) instead] Generate melody from scale |
-| `generate_polyrhythm` | [DEPRECATED — use generate_rhythm({ type: "polyrhythm" }) instead] Generate polyrhythm |
-| `generate_fill` | [DEPRECATED — use generate_part({ role: "fill" }) instead] Generate drum fill |
-| `generate_variation` | [DEPRECATED — use transform({ op: "vary" }) instead] Create pattern variations (mis-named today; it transforms, not generates) |
+| `generate_part` | Generate a single instrumental layer and append it to the current session pattern.  |
+| `generate_rhythm` | Generate a rhythmic pattern and append it to the current session.  |
 
 </details>
 
-<details><summary><strong>Music Theory</strong> (4)</summary>
+<details><summary><strong>Music Theory</strong> (1)</summary>
 
 | Tool | Description |
 |------|-------------|
-| `generate_scale` | [DEPRECATED — use music_theory({ query: "scale" }) instead] Generate scale notes |
-| `generate_chord_progression` | [DEPRECATED — use music_theory({ query: "chord_progression" }) instead] Generate chord progression |
-| `generate_euclidean` | [DEPRECATED — use generate_rhythm({ type: "euclidean" }) instead] Generate Euclidean rhythm |
-| `apply_scale` | [DEPRECATED — use transform({ op: "scale" }) instead] Apply scale to notes |
+| `music_theory` | Music-theory queries.  |
 
 </details>
 
-<details><summary><strong>Transform</strong> (9)</summary>
+<details><summary><strong>Transform</strong> (3)</summary>
 
 | Tool | Description |
 |------|-------------|
-| `transpose` | [DEPRECATED — use transform({ op: "transpose" }) instead] Transpose notes by semitones |
-| `reverse` | [DEPRECATED — use transform({ op: "reverse" }) instead] Reverse pattern |
-| `stretch` | [DEPRECATED — use transform({ op: "stretch" }) instead] Time stretch pattern |
-| `quantize` | [DEPRECATED — use transform({ op: "quantize" }) instead] Quantize to grid |
-| `humanize` | [DEPRECATED — use transform({ op: "humanize" }) instead] Add human timing variation |
-| `add_effect` | [DEPRECATED — use effect({ action: "add" }) instead] Add effect to pattern |
-| `remove_effect` | [DEPRECATED — use effect({ action: "remove" }) instead] Remove effect |
-| `add_swing` | [DEPRECATED — use transform({ op: "swing" }) instead] Add swing to pattern |
-| `set_energy` | [DEPRECATED — use shape({ dimension: "energy" }) instead] Adjust energy level 0-10. Auto-plays after applying. |
+| `transform` | Apply a single transform op to the current session pattern.  |
+| `effect` | Add or remove a Strudel effect on the current session pattern.  |
+| `shape` | Shape the current pattern along one of three high-level dimensions.  |
 
 </details>
 
-<details><summary><strong>AI</strong> (4)</summary>
+<details><summary><strong>AI</strong> (1)</summary>
 
 | Tool | Description |
 |------|-------------|
-| `get_pattern_feedback` | [DEPRECATED — use ai_assist({ task: "feedback" }) instead] Get AI-powered creative feedback on the current pattern using Google Gemini. |
-| `jam_with` | [DEPRECATED — use ai_assist({ task: "jam" }) instead] AI generates a complementary layer to jam with your pattern. |
-| `shift_mood` | [DEPRECATED — use shape({ dimension: "mood" }) instead] Transform current pattern to match a different emotional mood. Moods: dark, euphoric, melancholic, aggressive, dreamy, peaceful, energetic. |
-| `refine` | [DEPRECATED — use shape({ dimension: "refine" }) instead] Incrementally refine current pattern: faster/slower/louder/quieter/brighter/darker/"more reverb"/drier. |
+| `ai_assist` | Gemini-backed pattern assistance.  |
 
 </details>
 
-<details><summary><strong>Analysis</strong> (7)</summary>
+<details><summary><strong>Analysis</strong> (6)</summary>
 
 | Tool | Description |
 |------|-------------|
 | `analyze` | Audio analysis on the currently-playing pattern.  |
-| `analyze_spectrum` | [DEPRECATED — use analyze({ include: ["spectrum"] }) instead] FFT spectrum analysis |
-| `analyze_rhythm` | [DEPRECATED — use analyze({ include: ["rhythm"] }) instead] Rhythm analysis |
-| `detect_tempo` | [DEPRECATED — use analyze({ include: ["tempo"] }) instead] BPM detection |
-| `detect_key` | [DEPRECATED — use analyze({ include: ["key"] }) instead] Key detection |
 | `validate_pattern_runtime` | Validate pattern with runtime error checking (monitors Strudel console for errors) |
-| `compare_patterns` | [DEPRECATED — use history({ action: "compare" }) instead] Compare two patterns from history showing differences |
+| `validate_pattern_local` | Validate pattern syntax against the in-process StrudelEngine (no browser required) |
+| `analyze_pattern_local` | Static analysis (events/cycle, complexity, optional BPM) without browser playback |
+| `query_pattern_events` | Enumerate events the pattern would emit between two cycle indices (max 16 cycles) |
+| `transpile_pattern` | Transpile pattern source via StrudelEngine; returns transpiled code or syntax error |
 
 </details>
 
-<details><summary><strong>Session</strong> (4)</summary>
+<details><summary><strong>Session</strong> (1)</summary>
 
 | Tool | Description |
 |------|-------------|
-| `create_session` | [DEPRECATED — use session({ action: "create" }) instead] Create a new isolated Strudel browser session. |
-| `destroy_session` | [DEPRECATED — use session({ action: "destroy" }) instead] Close and destroy a Strudel session. |
-| `list_sessions` | [DEPRECATED — use session({ action: "list" }) instead] List all active Strudel sessions. |
-| `switch_session` | [DEPRECATED — use session({ action: "switch" }) instead] Change the default session. |
+| `session` | Manage isolated Strudel browser sessions (multi-session, #108).  |
 
 </details>
 
@@ -340,59 +307,27 @@ Then ask Claude:
 | Tool | Description |
 |------|-------------|
 | `export_midi` | Export current pattern to MIDI file. Parses note(), n(), and chord() functions. |
-| `screenshot` | [DEPRECATED — use browser_window({ action: "screenshot" }) instead] Take a screenshot of the current Strudel editor state |
-
-</details>
-
-<details><summary><strong>Audio</strong> (3)</summary>
-
-| Tool | Description |
-|------|-------------|
-| `start_audio_capture` | [DEPRECATED — use audio_capture({ action: "start" }) instead] Start capturing audio. Audio must be playing. |
-| `stop_audio_capture` | [DEPRECATED — use audio_capture({ action: "stop" }) instead] Stop audio capture and return base64-encoded audio. |
-| `capture_audio_sample` | [DEPRECATED — use audio_capture({ action: "sample" }) instead] Capture a fixed-duration audio sample. |
-
-</details>
-
-<details><summary><strong>Debug</strong> (5)</summary>
-
-| Tool | Description |
-|------|-------------|
-| `show_browser` | [DEPRECATED — use browser_window({ action: "show" }) instead] Bring browser window to foreground |
-| `diagnostics` | Inspect server and browser state.  |
-| `show_errors` | [DEPRECATED — use diagnostics({ level: "errors" }) instead] Display captured console errors and warnings from Strudel |
-| `performance_report` | [DEPRECATED — use diagnostics({ level: "perf" }) instead] Get performance metrics and bottlenecks |
-| `memory_usage` | [DEPRECATED — use diagnostics({ level: "memory" }) instead] Get current memory usage statistics |
-
-</details>
-
-<details><summary><strong>Other</strong> (19)</summary>
-
-| Tool | Description |
-|------|-------------|
-| `ai_assist` | Gemini-backed pattern assistance.  |
-| `suggest_pattern_from_audio` | [DEPRECATED — use ai_assist({ task: "suggest" }) instead] Analyze playing audio and suggest a complementary Strudel pattern. |
-| `validate_pattern_local` | Validate pattern syntax against the in-process StrudelEngine (no browser required) |
-| `analyze_pattern_local` | Static analysis (events/cycle, complexity, optional BPM) without browser playback |
-| `query_pattern_events` | Enumerate events the pattern would emit between two cycle indices (max 16 cycles) |
-| `transpile_pattern` | Transpile pattern source via StrudelEngine; returns transpiled code or syntax error |
-| `audio_capture` | Record audio output from the live Strudel session.  |
 | `browser_window` | Interact with the visible Strudel browser window.  |
-| `edit_pattern` | Mutate the current session pattern.  |
-| `generate_part` | Generate a single instrumental layer and append it to the current session pattern.  |
-| `music_theory` | Music-theory queries.  |
-| `generate_rhythm` | Generate a rhythmic pattern and append it to the current session.  |
-| `history` | Navigate or inspect the pattern edit history.  |
-| `playback` | Control transport on the current session.  |
-| `session` | Manage isolated Strudel browser sessions (multi-session, #108).  |
-| `pattern_store` | Persist patterns to disk and read them back.  |
-| `transform` | Apply a single transform op to the current session pattern.  |
-| `effect` | Add or remove a Strudel effect on the current session pattern.  |
-| `shape` | Shape the current pattern along one of three high-level dimensions.  |
 
 </details>
 
-_Auto-generated from source. 84 tools registered._
+<details><summary><strong>Audio</strong> (1)</summary>
+
+| Tool | Description |
+|------|-------------|
+| `audio_capture` | Record audio output from the live Strudel session.  |
+
+</details>
+
+<details><summary><strong>Debug</strong> (1)</summary>
+
+| Tool | Description |
+|------|-------------|
+| `diagnostics` | Inspect server and browser state.  |
+
+</details>
+
+_Auto-generated from source. 26 tools registered._
 
 <!-- TOOLS:END -->
 
@@ -682,7 +617,7 @@ The Strudel MCP Server is built with a modular architecture that separates conce
 #### 1. **StrudelMCPServer** (`src/server/server.ts`, ~510 lines)
 
 Thin MCP dispatcher that:
-- Aggregates 84 tool definitions from the per-domain modules in `src/server/tools/` (84 = 26 consolidated tools + 58 deprecated aliases; -58 once #178 lands)
+- Aggregates 26 tool definitions from the per-domain modules in `src/server/tools/`
 - Routes `tools/call` requests to the right module's `execute()`
 - Wraps every response in the discriminated result envelope (`{ ok, errorCategory, isRetryable, ... }`)
 - Tracks initialization, per-session history bundles, per-session audio capture services
@@ -1546,7 +1481,7 @@ npm run build
 # Check if server responds
 echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | node dist/index.js
 
-# Should return JSON with 84 tools (post-v3.0; ~26 after #178 alias removal)
+# Should return JSON with 26 tools
 
 # Reinstall MCP server in Claude
 claude mcp remove strudel
@@ -1725,6 +1660,6 @@ Earlier versions of this package (including `@williamzujkowski/strudel-mcp-serve
 
 ---
 
-**v3.0.0** — Open source, AGPL-3.0-or-later, experimental | [Report issues](https://github.com/williamzujkowski/live-coding-music-mcp/issues) | [Contribute](https://github.com/williamzujkowski/live-coding-music-mcp/pulls)
+**v4.0.0** — Open source, AGPL-3.0-or-later, experimental | [Report issues](https://github.com/williamzujkowski/live-coding-music-mcp/issues) | [Contribute](https://github.com/williamzujkowski/live-coding-music-mcp/pulls)
 
 *This project is under active development. Core features work, but expect bugs and breaking changes. Not recommended for production use.*

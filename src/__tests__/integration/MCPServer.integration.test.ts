@@ -73,60 +73,42 @@ describe('MCP Server Integration Tests', () => {
       const tools = serverAny.getTools();
 
       expect(Array.isArray(tools)).toBe(true);
-      expect(tools.length).toBeGreaterThan(40);
+      expect(tools.length).toBeGreaterThanOrEqual(26);
 
       const toolNames = tools.map((t: any) => t.name);
 
       // Core Control Tools
       expect(toolNames).toContain('init');
-      expect(toolNames).toContain('write');
-      expect(toolNames).toContain('play');
-      expect(toolNames).toContain('stop');
-      expect(toolNames).toContain('pause');
-      expect(toolNames).toContain('clear');
+      expect(toolNames).toContain('playback'); // play/pause/stop
       expect(toolNames).toContain('get_pattern');
 
-      // Pattern Editing
-      expect(toolNames).toContain('append');
-      expect(toolNames).toContain('insert');
-      expect(toolNames).toContain('replace');
+      // Pattern Editing (write/append/insert/replace/clear consolidated)
+      expect(toolNames).toContain('edit_pattern');
 
       // Pattern Generation
-      expect(toolNames).toContain('generate_pattern');
-      expect(toolNames).toContain('generate_drums');
-      expect(toolNames).toContain('generate_bassline');
-      expect(toolNames).toContain('generate_melody');
-      expect(toolNames).toContain('generate_variation');
+      expect(toolNames).toContain('compose'); // was generate_pattern
+      expect(toolNames).toContain('generate_part'); // drums/bass/melody/fill
 
       // Music Theory
-      expect(toolNames).toContain('generate_scale');
-      expect(toolNames).toContain('generate_chord_progression');
-      expect(toolNames).toContain('generate_euclidean');
-      expect(toolNames).toContain('generate_polyrhythm');
-      expect(toolNames).toContain('generate_fill');
+      expect(toolNames).toContain('music_theory'); // scale/chord_progression
+      expect(toolNames).toContain('generate_rhythm'); // euclidean/polyrhythm
 
-      // Audio Analysis
+      // Audio Analysis (spectrum/rhythm/tempo/key consolidated)
       expect(toolNames).toContain('analyze');
-      expect(toolNames).toContain('analyze_spectrum');
-      expect(toolNames).toContain('detect_tempo');
 
-      // Effects
-      expect(toolNames).toContain('add_effect');
-      expect(toolNames).toContain('remove_effect');
+      // Effects / Transforms
+      expect(toolNames).toContain('effect'); // add/remove effect
       expect(toolNames).toContain('set_tempo');
-      expect(toolNames).toContain('add_swing');
-      expect(toolNames).toContain('apply_scale');
+      expect(toolNames).toContain('transform'); // swing/scale/transpose/etc.
 
-      // Session Management
-      expect(toolNames).toContain('save');
-      expect(toolNames).toContain('load');
-      expect(toolNames).toContain('list');
-      expect(toolNames).toContain('undo');
-      expect(toolNames).toContain('redo');
+      // Pattern storage (save/load/list consolidated)
+      expect(toolNames).toContain('pattern_store');
 
-      // Performance
-      expect(toolNames).toContain('performance_report');
-      expect(toolNames).toContain('memory_usage');
+      // History (undo/redo/list_history/etc.)
+      expect(toolNames).toContain('history');
+
+      // Diagnostics (status/errors/perf/memory consolidated)
+      expect(toolNames).toContain('diagnostics');
     });
 
     test('should have valid tool schemas', () => {
@@ -147,36 +129,36 @@ describe('MCP Server Integration Tests', () => {
       const serverAny = server as any;
       const tools = serverAny.getTools();
 
-      const writeTool = tools.find((t: any) => t.name === 'write');
-      expect(writeTool).toBeDefined();
-      expect(writeTool.inputSchema.properties).toHaveProperty('pattern');
-      expect(writeTool.inputSchema.required).toContain('pattern');
+      const editTool = tools.find((t: any) => t.name === 'edit_pattern');
+      expect(editTool).toBeDefined();
+      expect(editTool.inputSchema.properties).toHaveProperty('pattern');
+      expect(editTool.inputSchema.properties).toHaveProperty('mode'); // mode defaults to 'write', not required
 
-      const generatePatternTool = tools.find((t: any) => t.name === 'generate_pattern');
-      expect(generatePatternTool).toBeDefined();
-      expect(generatePatternTool.inputSchema.properties).toHaveProperty('style');
-      expect(generatePatternTool.inputSchema.required).toContain('style');
+      const composeTool = tools.find((t: any) => t.name === 'compose');
+      expect(composeTool).toBeDefined();
+      expect(composeTool.inputSchema.properties).toHaveProperty('style');
+      expect(composeTool.inputSchema.required).toContain('style');
 
-      const saveTool = tools.find((t: any) => t.name === 'save');
-      expect(saveTool).toBeDefined();
-      expect(saveTool.inputSchema.properties).toHaveProperty('name');
-      expect(saveTool.inputSchema.required).toContain('name');
+      const storeTool = tools.find((t: any) => t.name === 'pattern_store');
+      expect(storeTool).toBeDefined();
+      expect(storeTool.inputSchema.properties).toHaveProperty('name');
+      expect(storeTool.inputSchema.required).toContain('action');
     });
   });
 
   describe('Tool Execution Logic', () => {
-    test('write tool refuses without init', async () => {
+    test('edit_pattern tool refuses without init', async () => {
       const serverAny = server as any;
       // requiresInitialization() was removed (#141/#108). Each module's
       // execute() now does its own session-aware init check.
-      const result = await serverAny.executeTool('write', { pattern: 's("bd")' });
+      const result = await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: 's("bd")' });
       expect(typeof result === 'string' && result.includes('not initialized')).toBe(true);
     });
 
     test('music theory tools run without browser', async () => {
       const serverAny = server as any;
-      // generate_scale is pure music theory and returns scale notes directly.
-      const result = await serverAny.executeTool('generate_scale', { root: 'C', scale: 'major' });
+      // music_theory query=scale is pure music theory and returns scale notes directly.
+      const result = await serverAny.executeTool('music_theory', { query: 'scale', root: 'C', scale: 'major' });
       expect(typeof result).toBe('string');
       expect(result).toContain('C, D, E, F, G, A, B');
     });
@@ -184,7 +166,8 @@ describe('MCP Server Integration Tests', () => {
     test('should execute music theory tools without browser', async () => {
       const serverAny = server as any;
 
-      const scaleResult = await serverAny.executeTool('generate_scale', {
+      const scaleResult = await serverAny.executeTool('music_theory', {
+        query: 'scale',
         root: 'C',
         scale: 'major'
       });
@@ -196,7 +179,8 @@ describe('MCP Server Integration Tests', () => {
     test('should execute pattern generation tools', async () => {
       const serverAny = server as any;
 
-      const patternResult = await serverAny.executeTool('generate_drums', {
+      const patternResult = await serverAny.executeTool('generate_part', {
+        role: 'drums',
         style: 'techno',
         complexity: 0.5
       });
@@ -254,7 +238,8 @@ describe('MCP Server Integration Tests', () => {
       );
 
       // executeTool propagates errors thrown by controller
-      await expect(serverAny.executeTool('write', {
+      await expect(serverAny.executeTool('edit_pattern', {
+        mode: 'write',
         pattern: 's("bd*4")'
       })).rejects.toThrow('Write failed');
     });
@@ -262,8 +247,8 @@ describe('MCP Server Integration Tests', () => {
     test('should validate tool inputs', async () => {
       const serverAny = server as any;
 
-      // When browser is not initialized, write returns initialization message before validation
-      const result1 = await serverAny.executeTool('write', {});
+      // When browser is not initialized, edit_pattern returns initialization message before validation
+      const result1 = await serverAny.executeTool('edit_pattern', { mode: 'write' });
       // Post-#108: each module's execute() returns its own init-refusal message.
       expect(result1).toContain('not initialized');
 
@@ -271,7 +256,7 @@ describe('MCP Server Integration Tests', () => {
       serverAny.isInitialized = true;
 
       // Now InputValidator.validateStringLength should throw error for missing pattern
-      await expect(serverAny.executeTool('write', {}))
+      await expect(serverAny.executeTool('edit_pattern', { mode: 'write' }))
         .rejects.toThrow();
     });
   });
@@ -280,22 +265,30 @@ describe('MCP Server Integration Tests', () => {
     test('should generate complete pattern', async () => {
       const serverAny = server as any;
 
-      const result = await serverAny.executeTool('generate_pattern', {
+      // compose returns an object (not a string) and auto-inits/auto-plays.
+      const result = await serverAny.executeTool('compose', {
         style: 'techno',
         key: 'C',
-        bpm: 130
+        tempo: 130
       });
 
-      expect(result).toBe('Generated techno pattern');
+      expect(result).toMatchObject({
+        success: true,
+        metadata: { style: 'techno', key: 'C', bpm: 130 },
+      });
+      expect(typeof result.pattern).toBe('string');
     });
 
     test('should generate and apply variations', async () => {
       const serverAny = server as any;
+      // transform requires an initialized browser.
+      serverAny.isInitialized = true;
 
-      await serverAny.executeTool('generate_drums', { style: 'house', complexity: 0.5 });
+      await serverAny.executeTool('generate_part', { role: 'drums', style: 'house', complexity: 0.5 });
 
-      const varied = await serverAny.executeTool('generate_variation', {
-        variationType: 'subtle'
+      const varied = await serverAny.executeTool('transform', {
+        op: 'vary',
+        type: 'subtle'
       });
 
       // Variation should be applied to last generated pattern
@@ -309,7 +302,8 @@ describe('MCP Server Integration Tests', () => {
       const scaleTypes = ['major', 'minor', 'dorian', 'pentatonic', 'blues'];
 
       for (const scaleType of scaleTypes) {
-        const result = await serverAny.executeTool('generate_scale', {
+        const result = await serverAny.executeTool('music_theory', {
+          query: 'scale',
           root: 'C',
           scale: scaleType
         });
@@ -324,7 +318,8 @@ describe('MCP Server Integration Tests', () => {
       const styles = ['pop', 'jazz', 'blues', 'rock'];
 
       for (const style of styles) {
-        const result = await serverAny.executeTool('generate_chord_progression', {
+        const result = await serverAny.executeTool('music_theory', {
+          query: 'chord_progression',
           key: 'C',
           style
         });
@@ -336,7 +331,8 @@ describe('MCP Server Integration Tests', () => {
     test('should generate Euclidean rhythms', async () => {
       const serverAny = server as any;
 
-      const result = await serverAny.executeTool('generate_euclidean', {
+      const result = await serverAny.executeTool('generate_rhythm', {
+        type: 'euclidean',
         hits: 5,
         steps: 8,
         sound: 'bd'
@@ -348,7 +344,8 @@ describe('MCP Server Integration Tests', () => {
     test('should generate polyrhythms', async () => {
       const serverAny = server as any;
 
-      const result = await serverAny.executeTool('generate_polyrhythm', {
+      const result = await serverAny.executeTool('generate_rhythm', {
+        type: 'polyrhythm',
         sounds: ['bd', 'cp', 'hh'],
         patterns: [3, 5, 7]
       });
@@ -364,7 +361,8 @@ describe('MCP Server Integration Tests', () => {
       expect(serverAny.perfMonitor).toBeDefined();
 
       // Execute a tool
-      await serverAny.executeTool('generate_scale', {
+      await serverAny.executeTool('music_theory', {
+        query: 'scale',
         root: 'C',
         scale: 'major'
       });
@@ -377,7 +375,7 @@ describe('MCP Server Integration Tests', () => {
     test('should generate performance reports', async () => {
       const serverAny = server as any;
 
-      const report = await serverAny.executeTool('performance_report', {});
+      const report = await serverAny.executeTool('diagnostics', { level: 'perf' });
 
       expect(report).toBeTruthy();
       expect(typeof report).toBe('string');
@@ -386,7 +384,7 @@ describe('MCP Server Integration Tests', () => {
     test('should track memory usage', async () => {
       const serverAny = server as any;
 
-      const memory = await serverAny.executeTool('memory_usage', {});
+      const memory = await serverAny.executeTool('diagnostics', { level: 'memory' });
 
       expect(memory).toBeTruthy();
     });
@@ -397,7 +395,8 @@ describe('MCP Server Integration Tests', () => {
       const serverAny = server as any;
       const logSpy = jest.spyOn(serverAny.logger, 'info');
 
-      await serverAny.executeTool('generate_scale', {
+      await serverAny.executeTool('music_theory', {
+        query: 'scale',
         root: 'C',
         scale: 'major'
       });
@@ -417,7 +416,7 @@ describe('MCP Server Integration Tests', () => {
       );
 
       try {
-        await serverAny.executeTool('write', { pattern: 's("bd*4")' });
+        await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
       } catch (e) {
         // Expected - error propagates from executeTool
       }

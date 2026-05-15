@@ -2,6 +2,44 @@
 
 All notable changes to this MCP server will be documented in this file.
 
+## [4.0.0] — remove deprecated tool aliases
+
+The deprecation window opened by the #120 tool consolidation in `3.0.0` is now closed. The 58 legacy verb aliases that forwarded to the consolidated tools have been removed (#178).
+
+### Breaking
+
+- **58 deprecated tool aliases removed (#178).** They were marked `[DEPRECATED]` and forwarded to consolidated tools throughout the `3.0.x` line; calling them now returns an error. `tools/list` drops from 84 to 26. Migrate to the consolidated form:
+  - `write`/`append`/`insert`/`replace`/`clear` → `edit_pattern({ mode })`
+  - `play`/`pause`/`stop` → `playback({ action })`
+  - `save`/`load`/`list` → `pattern_store({ action })`
+  - `status`/`show_errors`/`performance_report`/`memory_usage` → `diagnostics({ level })`
+  - `screenshot`/`show_browser` → `browser_window({ action })`
+  - `undo`/`redo`/`list_history`/`restore_history`/`compare_patterns` → `history({ action })`
+  - `analyze_spectrum`/`analyze_rhythm`/`detect_tempo`/`detect_key` → `analyze({ include: [...] })`
+  - `transpose`/`reverse`/`stretch`/`quantize`/`humanize`/`generate_variation`/`add_swing`/`apply_scale` → `transform({ op })`
+  - `add_effect`/`remove_effect` → `effect({ action })`
+  - `shift_mood`/`set_energy`/`refine` → `shape({ dimension })`
+  - `generate_drums`/`generate_bassline`/`generate_melody`/`generate_fill` → `generate_part({ role })`
+  - `generate_scale`/`generate_chord_progression` → `music_theory({ query })`
+  - `generate_euclidean`/`generate_polyrhythm` → `generate_rhythm({ type })`
+  - `start_audio_capture`/`stop_audio_capture`/`capture_audio_sample` → `audio_capture({ action })`
+  - `create_session`/`destroy_session`/`list_sessions`/`switch_session` → `session({ action })`
+  - `get_pattern_feedback`/`suggest_pattern_from_audio`/`jam_with` → `ai_assist({ task })`
+  - `generate_pattern` → `compose` (note: `compose` auto-inits, auto-plays by default, and returns a structured object instead of a string; the `bpm` arg is `tempo`)
+
+### Changed
+
+- Tool module headers, the `transform` tool description, and the `generate-tool-docs.ts` category map no longer reference the removed aliases.
+- Test suite migrated off the alias names onto the consolidated tools; the per-module "legacy aliases forward" test blocks added in `3.0.0` are removed since there are no aliases left to forward.
+
+### Numbers
+
+- **26 tools** in `tools/list` (down from 84 — the 58 aliases are gone)
+- **4 MCP resources** (unchanged)
+- **1709 tests** pass, 20 skipped (browser, skipped in CI), 0 fail
+- **0 lint errors**
+- Net **−1100 lines** across 43 files (58 tool defs + their case branches + the per-module alias test blocks)
+
 ## [3.0.0] — multi-session, MCP resources, result envelope, tool consolidation
 
 The biggest release since the rename. Everything in `2.0.x` still works during a deprecation window, but the protocol-visible response shape changed (see Breaking below).

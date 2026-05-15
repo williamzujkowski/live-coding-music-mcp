@@ -122,30 +122,4 @@ describe('pattern_store consolidation (#143)', () => {
       await expect(execute('pattern_store', { action: 'delete' }, ctx)).rejects.toThrow(/Invalid action/);
     });
   });
-
-  describe('legacy aliases still forward (deprecation window)', () => {
-    it('save alias produces identical result to pattern_store(action=save)', async () => {
-      const { ctx: ctxA, store: storeA } = makeCtx();
-      const { ctx: ctxB, store: storeB } = makeCtx();
-      const aliasResult = await execute('save', { name: 'x', tags: ['t'] }, ctxA);
-      const newResult = await execute('pattern_store', { action: 'save', name: 'x', tags: ['t'] }, ctxB);
-      expect(aliasResult).toEqual(newResult);
-      expect(storeA.save).toHaveBeenCalledWith('x', 's("bd hh")', ['t']);
-      expect(storeB.save).toHaveBeenCalledWith('x', 's("bd hh")', ['t']);
-    });
-
-    it('load alias forwards', async () => {
-      const { ctx, store } = makeCtx();
-      await store.save('y', 'pat', []);
-      const result = await execute('load', { name: 'y' }, ctx);
-      expect(result).toBe('Loaded pattern "y"');
-    });
-
-    it('list alias forwards', async () => {
-      const { ctx, store } = makeCtx();
-      await store.save('z', 'pat', ['tag1']);
-      const result = await execute('list', { tag: 'tag1' }, ctx);
-      expect(result as string).toContain('z');
-    });
-  });
 });

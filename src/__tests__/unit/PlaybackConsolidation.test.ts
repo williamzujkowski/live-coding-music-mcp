@@ -53,13 +53,4 @@ describe('playback consolidation (#152)', () => {
     const result = await execute('playback', { action: 'play' }, ctx);
     expect(result).toContain('not initialized');
   });
-
-  describe('legacy aliases forward', () => {
-    it.each(['play', 'pause', 'stop'])('%s alias forwards', async (name) => {
-      const { ctx, controller } = makeCtx();
-      await execute(name, {}, ctx);
-      const expected = name === 'play' ? controller.play : controller.stop;
-      expect(expected).toHaveBeenCalledTimes(1);
-    });
-  });
 });

@@ -310,10 +310,10 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
       const serverAny = server as any;
 
       // First write a pattern
-      await serverAny.executeTool('write', { pattern: 's("bd*4 sd:2").fast(2)' });
+      await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4 sd:2").fast(2)' });
 
       // Get feedback
-      const result = await serverAny.executeTool('get_pattern_feedback', {});
+      const result = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.gemini_available).toBe(true);
       expect(result.pattern_analysis).toBeDefined();
@@ -327,8 +327,8 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
       const serverAny = server as any;
       const testPattern = 'note("c4 e4 g4").s("piano")';
 
-      await serverAny.executeTool('write', { pattern: testPattern });
-      await serverAny.executeTool('get_pattern_feedback', {});
+      await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: testPattern });
+      await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
       expect(mockGeminiService.getCreativeFeedback).toHaveBeenCalledWith(testPattern);
     }, MOCKED_TEST_TIMEOUT);
@@ -336,8 +336,9 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
     it('should handle style hint parameter', async () => {
       const serverAny = server as any;
 
-      await serverAny.executeTool('write', { pattern: 's("bd*4")' });
-      const result = await serverAny.executeTool('get_pattern_feedback', {
+      await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
+      const result = await serverAny.executeTool('ai_assist', {
+        task: 'feedback',
         style: 'techno'
       });
 
@@ -349,7 +350,7 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
       const serverAny = server as any;
 
       // Don't write any pattern (currentPattern is '')
-      const result = await serverAny.executeTool('get_pattern_feedback', {});
+      const result = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.error).toBeDefined();
       expect(result.error.toLowerCase()).toContain('pattern');
@@ -386,7 +387,7 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
       const serverAny = server as any;
       await serverAny.executeTool('init', {});
 
-      const result = await serverAny.executeTool('get_pattern_feedback', {});
+      const result = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.gemini_available).toBe(false);
       expect(result.error).toBeDefined();
@@ -419,13 +420,13 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
     it('get_pattern_feedback should handle rate limits gracefully', async () => {
       const serverAny = server as any;
       await serverAny.executeTool('init', {});
-      await serverAny.executeTool('write', { pattern: 's("bd*4")' });
+      await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
 
       mockGeminiService.getCreativeFeedback.mockRejectedValue(
         new Error('Rate limit exceeded')
       );
 
-      const result = await serverAny.executeTool('get_pattern_feedback', {});
+      const result = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.gemini_available).toBe(true);
       expect(result.error).toBeDefined();
@@ -435,13 +436,13 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
     it('get_pattern_feedback should handle network errors', async () => {
       const serverAny = server as any;
       await serverAny.executeTool('init', {});
-      await serverAny.executeTool('write', { pattern: 's("bd*4")' });
+      await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
 
       mockGeminiService.getCreativeFeedback.mockRejectedValue(
         new Error('Network error')
       );
 
-      const result = await serverAny.executeTool('get_pattern_feedback', {});
+      const result = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
       expect(result.error).toBeDefined();
       expect(result.error).toContain('Network error');
@@ -486,9 +487,9 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
     it('get_pattern_feedback should match expected structure', async () => {
       const serverAny = server as any;
       await serverAny.executeTool('init', {});
-      await serverAny.executeTool('write', { pattern: 's("bd*4")' });
+      await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
 
-      const result = await serverAny.executeTool('get_pattern_feedback', {});
+      const result = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
       expect(result).toEqual(expect.objectContaining({
         gemini_available: true,
@@ -565,7 +566,7 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
       });
 
       // Get feedback on the composed pattern
-      const feedbackResult = await serverAny.executeTool('get_pattern_feedback', {});
+      const feedbackResult = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
       expect(feedbackResult.gemini_available).toBe(true);
       expect(feedbackResult.pattern_analysis).toBeDefined();
@@ -579,14 +580,14 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
       const pattern1 = 's("bd*4")';
       const pattern2 = 'note("c4 e4 g4")';
 
-      await serverAny.executeTool('write', { pattern: pattern1 });
-      await serverAny.executeTool('get_pattern_feedback', {});
+      await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: pattern1 });
+      await serverAny.executeTool('ai_assist', { task: 'feedback' });
       expect(mockGeminiService.getCreativeFeedback).toHaveBeenCalledWith(pattern1);
 
       mockGeminiService.getCreativeFeedback.mockClear();
 
-      await serverAny.executeTool('write', { pattern: pattern2 });
-      await serverAny.executeTool('get_pattern_feedback', {});
+      await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: pattern2 });
+      await serverAny.executeTool('ai_assist', { task: 'feedback' });
       expect(mockGeminiService.getCreativeFeedback).toHaveBeenCalledWith(pattern2);
     }, MOCKED_TEST_TIMEOUT);
   });
@@ -845,10 +846,10 @@ describe('Performance Testing - Compose + Feedback', () => {
   it('should measure feedback latency independently', async () => {
     const serverAny = server as any;
     await serverAny.executeTool('init', {});
-    await serverAny.executeTool('write', { pattern: 's("bd*4")' });
+    await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
 
     const startTime = Date.now();
-    await serverAny.executeTool('get_pattern_feedback', {});
+    await serverAny.executeTool('ai_assist', { task: 'feedback' });
     const duration = Date.now() - startTime;
 
     // Feedback alone with mocked API should be fast
@@ -929,7 +930,7 @@ describe('Full MCP Flow Integration', () => {
     });
 
     // Step 3: Get additional feedback
-    const feedbackResult = await serverAny.executeTool('get_pattern_feedback', {});
+    const feedbackResult = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
     expect(feedbackResult.gemini_available).toBe(true);
     expect(feedbackResult.pattern_analysis).toBeDefined();
@@ -980,7 +981,7 @@ describe('Full MCP Flow Integration', () => {
     });
 
     // Get feedback for the composed pattern
-    const feedback = await serverAny.executeTool('get_pattern_feedback', {});
+    const feedback = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
     expect(feedback.gemini_available).toBe(true);
     expect(feedback.pattern_analysis).toBeDefined();
@@ -997,14 +998,14 @@ describe('Full MCP Flow Integration', () => {
 
     // Write a pattern
     const testPattern = 's("bd*4 sd:2 hh*8")';
-    await serverAny.executeTool('write', { pattern: testPattern });
+    await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: testPattern });
 
     // Play
-    await serverAny.executeTool('play', {});
+    await serverAny.executeTool('playback', { action: 'play' });
     expect(mockController.play).toHaveBeenCalled();
 
     // Get feedback
-    const feedback = await serverAny.executeTool('get_pattern_feedback', {});
+    const feedback = await serverAny.executeTool('ai_assist', { task: 'feedback' });
     expect(feedback.gemini_available).toBe(true);
     expect(mockGeminiService.getCreativeFeedback).toHaveBeenCalledWith(testPattern);
   }, MOCKED_TEST_TIMEOUT);
@@ -1075,9 +1076,9 @@ describe('Edge Cases and Error Boundaries', () => {
     await serverAny.executeTool('init', {});
 
     const longPattern = 's("bd*4")' + '.sometimes(x => x.fast(2))'.repeat(100);
-    await serverAny.executeTool('write', { pattern: longPattern });
+    await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: longPattern });
 
-    const result = await serverAny.executeTool('get_pattern_feedback', {});
+    const result = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
     expect(result.gemini_available).toBe(true);
     expect(mockGeminiService.getCreativeFeedback).toHaveBeenCalled();
@@ -1088,9 +1089,9 @@ describe('Edge Cases and Error Boundaries', () => {
     await serverAny.executeTool('init', {});
 
     const specialPattern = 's("bd*4 <sd cp>").euclidean(3,8,"r").gain(0.5)';
-    await serverAny.executeTool('write', { pattern: specialPattern });
+    await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: specialPattern });
 
-    const result = await serverAny.executeTool('get_pattern_feedback', {});
+    const result = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
     expect(result.gemini_available).toBe(true);
     expect(mockGeminiService.getCreativeFeedback).toHaveBeenCalledWith(specialPattern);
@@ -1101,9 +1102,9 @@ describe('Edge Cases and Error Boundaries', () => {
     await serverAny.executeTool('init', {});
 
     const unicodePattern = 's("bd*4") // Test with unicode: \u{1F3B5}';
-    await serverAny.executeTool('write', { pattern: unicodePattern });
+    await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: unicodePattern });
 
-    const result = await serverAny.executeTool('get_pattern_feedback', {});
+    const result = await serverAny.executeTool('ai_assist', { task: 'feedback' });
 
     expect(result.gemini_available).toBe(true);
   }, MOCKED_TEST_TIMEOUT);
@@ -1111,13 +1112,13 @@ describe('Edge Cases and Error Boundaries', () => {
   it('should handle concurrent feedback requests', async () => {
     const serverAny = server as any;
     await serverAny.executeTool('init', {});
-    await serverAny.executeTool('write', { pattern: 's("bd*4")' });
+    await serverAny.executeTool('edit_pattern', { mode: 'write', pattern: 's("bd*4")' });
 
     // Make multiple concurrent requests
     const results = await Promise.all([
-      serverAny.executeTool('get_pattern_feedback', {}),
-      serverAny.executeTool('get_pattern_feedback', {}),
-      serverAny.executeTool('get_pattern_feedback', {})
+      serverAny.executeTool('ai_assist', { task: 'feedback' }),
+      serverAny.executeTool('ai_assist', { task: 'feedback' }),
+      serverAny.executeTool('ai_assist', { task: 'feedback' })
     ]);
 
     // All should succeed

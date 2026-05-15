@@ -1,15 +1,7 @@
 /**
  * storage domain — pattern persistence.
  *
- * Owns one consolidated tool (`pattern_store`) plus three deprecated
- * aliases (`save`, `load`, `list`) per the #120 / #143 consolidation.
- *
- * The consolidation also resolves the `list` / `list_sessions` naming
- * collision from #110 — `pattern_store(action='list')` is unambiguous
- * versus `session(action='list')` after the #158 session consolidation.
- *
- * Aliases forward to `pattern_store` and will be removed in a future
- * release per the deprecation policy in #120.
+ * Owns one consolidated tool (`pattern_store`) with save/load/list actions.
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -47,41 +39,6 @@ export const tools: Tool[] = [
         ...SESSION_ID_PROP,
       },
       required: ['action'],
-    },
-  },
-  {
-    name: 'save',
-    description: '[DEPRECATED — use pattern_store({ action: "save" }) instead] Save pattern with metadata',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: 'Pattern name' },
-        tags: { type: 'array', items: { type: 'string' } },
-        ...SESSION_ID_PROP,
-      },
-      required: ['name'],
-    },
-  },
-  {
-    name: 'load',
-    description: '[DEPRECATED — use pattern_store({ action: "load" }) instead] Load saved pattern',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string', description: 'Pattern name' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['name'],
-    },
-  },
-  {
-    name: 'list',
-    description: '[DEPRECATED — use pattern_store({ action: "list" }) instead] List saved patterns',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        tag: { type: 'string', description: 'Filter by tag' },
-      },
     },
   },
 ];
@@ -134,12 +91,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       // Unreachable due to enum check above, but TypeScript wants it.
       return undefined;
     }
-
-    // Aliases — forward to consolidated handler. Kept for ≥1 release per
-    // #120 migration rules; removed afterwards.
-    case 'save': return await doSave(args, ctx, sid);
-    case 'load': return await doLoad(args, ctx, sid);
-    case 'list': return await doList(args, ctx);
 
     default:
       throw new Error(`storage module does not handle tool: ${name}`);

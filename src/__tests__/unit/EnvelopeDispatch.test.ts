@@ -129,7 +129,7 @@ describe('StrudelMCPServer.dispatchToolCall', () => {
 
   it('wraps a raw object return into ok(...)', async () => {
     server.executeTool = jest.fn().mockResolvedValue({ bpm: 174, confidence: 0.92 });
-    const e = await server.dispatchToolCall('detect_tempo', {});
+    const e = await server.dispatchToolCall('analyze', { include: ['tempo'] });
     expect(e).toEqual({ ok: true, data: { bpm: 174, confidence: 0.92 } });
   });
 
@@ -137,7 +137,7 @@ describe('StrudelMCPServer.dispatchToolCall', () => {
     server.executeTool = jest
       .fn()
       .mockResolvedValue('Browser not initialized. Run init first.');
-    const e = await server.dispatchToolCall('play', {});
+    const e = await server.dispatchToolCall('playback', { action: 'play' });
     expect(e).toEqual({
       ok: false,
       errorCategory: 'business',
@@ -148,7 +148,7 @@ describe('StrudelMCPServer.dispatchToolCall', () => {
 
   it('converts legacy "Error: ..." string into err(internal)', async () => {
     server.executeTool = jest.fn().mockResolvedValue('Error: something blew up');
-    const e = await server.dispatchToolCall('write', { pattern: 'x' });
+    const e = await server.dispatchToolCall('edit_pattern', { mode: 'write', pattern: 'x' });
     expect(e).toMatchObject({
       ok: false,
       errorCategory: 'internal',

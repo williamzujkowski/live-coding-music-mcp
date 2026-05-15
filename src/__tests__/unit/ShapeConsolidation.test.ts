@@ -71,30 +71,4 @@ describe('shape consolidation (#154)', () => {
     const { ctx } = makeCtx();
     await expect(execute('shape', { dimension: 'tempo' }, ctx)).rejects.toThrow(/Invalid dimension/);
   });
-
-  describe('legacy aliases forward (deprecation window)', () => {
-    it('shift_mood alias matches shape(dimension=mood)', async () => {
-      const { ctx: a, pattern: pa } = makeCtx();
-      const { ctx: b, pattern: pb } = makeCtx();
-      await execute('shift_mood', { target_mood: 'dreamy' }, a);
-      await execute('shape', { dimension: 'mood', target_mood: 'dreamy' }, b);
-      expect(pa()).toBe(pb());
-    });
-
-    it('set_energy alias matches shape(dimension=energy)', async () => {
-      const { ctx: a, pattern: pa } = makeCtx();
-      const { ctx: b, pattern: pb } = makeCtx();
-      await execute('set_energy', { level: 3 }, a);
-      await execute('shape', { dimension: 'energy', level: 3 }, b);
-      expect(pa()).toBe(pb());
-    });
-
-    it('refine alias matches shape(dimension=refine)', async () => {
-      const { ctx: a, pattern: pa } = makeCtx();
-      const { ctx: b, pattern: pb } = makeCtx();
-      await execute('refine', { direction: 'darker' }, a);
-      await execute('shape', { dimension: 'refine', direction: 'darker' }, b);
-      expect(pa()).toBe(pb());
-    });
-  });
 });

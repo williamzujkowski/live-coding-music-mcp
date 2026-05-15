@@ -2,17 +2,13 @@
  * diagnostics domain — observability tools (browser status, errors,
  * server metrics).
  *
- * Owns one consolidated tool (`diagnostics(level)`) plus four deprecated
- * aliases (`status`, `show_errors`, `performance_report`, `memory_usage`)
- * per #120 / #144.
+ * Owns one consolidated tool (`diagnostics(level)`) with status/full/
+ * perf/memory/errors levels.
  *
  * The `<15ms` SLA on `level='status'` is preserved — that branch only
  * reads from the controller's cache, not the browser. Other levels can
  * touch the browser (`level='full'`) or just inspect server state
  * (`perf`, `memory`).
- *
- * `screenshot` stays separate; it folds into `browser_window` per
- * Phase 3 (#156).
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -37,7 +33,7 @@ export const tools: Tool[] = [
       'level=errors returns captured console errors and warnings from Strudel. ' +
       'Default level=full preserves the pre-consolidation behaviour. ' +
       'Example: diagnostics({ level: "status" }) — millisecond-cheap. ' +
-      'For screenshots use browser_window (Phase 3 / #156); for tool listings use the strudel://docs/tools resource.',
+      'For screenshots use browser_window; for tool listings use the strudel://docs/tools resource.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -46,37 +42,6 @@ export const tools: Tool[] = [
           enum: ['status', 'full', 'perf', 'memory', 'errors'],
           description: 'Which diagnostic surface to read (default: full)',
         },
-        ...SESSION_ID_PROP,
-      },
-    },
-  },
-  {
-    name: 'status',
-    description: '[DEPRECATED — use diagnostics({ level: "status" }) instead] Get current browser and playback status (quick state check)',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'show_errors',
-    description: '[DEPRECATED — use diagnostics({ level: "errors" }) instead] Display captured console errors and warnings from Strudel',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'performance_report',
-    description: '[DEPRECATED — use diagnostics({ level: "perf" }) instead] Get performance metrics and bottlenecks',
-    inputSchema: { type: 'object', properties: {} },
-  },
-  {
-    name: 'memory_usage',
-    description: '[DEPRECATED — use diagnostics({ level: "memory" }) instead] Get current memory usage statistics',
-    inputSchema: { type: 'object', properties: {} },
-  },
-  {
-    name: 'screenshot',
-    description: '[DEPRECATED — use browser_window({ action: "screenshot" }) instead] Take a screenshot of the current Strudel editor state',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        filename: { type: 'string', description: 'Optional filename for screenshot' },
         ...SESSION_ID_PROP,
       },
     },
@@ -143,20 +108,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
         default:
           throw new Error(`Invalid level: ${level}. Must be one of: status, full, perf, memory, errors`);
       }
-    }
-
-    // Deprecated aliases — forward to consolidated handler. Kept for ≥1
-    // release per #120 migration policy.
-    case 'status':              return getStatus(ctx, sid);
-    case 'show_errors':         return getErrors(ctx, sid);
-    case 'performance_report':  return getPerformanceReport(ctx);
-    case 'memory_usage':        return getMemoryUsage(ctx);
-
-    case 'screenshot': {
-      if (!sid && !ctx.isInitialized()) {
-        return 'Browser not initialized. Run init first.';
-      }
-      return await ctx.getController(sid).takeScreenshot(args?.filename);
     }
 
     default:

@@ -106,67 +106,7 @@ describe('transform consolidation (#147)', () => {
     });
   });
 
-  describe('legacy aliases forward (deprecation window)', () => {
-    it('transpose alias matches transform(op=transpose)', async () => {
-      const { ctx: a, pattern: pa } = makeCtx();
-      const { ctx: b, pattern: pb } = makeCtx();
-      await execute('transpose', { semitones: 5 }, a);
-      await execute('transform', { op: 'transpose', semitones: 5 }, b);
-      expect(pa()).toBe(pb());
-    });
-
-    it('reverse alias forwards', async () => {
-      const { ctx, pattern } = makeCtx();
-      await execute('reverse', {}, ctx);
-      expect(pattern()).toBe('note("c3").rev');
-    });
-
-    it('stretch alias forwards', async () => {
-      const { ctx, pattern } = makeCtx();
-      await execute('stretch', { factor: 0.5 }, ctx);
-      expect(pattern()).toContain('.slow(0.5)');
-    });
-
-    it('quantize alias forwards', async () => {
-      const { ctx, pattern } = makeCtx();
-      await execute('quantize', { grid: '1/8' }, ctx);
-      expect(pattern()).toContain('.struct("1/8")');
-    });
-
-    it('humanize alias forwards', async () => {
-      const { ctx, pattern } = makeCtx();
-      await execute('humanize', { amount: 0.02 }, ctx);
-      expect(pattern()).toContain('.nudge');
-    });
-
-    it('generate_variation alias matches transform(op=vary)', async () => {
-      const { ctx: a, pattern: pa } = makeCtx();
-      const { ctx: b, pattern: pb } = makeCtx();
-      await execute('generate_variation', { type: 'evolving' }, a);
-      await execute('transform', { op: 'vary', type: 'evolving' }, b);
-      expect(pa()).toBe(pb());
-    });
-
-    it('add_swing alias forwards', async () => {
-      const { ctx, pattern } = makeCtx();
-      await execute('add_swing', { amount: 0.4 }, ctx);
-      expect(pattern()).toContain('.swing(0.4)');
-    });
-
-    it('apply_scale alias forwards', async () => {
-      const { ctx, pattern } = makeCtx();
-      await execute('apply_scale', { root: 'D', scale: 'dorian' }, ctx);
-      expect(pattern()).toContain('.scale("D:dorian")');
-    });
-  });
-
   describe('untouched tools still work (separate consolidations)', () => {
-    it('add_effect still mutates as before', async () => {
-      const { ctx, pattern } = makeCtx();
-      await execute('add_effect', { effect: 'reverb', params: '0.5' }, ctx);
-      expect(pattern()).toContain('.reverb(0.5)');
-    });
-
     it('set_tempo still prepends setcpm', async () => {
       const { ctx, pattern } = makeCtx();
       await execute('set_tempo', { bpm: 140 }, ctx);

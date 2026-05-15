@@ -82,7 +82,7 @@ export class StrudelMCPServer {
     this.server = new Server(
       {
         name: 'live-coding-music-mcp',
-        version: '3.0.0',
+        version: '4.0.0',
       },
       {
         capabilities: {
@@ -218,10 +218,10 @@ export class StrudelMCPServer {
   private async getCurrentPatternSafe(sessionId?: string): Promise<string> {
     if (sessionId) {
       // Explicit session — strict lookup, no pre-init stash. Named sessions
-      // must be created via `create_session` before they're useful.
+      // must be created via `session({ action: "create" })` before they're useful.
       const sessionController = this.sessionManager.getSession(sessionId);
       if (!sessionController) {
-        throw new Error(`Session '${sessionId}' not found. Create it first with create_session.`);
+        throw new Error(`Session '${sessionId}' not found. Create it first with session({ action: "create" }).`);
       }
       try {
         return await sessionController.getCurrentPattern();
@@ -247,7 +247,7 @@ export class StrudelMCPServer {
     if (sessionId) {
       const sessionController = this.sessionManager.getSession(sessionId);
       if (!sessionController) {
-        throw new Error(`Session '${sessionId}' not found. Create it first with create_session.`);
+        throw new Error(`Session '${sessionId}' not found. Create it first with session({ action: "create" }).`);
       }
       return await sessionController.writePattern(pattern);
     }
@@ -274,7 +274,7 @@ export class StrudelMCPServer {
     if (sessionId) {
       const controller = this.sessionManager.getSession(sessionId);
       if (!controller) {
-        throw new Error(`Session '${sessionId}' not found. Create it first with create_session.`);
+        throw new Error(`Session '${sessionId}' not found. Create it first with session({ action: "create" }).`);
       }
       return controller;
     }
@@ -313,7 +313,7 @@ export class StrudelMCPServer {
     // Save current state for undo and history (#41) before any edit
     // (#179): route to the session-specific bundle. Default session is
     // 'default'; named sessions get their own isolated stacks.
-    if (['write', 'append', 'insert', 'replace', 'clear'].includes(name)) {
+    if (name === 'edit_pattern') {
       const sid: string | undefined = args?.session_id;
       const canRead = sid !== undefined || this.isInitialized;
       if (canRead) {
@@ -328,7 +328,7 @@ export class StrudelMCPServer {
             id: this.historyIdCounter,
             pattern: current,
             timestamp: new Date(),
-            action: name,
+            action: args?.mode ?? 'write',
           });
 
           if (bundle.undoStack.length > this.MAX_HISTORY) bundle.undoStack.shift();
@@ -469,7 +469,7 @@ export class StrudelMCPServer {
     if (sessionId) {
       const sessionController = this.sessionManager.getSession(sessionId);
       if (!sessionController) {
-        throw new Error(`Session '${sessionId}' not found. Create it first with create_session.`);
+        throw new Error(`Session '${sessionId}' not found. Create it first with session({ action: "create" }).`);
       }
       if (!sessionController.page) {
         throw new Error(`Session '${sessionId}' has no active page yet.`);

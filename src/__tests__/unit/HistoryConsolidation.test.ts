@@ -175,37 +175,4 @@ describe('history consolidation (#145)', () => {
       await expect(execute('history', { action: 'clear' }, ctx)).rejects.toThrow(/Invalid action/);
     });
   });
-
-  describe('legacy aliases forward (deprecation window)', () => {
-    it('undo alias matches history(action=undo)', async () => {
-      const { ctx, history } = makeCtx();
-      history.undoStack.push('prev');
-      const aliasResult = await execute('undo', {}, ctx);
-      expect(aliasResult).toBe('Undone');
-    });
-
-    it('list_history alias matches history(action=list)', async () => {
-      const { ctx, history } = makeCtx();
-      history.historyStack.push(entry(1, 'x'));
-      const alias = (await execute('list_history', {}, ctx)) as any;
-      const direct = (await execute('history', { action: 'list' }, ctx)) as any;
-      expect(alias.count).toBe(direct.count);
-    });
-
-    it('restore_history alias matches history(action=restore)', async () => {
-      const { ctx, history } = makeCtx();
-      history.historyStack.push(entry(5, 'restored'));
-      const aliasResult = await execute('restore_history', { id: 5 }, ctx);
-      expect(aliasResult).toContain('#5');
-    });
-
-    it('compare_patterns alias matches history(action=compare)', async () => {
-      const { ctx, history } = makeCtx();
-      history.historyStack.push(entry(1, 'a'));
-      history.historyStack.push(entry(2, 'b'));
-      const alias = (await execute('compare_patterns', { id1: 1, id2: 2 }, ctx)) as any;
-      const direct = (await execute('history', { action: 'compare', id1: 1, id2: 2 }, ctx)) as any;
-      expect(alias.summary).toEqual(direct.summary);
-    });
-  });
 });

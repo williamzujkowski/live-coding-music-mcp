@@ -1,14 +1,7 @@
 /**
  * compose domain — high-level UX tools that aren't a thin verb on a
- * subsystem: `compose` (one-shot generate+write+play) and `show_browser`
- * (bring the Strudel window forward).
- *
- * Post-consolidation (per #110 audit):
- *   - `compose` absorbs `generate_pattern` after the alias period
- *   - `show_browser` merges with `screenshot` into `browser_window`
- * These targets live in different epics (#120). Keeping the two tools
- * together here matches today's "UX Tools" grouping; the file is small
- * enough to split later without disruption.
+ * subsystem: `compose` (one-shot generate+write+play) and
+ * `browser_window` (show or screenshot the Strudel window).
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -41,11 +34,6 @@ export const tools: Tool[] = [
       },
       required: ['action'],
     },
-  },
-  {
-    name: 'show_browser',
-    description: '[DEPRECATED — use browser_window({ action: "show" }) instead] Bring browser window to foreground',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
   },
   {
     name: 'compose',
@@ -114,9 +102,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       }
       return a === 'show' ? await doShow(ctx, sid) : await doScreenshot(args, ctx, sid);
     }
-
-    case 'show_browser':
-      return await doShow(ctx, sid);
 
     case 'compose': {
       InputValidator.validateStringLength(args.style, 'style', 100, false);

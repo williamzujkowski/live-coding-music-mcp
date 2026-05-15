@@ -80,30 +80,4 @@ describe('session consolidation (#158)', () => {
     await expect(execute('session', { action: 'rename', session_id: 'X' }, ctx))
       .rejects.toThrow(/Invalid action/);
   });
-
-  describe('legacy aliases forward', () => {
-    it('create_session alias matches session(action=create)', async () => {
-      const { ctx, sm } = makeCtx();
-      await execute('create_session', { session_id: 'A' }, ctx);
-      expect(sm.createSession).toHaveBeenCalledWith('A');
-    });
-
-    it('destroy_session alias forwards', async () => {
-      const { ctx, sm } = makeCtx();
-      await execute('destroy_session', { session_id: 'B' }, ctx);
-      expect(sm.destroySession).toHaveBeenCalledWith('B');
-    });
-
-    it('list_sessions alias forwards', async () => {
-      const { ctx } = makeCtx();
-      const result = (await execute('list_sessions', {}, ctx)) as any;
-      expect(typeof result.count).toBe('number');
-    });
-
-    it('switch_session alias forwards', async () => {
-      const { ctx, sm } = makeCtx();
-      await execute('switch_session', { session_id: 'E' }, ctx);
-      expect(sm.setDefaultSession).toHaveBeenCalledWith('E');
-    });
-  });
 });

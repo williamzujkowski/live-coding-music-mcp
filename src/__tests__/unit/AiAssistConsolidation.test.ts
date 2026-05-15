@@ -57,26 +57,4 @@ describe('ai_assist consolidation (#159)', () => {
     const { ctx } = makeCtx();
     await expect(execute('ai_assist', { task: 'critique' }, ctx)).rejects.toThrow(/Invalid task/);
   });
-
-  describe('legacy aliases forward (deprecation window)', () => {
-    it('get_pattern_feedback alias matches ai_assist(task=feedback)', async () => {
-      const { ctx: a } = makeCtx();
-      const { ctx: b } = makeCtx();
-      const alias = await execute('get_pattern_feedback', {}, a);
-      const direct = await execute('ai_assist', { task: 'feedback' }, b);
-      expect(alias).toEqual(direct);
-    });
-
-    it('suggest_pattern_from_audio alias forwards', async () => {
-      const { ctx } = makeCtx();
-      const result = (await execute('suggest_pattern_from_audio', {}, ctx)) as any;
-      expect(result.error).toContain('not initialized');
-    });
-
-    it('jam_with alias forwards', async () => {
-      const { ctx } = makeCtx();
-      const result = (await execute('jam_with', { layer: 'drums' }, ctx)) as any;
-      expect(result.success).toBe(false);
-    });
-  });
 });

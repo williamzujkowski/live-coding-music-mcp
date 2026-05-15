@@ -121,47 +121,4 @@ describe('diagnostics consolidation (#144)', () => {
     });
   });
 
-  describe('legacy aliases forward (deprecation window)', () => {
-    it('status alias matches diagnostics(level=status)', async () => {
-      const { ctx } = makeCtx();
-      const alias = await execute('status', {}, ctx);
-      const direct = await execute('diagnostics', { level: 'status' }, ctx);
-      expect(alias).toEqual(direct);
-    });
-
-    it('show_errors alias matches diagnostics(level=errors)', async () => {
-      const { ctx } = makeCtx();
-      const alias = await execute('show_errors', {}, ctx);
-      const direct = await execute('diagnostics', { level: 'errors' }, ctx);
-      expect(alias).toEqual(direct);
-    });
-
-    it('performance_report alias matches diagnostics(level=perf)', async () => {
-      const { ctx } = makeCtx();
-      const alias = await execute('performance_report', {}, ctx);
-      const direct = await execute('diagnostics', { level: 'perf' }, ctx);
-      expect(alias).toEqual(direct);
-    });
-
-    it('memory_usage alias matches diagnostics(level=memory)', async () => {
-      const { ctx } = makeCtx();
-      const alias = await execute('memory_usage', {}, ctx);
-      const direct = await execute('diagnostics', { level: 'memory' }, ctx);
-      expect(alias).toEqual(direct);
-    });
-  });
-
-  describe('screenshot stays distinct (Phase 3 / #156 absorbs it elsewhere)', () => {
-    it('screenshot routes via the controller', async () => {
-      const { ctx, controller } = makeCtx();
-      await execute('screenshot', { filename: 'shot.png' }, ctx);
-      expect(controller.takeScreenshot).toHaveBeenCalledWith('shot.png');
-    });
-
-    it('screenshot refuses when not initialized', async () => {
-      const { ctx } = makeCtx(false);
-      const result = await execute('screenshot', {}, ctx);
-      expect(result).toContain('not initialized');
-    });
-  });
 });

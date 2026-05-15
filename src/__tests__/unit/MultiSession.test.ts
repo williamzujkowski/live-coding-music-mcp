@@ -92,7 +92,7 @@ describe('two-session isolation (#108)', () => {
   });
 
   it('write with session_id targets the named session, not the legacy controller', async () => {
-    await editorExecute('write', { pattern: 's("bd")', session_id: 'A' }, ctx);
+    await editorExecute('edit_pattern', { mode: 'write', pattern: 's("bd")', session_id: 'A' }, ctx);
 
     expect(sessionA.writePattern).toHaveBeenCalledWith('s("bd")');
     expect(sessionB.writePattern).not.toHaveBeenCalled();
@@ -100,8 +100,8 @@ describe('two-session isolation (#108)', () => {
   });
 
   it('two sessions see independent patterns', async () => {
-    await editorExecute('write', { pattern: 's("bd")', session_id: 'A' }, ctx);
-    await editorExecute('write', { pattern: 'note("c3")', session_id: 'B' }, ctx);
+    await editorExecute('edit_pattern', { mode: 'write', pattern: 's("bd")', session_id: 'A' }, ctx);
+    await editorExecute('edit_pattern', { mode: 'write', pattern: 'note("c3")', session_id: 'B' }, ctx);
 
     const aPattern = await editorExecute('get_pattern', { session_id: 'A' }, ctx);
     const bPattern = await editorExecute('get_pattern', { session_id: 'B' }, ctx);
@@ -111,7 +111,7 @@ describe('two-session isolation (#108)', () => {
   });
 
   it('omitting session_id routes to the legacy controller', async () => {
-    await editorExecute('write', { pattern: 's("hh")' }, ctx);
+    await editorExecute('edit_pattern', { mode: 'write', pattern: 's("hh")' }, ctx);
 
     expect(legacy.writePattern).toHaveBeenCalledWith('s("hh")');
     expect(sessionA.writePattern).not.toHaveBeenCalled();
@@ -120,30 +120,30 @@ describe('two-session isolation (#108)', () => {
 
   it('explicit non-existent session throws (dispatcher renders as err business)', async () => {
     await expect(
-      editorExecute('write', { pattern: 'x', session_id: 'does-not-exist' }, ctx),
+      editorExecute('edit_pattern', { mode: 'write', pattern: 'x', session_id: 'does-not-exist' }, ctx),
     ).rejects.toThrow(/Session 'does-not-exist' not found/);
   });
 
   it('playback routes per session', async () => {
-    await playbackExecute('play', { session_id: 'A' }, ctx);
+    await playbackExecute('playback', { action: 'play', session_id: 'A' }, ctx);
     expect(sessionA.play).toHaveBeenCalledTimes(1);
     expect(sessionB.play).not.toHaveBeenCalled();
     expect(legacy.play).not.toHaveBeenCalled();
 
-    await playbackExecute('stop', { session_id: 'B' }, ctx);
+    await playbackExecute('playback', { action: 'stop', session_id: 'B' }, ctx);
     expect(sessionB.stop).toHaveBeenCalledTimes(1);
     expect(sessionA.stop).not.toHaveBeenCalled();
   });
 
   it('append/insert/replace/clear all route by session_id', async () => {
-    await editorExecute('write', { pattern: 's("bd")', session_id: 'A' }, ctx);
-    await editorExecute('append', { code: '.fast(2)', session_id: 'A' }, ctx);
+    await editorExecute('edit_pattern', { mode: 'write', pattern: 's("bd")', session_id: 'A' }, ctx);
+    await editorExecute('edit_pattern', { mode: 'append', code: '.fast(2)', session_id: 'A' }, ctx);
     expect(sessionA.writePattern).toHaveBeenLastCalledWith('s("bd")\n.fast(2)');
 
-    await editorExecute('replace', { search: 'bd', replace: 'sd', session_id: 'A' }, ctx);
+    await editorExecute('edit_pattern', { mode: 'replace', search: 'bd', replace: 'sd', session_id: 'A' }, ctx);
     expect(sessionA.writePattern).toHaveBeenLastCalledWith('s("sd")\n.fast(2)');
 
-    await editorExecute('clear', { session_id: 'B' }, ctx);
+    await editorExecute('edit_pattern', { mode: 'clear', session_id: 'B' }, ctx);
     expect(sessionB.writePattern).toHaveBeenCalledWith('');
     // Session A's clear was not called.
     const aCalls = sessionA.writePattern.mock.calls;

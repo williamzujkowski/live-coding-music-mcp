@@ -67,19 +67,4 @@ describe('generate_part consolidation (#149)', () => {
     const { ctx } = makeCtx();
     await expect(execute('generate_part', { role: 'pad' }, ctx)).rejects.toThrow(/Invalid role/);
   });
-
-  describe('legacy aliases forward', () => {
-    it.each([
-      ['generate_drums', { style: 'techno' }, 'drums'],
-      ['generate_bassline', { key: 'C', style: 'funk' }, 'bass'],
-      ['generate_melody', { root: 'C', scale: 'major' }, 'melody'],
-      ['generate_fill', { style: 'breakbeat' }, 'fill'],
-    ])('%s alias matches generate_part(role=%s)', async (alias, params, role) => {
-      const { ctx: a, pattern: pa } = makeCtx();
-      const { ctx: b, pattern: pb } = makeCtx();
-      await execute(alias, params, a);
-      await execute('generate_part', { role, ...params }, b);
-      expect(pa()).toBe(pb());
-    });
-  });
 });

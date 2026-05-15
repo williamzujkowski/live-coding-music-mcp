@@ -222,8 +222,8 @@ export const mcpRequests = {
     jsonrpc: '2.0',
     method: 'tools/call',
     params: {
-      name: 'write',
-      arguments: { pattern }
+      name: 'edit_pattern',
+      arguments: { mode: 'write', pattern }
     },
     id: 3
   }),
@@ -232,8 +232,8 @@ export const mcpRequests = {
     jsonrpc: '2.0',
     method: 'tools/call',
     params: {
-      name: 'play',
-      arguments: {}
+      name: 'playback',
+      arguments: { action: 'play' }
     },
     id: 4
   },
@@ -242,8 +242,8 @@ export const mcpRequests = {
     jsonrpc: '2.0',
     method: 'tools/call',
     params: {
-      name: 'generate_pattern',
-      arguments: { style, key, bpm }
+      name: 'compose',
+      arguments: { style, key, tempo: bpm }
     },
     id: 5
   }),
@@ -252,8 +252,8 @@ export const mcpRequests = {
     jsonrpc: '2.0',
     method: 'tools/call',
     params: {
-      name: 'save',
-      arguments: { name, tags }
+      name: 'pattern_store',
+      arguments: { action: 'save', name, tags }
     },
     id: 6
   })

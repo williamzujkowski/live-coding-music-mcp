@@ -1,12 +1,8 @@
 /**
  * capture domain — audio recording and MIDI export.
  *
- * Owns (4 tools): start_audio_capture, stop_audio_capture,
- * capture_audio_sample, export_midi.
- *
- * Per the #110 audit, the three audio_capture tools collapse into a
- * single `audio_capture(action=start|stop|sample)` post-split.
- * `export_midi` stays separate — MIDI is symbolic, audio is waveform.
+ * Owns two tools: `audio_capture(action=start|stop|sample)` and
+ * `export_midi` (kept separate — MIDI is symbolic, audio is waveform).
  *
  * The AudioCaptureService is lazy-instantiated module-side: we need
  * the current Playwright page for `injectRecorder()`, and that only
@@ -62,34 +58,6 @@ export const tools: Tool[] = [
     },
   },
   {
-    name: 'start_audio_capture',
-    description: '[DEPRECATED — use audio_capture({ action: "start" }) instead] Start capturing audio. Audio must be playing.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        format: { type: 'string', enum: ['webm', 'opus'], description: 'Audio format (default: webm)' },
-        maxDuration: { type: 'number', description: 'Maximum capture duration in milliseconds' },
-        ...SESSION_ID_PROP,
-      },
-    },
-  },
-  {
-    name: 'stop_audio_capture',
-    description: '[DEPRECATED — use audio_capture({ action: "stop" }) instead] Stop audio capture and return base64-encoded audio.',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'capture_audio_sample',
-    description: '[DEPRECATED — use audio_capture({ action: "sample" }) instead] Capture a fixed-duration audio sample.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        duration: { type: 'number', description: 'Duration in milliseconds (default: 5000)' },
-        ...SESSION_ID_PROP,
-      },
-    },
-  },
-  {
     name: 'export_midi',
     description: 'Export current pattern to MIDI file. Parses note(), n(), and chord() functions.',
     inputSchema: {
@@ -124,15 +92,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       }
     }
 
-    case 'start_audio_capture':
-      return await startAudioCapture(args?.format, args?.maxDuration, ctx, sid);
-
-    case 'stop_audio_capture':
-      return await stopAudioCapture(ctx, sid);
-
-    case 'capture_audio_sample':
-      return await captureAudioSample(args?.duration, ctx, sid);
-
     case 'export_midi':
       return await exportMidi(args?.filename, args?.duration, args?.bpm, args?.format, ctx, sid);
 
@@ -155,7 +114,7 @@ async function startAudioCapture(
     await service.startCapture(ctx.getController(sid).page!, { format });
     return {
       success: true,
-      message: 'Audio capture started. Use stop_audio_capture to get the recorded audio.',
+      message: 'Audio capture started. Use audio_capture({ action: "stop" }) to get the recorded audio.',
       format: format || 'webm',
     };
   } catch (error: unknown) {

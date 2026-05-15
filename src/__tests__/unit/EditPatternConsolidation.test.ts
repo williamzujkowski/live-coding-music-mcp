@@ -121,40 +121,6 @@ describe('edit_pattern consolidation (#148)', () => {
     });
   });
 
-  describe('legacy aliases forward (deprecation window)', () => {
-    it('write alias produces identical result to edit_pattern(mode=write)', async () => {
-      const { ctx: ctxA, pattern: patA } = makeCtx();
-      const { ctx: ctxB, pattern: patB } = makeCtx();
-      await execute('write', { pattern: 'alias' }, ctxA);
-      await execute('edit_pattern', { mode: 'write', pattern: 'alias' }, ctxB);
-      expect(patA()).toBe(patB());
-    });
-
-    it('append alias forwards', async () => {
-      const { ctx, pattern } = makeCtx();
-      await execute('append', { code: '.rev' }, ctx);
-      expect(pattern()).toBe('s("bd")\n.rev');
-    });
-
-    it('insert alias forwards', async () => {
-      const { ctx, pattern } = makeCtx();
-      await execute('insert', { position: 1, code: 'next' }, ctx);
-      expect(pattern()).toContain('next');
-    });
-
-    it('replace alias forwards', async () => {
-      const { ctx, pattern } = makeCtx();
-      await execute('replace', { search: 'bd', replace: 'hh' }, ctx);
-      expect(pattern()).toBe('s("hh")');
-    });
-
-    it('clear alias forwards', async () => {
-      const { ctx, pattern } = makeCtx();
-      await execute('clear', {}, ctx);
-      expect(pattern()).toBe('');
-    });
-  });
-
   describe('get_pattern stays distinct (hot read path)', () => {
     it('get_pattern returns current contents without mutating', async () => {
       const { ctx, pattern } = makeCtx();

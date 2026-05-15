@@ -78,27 +78,6 @@ describe('audio_capture consolidation (#155)', () => {
     await expect(execute('audio_capture', { action: 'pause' }, ctx)).rejects.toThrow(/Invalid action/);
   });
 
-  describe('legacy aliases forward', () => {
-    it('start_audio_capture alias forwards', async () => {
-      const { ctx, service } = makeCtx();
-      await execute('start_audio_capture', {}, ctx);
-      expect(service.startCapture).toHaveBeenCalled();
-    });
-
-    it('capture_audio_sample alias forwards', async () => {
-      const { ctx, service } = makeCtx();
-      await execute('capture_audio_sample', { duration: 2000 }, ctx);
-      expect(service.captureForDuration).toHaveBeenCalledWith(expect.anything(), 2000);
-    });
-
-    it('stop_audio_capture alias forwards', async () => {
-      const { ctx, service } = makeCtx();
-      service.isCapturing.mockReturnValue(true);
-      const result = (await execute('stop_audio_capture', {}, ctx)) as any;
-      expect(result.success).toBe(true);
-    });
-  });
-
   it('export_midi stays distinct (separate verb per audit)', async () => {
     const { ctx } = makeCtx();
     // No MIDI service is meaningfully wired in this test — just confirm the

@@ -1,17 +1,12 @@
 /**
  * transform domain — mutate the current pattern.
  *
- * Owns (14 tools): transpose, reverse, stretch, quantize, humanize,
- * add_swing, apply_scale, generate_variation, add_effect, remove_effect,
- * set_tempo, shift_mood, set_energy, refine.
- *
- * Per the #110 audit this eventually collapses into:
- * - `transform` (op enum) — 8 tools
- * - `effect` (add/remove enum) — 2 tools
- * - `shape` (mood/energy/refine enum) — 3 tools
- * - `set_tempo` stays — high-traffic verb
- *
- * For now we keep the individual verbs and just move them out of server.ts.
+ * Owns (4 tools):
+ * - `transform` (op enum: transpose/reverse/stretch/quantize/humanize/
+ *    swing/scale/vary)
+ * - `effect` (action enum: add/remove)
+ * - `shape` (dimension enum: mood/energy/refine)
+ * - `set_tempo` — high-traffic standalone verb
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -91,9 +86,9 @@ export const tools: Tool[] = [
       'op=stretch slows by `factor` (>1 slower, <1 faster). ' +
       'op=quantize snaps to the `grid` (e.g. "1/16"). ' +
       'op=humanize adds rand-nudge timing of `amount` (0-1). ' +
-      'op=swing applies `.swing(amount)` (alias for add_swing). ' +
-      'op=scale applies a `root`/`scale` filter to notes (alias for apply_scale). ' +
-      'op=vary returns a variation of `type` (subtle/moderate/extreme/glitch/evolving — note: this is what generate_variation does today; the name is misleading because it transforms rather than generates). ' +
+      'op=swing applies `.swing(amount)`. ' +
+      'op=scale applies a `root`/`scale` filter to notes. ' +
+      'op=vary returns a variation of `type` (subtle/moderate/extreme/glitch/evolving). ' +
       'Example: transform({ op: "transpose", semitones: 7 }). ' +
       'For effects (add/remove) use effect; for mood/energy/refine use shape; for tempo use set_tempo.',
     inputSchema: {
@@ -117,54 +112,6 @@ export const tools: Tool[] = [
     },
   },
   {
-    name: 'transpose',
-    description: '[DEPRECATED — use transform({ op: "transpose" }) instead] Transpose notes by semitones',
-    inputSchema: {
-      type: 'object',
-      properties: { semitones: { type: 'number', description: 'Semitones to transpose' }, ...SESSION_ID_PROP },
-      required: ['semitones'],
-    },
-  },
-  {
-    name: 'reverse',
-    description: '[DEPRECATED — use transform({ op: "reverse" }) instead] Reverse pattern',
-    inputSchema: { type: 'object', properties: { ...SESSION_ID_PROP } },
-  },
-  {
-    name: 'stretch',
-    description: '[DEPRECATED — use transform({ op: "stretch" }) instead] Time stretch pattern',
-    inputSchema: {
-      type: 'object',
-      properties: { factor: { type: 'number', description: 'Stretch factor' }, ...SESSION_ID_PROP },
-      required: ['factor'],
-    },
-  },
-  {
-    name: 'quantize',
-    description: '[DEPRECATED — use transform({ op: "quantize" }) instead] Quantize to grid',
-    inputSchema: {
-      type: 'object',
-      properties: { grid: { type: 'string', description: 'Grid size (e.g., "1/16")' }, ...SESSION_ID_PROP },
-      required: ['grid'],
-    },
-  },
-  {
-    name: 'humanize',
-    description: '[DEPRECATED — use transform({ op: "humanize" }) instead] Add human timing variation',
-    inputSchema: {
-      type: 'object',
-      properties: { amount: { type: 'number', description: 'Humanization amount (0-1)' }, ...SESSION_ID_PROP },
-    },
-  },
-  {
-    name: 'generate_variation',
-    description: '[DEPRECATED — use transform({ op: "vary" }) instead] Create pattern variations (mis-named today; it transforms, not generates)',
-    inputSchema: {
-      type: 'object',
-      properties: { type: { type: 'string', description: 'Variation type (subtle/moderate/extreme/glitch/evolving)' }, ...SESSION_ID_PROP },
-    },
-  },
-  {
     name: 'effect',
     description:
       'Add or remove a Strudel effect on the current session pattern. ' +
@@ -184,56 +131,12 @@ export const tools: Tool[] = [
     },
   },
   {
-    name: 'add_effect',
-    description: '[DEPRECATED — use effect({ action: "add" }) instead] Add effect to pattern',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        effect: { type: 'string', description: 'Effect name' },
-        params: { type: 'string', description: 'Effect parameters' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['effect'],
-    },
-  },
-  {
-    name: 'remove_effect',
-    description: '[DEPRECATED — use effect({ action: "remove" }) instead] Remove effect',
-    inputSchema: {
-      type: 'object',
-      properties: { effect: { type: 'string', description: 'Effect to remove' }, ...SESSION_ID_PROP },
-      required: ['effect'],
-    },
-  },
-  {
     name: 'set_tempo',
     description: 'Set BPM',
     inputSchema: {
       type: 'object',
       properties: { bpm: { type: 'number', description: 'Tempo in BPM' }, ...SESSION_ID_PROP },
       required: ['bpm'],
-    },
-  },
-  {
-    name: 'add_swing',
-    description: '[DEPRECATED — use transform({ op: "swing" }) instead] Add swing to pattern',
-    inputSchema: {
-      type: 'object',
-      properties: { amount: { type: 'number', description: 'Swing amount (0-1)' }, ...SESSION_ID_PROP },
-      required: ['amount'],
-    },
-  },
-  {
-    name: 'apply_scale',
-    description: '[DEPRECATED — use transform({ op: "scale" }) instead] Apply scale to notes',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        scale: { type: 'string', description: 'Scale name' },
-        root: { type: 'string', description: 'Root note' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['scale', 'root'],
     },
   },
   {
@@ -262,42 +165,6 @@ export const tools: Tool[] = [
         ...SESSION_ID_PROP,
       },
       required: ['dimension'],
-    },
-  },
-  {
-    name: 'shift_mood',
-    description: '[DEPRECATED — use shape({ dimension: "mood" }) instead] Transform current pattern to match a different emotional mood. Moods: dark, euphoric, melancholic, aggressive, dreamy, peaceful, energetic.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        target_mood: {
-          type: 'string',
-          enum: ['dark', 'euphoric', 'melancholic', 'aggressive', 'dreamy', 'peaceful', 'energetic'],
-          description: 'Target mood',
-        },
-        intensity: { type: 'number', minimum: 0, maximum: 1, description: 'How strongly to apply the mood transformation (0-1, default: 0.5)' },
-        auto_play: { type: 'boolean', description: 'Start playback after transformation (default: true)' },
-        ...SESSION_ID_PROP,
-      },
-      required: ['target_mood'],
-    },
-  },
-  {
-    name: 'set_energy',
-    description: '[DEPRECATED — use shape({ dimension: "energy" }) instead] Adjust energy level 0-10. Auto-plays after applying.',
-    inputSchema: {
-      type: 'object',
-      properties: { level: { type: 'number', description: 'Energy level from 0 (minimal) to 10 (maximum)' }, ...SESSION_ID_PROP },
-      required: ['level'],
-    },
-  },
-  {
-    name: 'refine',
-    description: '[DEPRECATED — use shape({ dimension: "refine" }) instead] Incrementally refine current pattern: faster/slower/louder/quieter/brighter/darker/"more reverb"/drier.',
-    inputSchema: {
-      type: 'object',
-      properties: { direction: { type: 'string', description: 'Refinement direction: faster, slower, louder, quieter, brighter, darker, "more reverb", or drier' }, ...SESSION_ID_PROP },
-      required: ['direction'],
     },
   },
 ];
@@ -408,16 +275,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       }
     }
 
-    // Deprecated aliases — forward to per-op helpers.
-    case 'transpose':          return await opTranspose(args, ctx, sid);
-    case 'reverse':            return await opReverse(ctx, sid);
-    case 'stretch':            return await opStretch(args, ctx, sid);
-    case 'quantize':           return await opQuantize(args, ctx, sid);
-    case 'humanize':           return await opHumanize(args, ctx, sid);
-    case 'generate_variation': return await opVary(args, ctx, sid);
-    case 'add_swing':          return await opSwing(args, ctx, sid);
-    case 'apply_scale':        return await opScale(args, ctx, sid);
-
     case 'effect': {
       const a = args?.action;
       if (a !== 'add' && a !== 'remove') {
@@ -427,8 +284,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
         ? await opEffectAdd(args, ctx, sid)
         : await opEffectRemove(args, ctx, sid);
     }
-    case 'add_effect':    return await opEffectAdd(args, ctx, sid);
-    case 'remove_effect': return await opEffectRemove(args, ctx, sid);
 
     case 'set_tempo': {
       InputValidator.validateBPM(args.bpm);
@@ -447,9 +302,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
           throw new Error(`Invalid dimension: ${dim}. Must be one of: mood, energy, refine`);
       }
     }
-    case 'shift_mood':  return await shiftMood(args, ctx, sid);
-    case 'set_energy':  return await setEnergyLevel(args.level, ctx, sid);
-    case 'refine':      return await refinePattern(args.direction, ctx, sid);
 
     default:
       throw new Error(`transform module does not handle tool: ${name}`);

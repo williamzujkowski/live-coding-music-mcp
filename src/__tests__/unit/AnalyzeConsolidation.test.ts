@@ -140,34 +140,4 @@ describe('analyze consolidation (#146)', () => {
       expect(result.key.key).toBe('Unknown');
     });
   });
-
-  describe('legacy aliases forward (deprecation window)', () => {
-    it('analyze_spectrum matches analyze({ include: ["spectrum"] }) inner value', async () => {
-      const { ctx } = makeCtx();
-      const alias = await execute('analyze_spectrum', {}, ctx);
-      const direct = (await execute('analyze', { include: ['spectrum'] }, ctx)) as any;
-      expect(alias).toEqual(direct.spectrum);
-    });
-
-    it('analyze_rhythm matches analyze({ include: ["rhythm"] }) inner value', async () => {
-      const { ctx } = makeCtx();
-      const alias = await execute('analyze_rhythm', {}, ctx);
-      const direct = (await execute('analyze', { include: ['rhythm'] }, ctx)) as any;
-      expect(alias).toEqual(direct.rhythm);
-    });
-
-    it('detect_tempo matches analyze({ include: ["tempo"] }) inner value', async () => {
-      const { ctx } = makeCtx();
-      const alias = await execute('detect_tempo', {}, ctx);
-      const direct = (await execute('analyze', { include: ['tempo'] }, ctx)) as any;
-      expect(alias).toEqual(direct.tempo);
-    });
-
-    it('detect_key matches analyze({ include: ["key"] }) inner value', async () => {
-      const { ctx } = makeCtx();
-      const alias = await execute('detect_key', {}, ctx);
-      const direct = (await execute('analyze', { include: ['key'] }, ctx)) as any;
-      expect(alias).toEqual(direct.key);
-    });
-  });
 });

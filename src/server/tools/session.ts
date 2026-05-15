@@ -1,10 +1,9 @@
 /**
  * session domain — multi-session lifecycle management.
  *
- * Owns one consolidated tool (`session(action)`) plus four deprecated
- * aliases (create_session, destroy_session, list_sessions, switch_session)
- * per #120 / #158. `init` stays separate — it's the global bootstrap,
- * not a session operation.
+ * Owns one consolidated tool (`session(action)`) with create/destroy/
+ * list/switch actions. `init` stays separate — it's the global
+ * bootstrap, not a session operation.
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -29,38 +28,6 @@ export const tools: Tool[] = [
         session_id: { type: 'string', description: 'Session identifier (required for create/destroy/switch)' },
       },
       required: ['action'],
-    },
-  },
-  {
-    name: 'create_session',
-    description: '[DEPRECATED — use session({ action: "create" }) instead] Create a new isolated Strudel browser session.',
-    inputSchema: {
-      type: 'object',
-      properties: { session_id: { type: 'string', description: 'Unique identifier for the session' } },
-      required: ['session_id'],
-    },
-  },
-  {
-    name: 'destroy_session',
-    description: '[DEPRECATED — use session({ action: "destroy" }) instead] Close and destroy a Strudel session.',
-    inputSchema: {
-      type: 'object',
-      properties: { session_id: { type: 'string', description: 'Session identifier to destroy' } },
-      required: ['session_id'],
-    },
-  },
-  {
-    name: 'list_sessions',
-    description: '[DEPRECATED — use session({ action: "list" }) instead] List all active Strudel sessions.',
-    inputSchema: { type: 'object', properties: {} },
-  },
-  {
-    name: 'switch_session',
-    description: '[DEPRECATED — use session({ action: "switch" }) instead] Change the default session.',
-    inputSchema: {
-      type: 'object',
-      properties: { session_id: { type: 'string', description: 'Session identifier to set as default' } },
-      required: ['session_id'],
     },
   },
 ];
@@ -149,12 +116,6 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
           throw new Error(`Invalid action: ${a}. Must be one of: create, destroy, list, switch`);
       }
     }
-
-    // Deprecated aliases.
-    case 'create_session':  return await doCreate(args, ctx);
-    case 'destroy_session': return await doDestroy(args, ctx);
-    case 'list_sessions':   return doList(ctx);
-    case 'switch_session':  return doSwitch(args, ctx);
 
     default:
       throw new Error(`session module does not handle tool: ${name}`);
