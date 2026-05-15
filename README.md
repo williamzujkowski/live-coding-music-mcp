@@ -30,8 +30,8 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 
 - [Features](#features)
 - [Installation](#installation)
-- [Quick Reference](#quick-reference)
 - [Quick Start](#quick-start)
+- [Quick Reference](#quick-reference)
 - [Available Tools](#available-tools)
 - [Usage Examples](#usage-examples)
 - [Architecture](#architecture)
@@ -151,9 +151,86 @@ npx playwright install chromium
 npm run build
 ```
 
+## Quick Start
+
+Get from install to your first generated pattern in under two minutes.
+
+### 1. Install
+
+```bash
+npm install -g @williamzujkowski/live-coding-music-mcp
+npx playwright install chromium   # one-time
+```
+
+Building from source instead? See [Installation → From Source](#from-source).
+
+### 2. Configure your MCP client
+
+#### Claude Desktop
+
+Edit your Claude Desktop config file:
+
+| OS | Config path |
+|---|---|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
+
+Add the server:
+
+```json
+{
+  "mcpServers": {
+    "live-coding-music": {
+      "command": "live-coding-music-mcp"
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The server appears under the 🔌 plug icon.
+
+#### Claude Code (CLI)
+
+```bash
+# If installed globally
+claude mcp add strudel live-coding-music-mcp
+
+# If built from source
+claude mcp add strudel node /path/to/live-coding-music-mcp/dist/index.js
+```
+
+### 3. Verify the server responds
+
+```bash
+# From a global install
+echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | live-coding-music-mcp
+
+# From source
+npm run validate
+```
+
+You should see a JSON response listing **26 tools**. If you see fewer, the build is out of date — run `npm run build`.
+
+### 4. Make your first sound
+
+In Claude, ask:
+
+> Initialize Strudel and compose a techno beat.
+
+**What you'll see:** A Chromium window opens (visibly — this is the live editor, not a hidden process) and lands on strudel.cc. Claude calls `init`, then `compose({ style: "techno" })`. A 4-on-the-floor pattern appears in the CodeMirror editor and starts playing through your speakers.
+
+Prefer headless mode (no browser window)? Set `"headless": true` in `config.json` before the first `init` call — see [Configuration](#configuration). Note that audio analysis (tempo / key detection) is more reliable in headed mode; headless audio sampling is best-effort.
+
+### 5. Where to go next
+
+- [Quick Reference](#quick-reference) below: tool cheat sheet for common operations.
+- [Usage Examples](#usage-examples): multi-step workflows (composition, audio analysis, AI-assisted jamming).
+- [`patterns/examples/`](patterns/examples/): 18 ready-to-play patterns across 7 genres plus 4 longform pieces. Agents can browse them via the `strudel://examples` MCP resource without burning tool calls.
+
 ## Quick Reference
 
-Common commands for immediate use:
+Common operations as one-line tool calls:
 
 | Action | Tool call |
 |---|---|
@@ -173,29 +250,8 @@ The legacy single-verb tools (`play`, `stop`, `save`, `undo`, `write`, `generate
 
 **One-shot workflow:**
 ```
-compose with style: "dnb", key: "Am", bpm: 174, auto_play: true
+compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 ```
-
-## Quick Start
-
-### 1. Add to Claude
-```bash
-# If installed globally
-claude mcp add strudel live-coding-music-mcp
-
-# If built from source
-claude mcp add strudel node /path/to/live-coding-music-mcp/dist/index.js
-```
-
-### 2. Start Using
-```bash
-claude chat
-```
-
-Then ask Claude:
-- "Initialize Strudel and create a techno beat"
-- "Generate a jazz chord progression in F major"
-- "Create a drum & bass pattern at 174 BPM"
 
 ## Available Tools
 
