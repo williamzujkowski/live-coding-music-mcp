@@ -41,6 +41,18 @@ const config = existsSync(configPath)
   ? JSON.parse(readFileSync(configPath, 'utf-8'))
   : { headless: false };
 
+// Translate config.audio_analysis (snake_case in JSON) to the camelCase
+// AudioAnalysisConfig the analyzer expects. Invalid values are normalized
+// to undefined here so the analyzer falls back to its own defaults
+// without a downstream warning for a value the user never set. (#195)
+const audioAnalysisConfig: { fftSize?: number; smoothing?: number } | undefined =
+  config.audio_analysis
+    ? {
+        fftSize: typeof config.audio_analysis.fft_size === 'number' ? config.audio_analysis.fft_size : undefined,
+        smoothing: typeof config.audio_analysis.smoothing === 'number' ? config.audio_analysis.smoothing : undefined,
+      }
+    : undefined;
+
 export class StrudelMCPServer {
   private server: Server;
   private controller: StrudelController;
@@ -92,13 +104,13 @@ export class StrudelMCPServer {
       }
     );
 
-    this.controller = new StrudelController(config.headless);
+    this.controller = new StrudelController(config.headless, audioAnalysisConfig);
     this.store = new PatternStore('./patterns');
     this.theory = new MusicTheory();
     this.generator = new PatternGenerator();
     this.geminiService = new GeminiService();
     this.midiExportService = new MIDIExportService();
-    this.sessionManager = new SessionManager(config.headless);
+    this.sessionManager = new SessionManager(config.headless, audioAnalysisConfig);
     this.logger = new Logger();
     this.perfMonitor = new PerformanceMonitor();
     this.strudelEngine = new StrudelEngine();

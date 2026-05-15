@@ -1,6 +1,7 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { StrudelController } from '../StrudelController.js';
 import { Logger } from '../utils/Logger.js';
+import type { AudioAnalysisConfig } from '../types/AudioAnalysis.js';
 
 /**
  * Session metadata including creation time and last activity
@@ -45,9 +46,11 @@ export class SessionManager {
   private readonly CLEANUP_INTERVAL = 5 * 60 * 1000;
 
   private cleanupTimer: NodeJS.Timeout | null = null;
+  private audioAnalysisConfig?: AudioAnalysisConfig;
 
-  constructor(headless: boolean = false) {
+  constructor(headless: boolean = false, audioAnalysisConfig?: AudioAnalysisConfig) {
     this.isHeadless = headless;
+    this.audioAnalysisConfig = audioAnalysisConfig;
     this.logger = new Logger();
   }
 
@@ -113,7 +116,7 @@ export class SessionManager {
     const page = await context.newPage();
 
     // Create controller with injected page (using a factory pattern)
-    const controller = new StrudelController(this.isHeadless);
+    const controller = new StrudelController(this.isHeadless, this.audioAnalysisConfig);
 
     // Initialize the controller with the existing page
     await this.initializeControllerWithPage(controller, page);

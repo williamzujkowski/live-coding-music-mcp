@@ -612,11 +612,13 @@ node tests/strudel-integration.js
   "strudel_url": "https://strudel.cc/",
   "patterns_dir": "./patterns",
   "audio_analysis": {
-    "fft_size": 1024,
-    "smoothing": 0.8
+    "fft_size": 1024,       // power of 2 in [32, 32768]; default 1024
+    "smoothing": 0.8        // number in [0, 1]; default 0.8
   }
 }
 ```
+
+`audio_analysis.fft_size` tunes the FFT bin count on the `AnalyserNode` attached to Strudel's audio graph — larger = better frequency resolution at higher CPU cost. `smoothing` is the analyser's `smoothingTimeConstant` (higher = steadier spectrum, more lag). Invalid values fall back to defaults with a warning; the frequency-band boundaries inside `analyze` rescale automatically so band Hz coverage stays consistent across FFT sizes.
 
 ## Architecture
 

@@ -204,4 +204,9 @@ PATTERNS_DIR=./patterns      # override pattern storage location
 HEADLESS=true                # used by test:browser script
 ```
 
-The `audio_analysis` config block (`fft_size`, `smoothing`) is currently **not wired** — the code hardcodes `fftSize = 1024`. Tracked in #195.
+The `audio_analysis` config block in `config.json` is wired to `AudioAnalyzer` (#195):
+
+- `fft_size`: power of 2 in [32, 32768]. Default 1024.
+- `smoothing`: number in [0, 1]. Default 0.8.
+
+Invalid values fall back to defaults with a warning rather than throwing — bad config in a hand-edited `config.json` shouldn't crash the server. Frequency-band boundaries inside `AudioAnalyzer.analyze()` scale automatically with `fftSize`, so changing FFT size preserves the Hz range each band covers (just at higher or lower resolution).

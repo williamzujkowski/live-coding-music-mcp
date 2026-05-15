@@ -61,6 +61,26 @@ export interface AudioAnalysisResult {
 }
 
 /**
+ * Runtime configuration for the AnalyserNode that AudioAnalyzer attaches
+ * to Strudel's audio graph. Maps to `config.audio_analysis` in config.json
+ * (snake_case there → camelCase here).
+ */
+export interface AudioAnalysisConfig {
+  /**
+   * FFT bin count. Must be a power of 2 in [32, 32768] per the Web Audio
+   * spec (https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode/fftSize).
+   * Larger = better frequency resolution, more CPU per analysis call.
+   * Default: 1024 (~21 Hz/bin at 44.1 kHz, ~12 ms per analyse call).
+   */
+  fftSize?: number;
+  /**
+   * Smoothing time constant for the analyser. Must be in [0, 1]. Higher
+   * smooths the spectrum more (steadier, but laggier). Default: 0.8.
+   */
+  smoothing?: number;
+}
+
+/**
  * Pattern statistics
  */
 export interface PatternStats {

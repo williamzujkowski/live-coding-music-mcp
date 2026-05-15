@@ -4,8 +4,29 @@ import {
   KeyAnalysis,
   RhythmAnalysis,
   AdvancedAudioAnalysis,
-  AudioAnalysisResult
+  AudioAnalysisResult,
+  AudioAnalysisConfig,
 } from './types/AudioAnalysis.js';
+import { Logger } from './utils/Logger.js';
+
+const DEFAULT_FFT_SIZE = 1024;
+const DEFAULT_SMOOTHING = 0.8;
+const MIN_FFT_SIZE = 32;
+const MAX_FFT_SIZE = 32768;
+
+/**
+ * True if `n` is a power of two within the Web Audio AnalyserNode range
+ * (32-32768). Web Audio rejects anything else with an InvalidStateError.
+ */
+function isValidFftSize(n: unknown): n is number {
+  return (
+    typeof n === 'number' &&
+    Number.isInteger(n) &&
+    n >= MIN_FFT_SIZE &&
+    n <= MAX_FFT_SIZE &&
+    (n & (n - 1)) === 0
+  );
+}
 
 export class AudioAnalyzer {
   private _analysisCache: AudioAnalysisResult | null = null;
@@ -19,6 +40,11 @@ export class AudioAnalyzer {
   private _chromaHistory: number[][] = [];
   private readonly ONSET_THRESHOLD = 0.3;
   private readonly MAX_HISTORY_LENGTH = 100;
+
+  // Per-instance analyser config (wired through from config.audio_analysis
+  // in config.json). #195.
+  private readonly fftSize: number;
+  private readonly smoothing: number;
 
   // Pitch classes for key detection
   private readonly PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -35,12 +61,58 @@ export class AudioAnalyzer {
   }
 
   /**
+   * @param options.fftSize - power of 2 in [32, 32768]. Default 1024.
+   * @param options.smoothing - value in [0, 1]. Default 0.8.
+   *
+   * Invalid values fall back to defaults with a warning rather than
+   * throwing; bad config in `config.json` shouldn't crash the server.
+   */
+  constructor(options?: AudioAnalysisConfig) {
+    const logger = new Logger();
+
+    if (options?.fftSize !== undefined && !isValidFftSize(options.fftSize)) {
+      logger.warn(
+        `AudioAnalyzer: invalid fftSize ${String(options.fftSize)} — must be a power of 2 in [${MIN_FFT_SIZE}, ${MAX_FFT_SIZE}]. Falling back to ${DEFAULT_FFT_SIZE}.`,
+      );
+      this.fftSize = DEFAULT_FFT_SIZE;
+    } else {
+      this.fftSize = options?.fftSize ?? DEFAULT_FFT_SIZE;
+    }
+
+    if (
+      options?.smoothing !== undefined &&
+      (typeof options.smoothing !== 'number' ||
+        Number.isNaN(options.smoothing) ||
+        options.smoothing < 0 ||
+        options.smoothing > 1)
+    ) {
+      logger.warn(
+        `AudioAnalyzer: invalid smoothing ${String(options.smoothing)} — must be in [0, 1]. Falling back to ${DEFAULT_SMOOTHING}.`,
+      );
+      this.smoothing = DEFAULT_SMOOTHING;
+    } else {
+      this.smoothing = options?.smoothing ?? DEFAULT_SMOOTHING;
+    }
+  }
+
+  /** Configured FFT size (read-only). Test/debug helper. */
+  getFftSize(): number {
+    return this.fftSize;
+  }
+
+  /** Configured smoothing constant (read-only). Test/debug helper. */
+  getSmoothing(): number {
+    return this.smoothing;
+  }
+
+  /**
    * Injects audio analysis code into the Strudel page
    * @param page - Playwright page instance to inject into
    */
   async inject(page: Page) {
+    const cfg = { fftSize: this.fftSize, smoothing: this.smoothing };
     /* istanbul ignore next -- browser-injected IIFE, covered by integration tests */
-    await page.evaluate(() => {
+    await page.evaluate((cfg: { fftSize: number; smoothing: number }) => {
       (window as any).strudelAudioAnalyzer = {
         analyser: null as AnalyserNode | null,
         dataArray: null as Uint8Array | null,
@@ -63,9 +135,9 @@ export class AudioAnalyzer {
 
               const ctx = args[0].context as AudioContext;
               (window as any).strudelAudioAnalyzer.analyser = ctx.createAnalyser();
-              // Reduced FFT size for better performance
-              (window as any).strudelAudioAnalyzer.analyser.fftSize = 1024;
-              (window as any).strudelAudioAnalyzer.analyser.smoothingTimeConstant = 0.8;
+              // Configurable via config.audio_analysis in config.json (#195).
+              (window as any).strudelAudioAnalyzer.analyser.fftSize = cfg.fftSize;
+              (window as any).strudelAudioAnalyzer.analyser.smoothingTimeConstant = cfg.smoothing;
               (window as any).strudelAudioAnalyzer.dataArray = new Uint8Array(
                 (window as any).strudelAudioAnalyzer.analyser.frequencyBinCount
               );
@@ -100,6 +172,18 @@ export class AudioAnalyzer {
           const dataArray = this.dataArray;
           const length = dataArray.length;
 
+          // Frequency-band boundaries scaled to the actual `length`.
+          // Reference values are bin indices that worked at fftSize=1024
+          // (length=512): bass<4, lowMid<16, mid<64, highMid<128,
+          // treble<256. Scaling by `length / 512` keeps each band over
+          // the same Hz range when fftSize changes (#195).
+          const scale = length / 512;
+          const bassEnd = Math.max(1, Math.round(4 * scale));
+          const lowMidEnd = Math.max(bassEnd + 1, Math.round(16 * scale));
+          const midEnd = Math.max(lowMidEnd + 1, Math.round(64 * scale));
+          const highMidEnd = Math.max(midEnd + 1, Math.round(128 * scale));
+          const trebleEnd = Math.max(highMidEnd + 1, Math.round(256 * scale));
+
           // Single-pass computation for better performance
           let sum = 0;
           let peak = 0;
@@ -119,23 +203,26 @@ export class AudioAnalyzer {
               peakIndex = i;
             }
 
-            // Frequency bands (adjusted for 1024 FFT)
-            if (i < 4) bassSum += value;
-            else if (i < 16) lowMidSum += value;
-            else if (i < 64) midSum += value;
-            else if (i < 128) highMidSum += value;
-            else if (i < 256) trebleSum += value;
+            // Frequency-band boundaries are derived from the bin indices
+            // that worked well at fftSize=1024 (length=512): 4, 16, 64,
+            // 128, 256. Scaling by `length / 512` preserves the Hz-range
+            // each band covers when fftSize changes (#195).
+            if (i < bassEnd) bassSum += value;
+            else if (i < lowMidEnd) lowMidSum += value;
+            else if (i < midEnd) midSum += value;
+            else if (i < highMidEnd) highMidSum += value;
+            else if (i < trebleEnd) trebleSum += value;
           }
 
           const average = sum / length;
           const centroid = sum > 0 ? weightedSum / sum : 0;
           const peakFreq = (peakIndex / length) * 22050;
 
-          const bass = bassSum / 4;
-          const lowMid = lowMidSum / 12;
-          const mid = midSum / 48;
-          const highMid = highMidSum / 64;
-          const treble = trebleSum / 128;
+          const bass = bassSum / Math.max(1, bassEnd);
+          const lowMid = lowMidSum / Math.max(1, lowMidEnd - bassEnd);
+          const mid = midSum / Math.max(1, midEnd - lowMidEnd);
+          const highMid = highMidSum / Math.max(1, highMidEnd - midEnd);
+          const treble = trebleSum / Math.max(1, trebleEnd - highMidEnd);
 
           const result = {
             connected: true,
@@ -169,7 +256,7 @@ export class AudioAnalyzer {
       };
       
       (window as any).strudelAudioAnalyzer.connect();
-    });
+    }, cfg);
   }
 
   /**

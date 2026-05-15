@@ -34,9 +34,12 @@ export class StrudelController {
   private consoleErrors: string[] = [];
   private consoleWarnings: string[] = [];
 
-  constructor(headless: boolean = false) {
+  constructor(
+    headless: boolean = false,
+    audioAnalysisConfig?: import('./types/AudioAnalysis.js').AudioAnalysisConfig,
+  ) {
     this.isHeadless = headless;
-    this.analyzer = new AudioAnalyzer();
+    this.analyzer = new AudioAnalyzer(audioAnalysisConfig);
     this.validator = new PatternValidator();
     this.errorRecovery = new ErrorRecovery();
     this.logger = new Logger();
