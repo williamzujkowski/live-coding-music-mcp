@@ -148,9 +148,15 @@ npm install -g @williamzujkowski/live-coding-music-mcp
 # NEW:  "command": "live-coding-music-mcp"
 ```
 
-## [Unreleased — pre-rename, now 2.4.1 on old package name]
+---
 
-> 66 tools registered
+# Pre-rename history
+
+The entries below are from the prior `@williamzujkowski/strudel-mcp-server` package, which was renamed in #97 (corresponding to the current package's v1.0.0 above). Version numbers in this section reference the **old** package and don't follow the current package's release timeline. They are kept here for archaeology.
+
+## [strudel-mcp-server 2.4.1 → unreleased on the old name]
+
+> 66 tools registered at the time of the rename
 > Since v2.4.1
 
 ### New Features
@@ -194,7 +200,7 @@ npm install -g @williamzujkowski/live-coding-music-mcp
 - **deps**: Bump qs in the npm_and_yarn group across 1 directory (#89)
 - **deps**: Bump @modelcontextprotocol/sdk (#86)
 
-## [2.4.1] - 2026-02-01
+## [strudel-mcp-server 2.4.1] - 2026-02-01
 
 ### Fixed
 
@@ -210,7 +216,7 @@ npm install -g @williamzujkowski/live-coding-music-mcp
 
 - @linxule - MCP compatibility and chord syntax fixes
 
-## [2.4.0] - 2026-01-25
+## [strudel-mcp-server 2.4.0] - 2026-01-25
 
 ### New Features
 
@@ -278,7 +284,7 @@ npm install -g @williamzujkowski/live-coding-music-mcp
 - Added `@tonejs/midi` for MIDI export
 - Added `google-auth-library` for ADC support
 
-## [2.3.0] - 2025-12-14
+## [strudel-mcp-server 2.3.0] - 2025-12-14
 
 ### New Features
 
@@ -320,7 +326,7 @@ npm install -g @williamzujkowski/live-coding-music-mcp
 - Added Security section documenting validation and sandboxing
 - Removed inaccurate claims from previous changelog entries
 
-## [2.2.0] - 2025-12-12
+## [strudel-mcp-server 2.2.0] - 2025-12-12
 
 ### Added
 - Browser integration tests with live Strudel.cc website
@@ -333,14 +339,14 @@ npm install -g @williamzujkowski/live-coding-music-mcp
 - Pattern caching for generated patterns
 - TypeScript strict mode compliance
 
-## [2.1.0] - 2025-11-15
+## [strudel-mcp-server 2.1.0] - 2025-11-15
 
 ### Added
 - Integration test framework
 - Music theory engine (scales, chords, progressions)
 - Pattern generator for multiple genres
 
-## [2.0.0] - 2025-11-01
+## [strudel-mcp-server 2.0.0] - 2025-11-01
 
 ### Added
 - 40+ MCP tools for music control
@@ -350,7 +356,7 @@ npm install -g @williamzujkowski/live-coding-music-mcp
 ### Breaking Changes
 - Restructured server architecture
 
-## [1.0.0] - 2025-08-18
+## [strudel-mcp-server 1.0.0] - 2025-08-18
 
 ### Initial Release
 - Basic MCP server implementation
