@@ -155,7 +155,7 @@ Adding context guidelines to CLAUDE.md after line 70.
 ## Project Purpose
 This is an **open source, actively developed** MCP server enabling AI agents to generate music via Strudel.cc using browser automation.
 
-**Current State:** Beta. 1771 tests pass, 86.76% statement / 77.32% branch coverage. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. See GitHub Issues for the roadmap. Contributions welcome.
+**Current State:** Beta. 1709 tests pass, 20 skipped (browser), 0 fail. 86.32% statement / 75.93% branch coverage. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
 
 ## GitHub Issues Workflow
 
@@ -245,7 +245,7 @@ Integration: Playwright → Strudel.cc
 
 ### 1. StrudelMCPServer (`src/server/server.ts`, ~510 lines)
 - **Purpose**: MCP protocol handling, dispatch to per-domain tool modules, response envelope wrapping
-- **Tools**: 84 registered (26 consolidated + 58 deprecated aliases; v3.0.0 / #120)
+- **Tools**: 26 registered (consolidated; #120 introduced the canonical shape in v3.0.0, #178 removed the deprecated aliases in v4.0.0)
 - **Resources**: 4 MCP resources (#131) — examples, patterns, styles, tool docs
 - **Key Methods**: `setupHandlers()`, `dispatchToolCall()`, `executeTool()` (thin), `getHistoryBundle()`, `getAudioCaptureService(sid)`
 - **State**: per-session history bundles (`historyBundles: Map<sid, ...>`), per-session capture services (`audioCaptureServices: Map<sid, ...>`), pattern cache
@@ -400,7 +400,7 @@ if (!validation.isValid) {
 - Tempo detection accuracy degrades under headless audio — onset sampling is flakier than in a real browser. Key detection (Krumhansl-Schmuckler) is best-effort.
 - History bounded to 100 entries per session (`MAX_HISTORY` constant).
 - Browser tests require Playwright and are skipped in CI.
-- Deprecated tool aliases from the #120 consolidation are still registered for v3.0.x — slated for removal in v3.1.0 (#178).
+- The deprecated tool aliases left by #120 were removed in v4.0.0 (#178). Tool calls using the old verb names (e.g. `write`, `play`, `detect_tempo`) now return an error.
 
 ### Security Considerations
 - Pattern validation prevents dangerous patterns (gain > 2.0, eval blocks)
@@ -695,14 +695,14 @@ describe('AudioAnalyzer - Tempo Detection', () => {
 ```typescript
 // Good - clear parameters, documented return
 {
-  name: 'generate_pattern',
-  description: 'Generate complete pattern for genre',
+  name: 'compose',
+  description: 'Generate, write, and play a complete pattern in one step. Auto-initializes default browser if needed.',
   inputSchema: {
     type: 'object',
     properties: {
       style: { type: 'string', description: 'Genre (techno, house, dnb, etc.)' },
       key: { type: 'string', description: 'Musical key (C, D, E, etc.)' },
-      bpm: { type: 'number', description: 'Tempo in BPM' }
+      tempo: { type: 'number', description: 'Tempo in BPM' }
     },
     required: ['style']
   }
@@ -933,9 +933,9 @@ The Strudel browser window is NOT a hidden implementation detail—it's the **pr
 
 Users expect immediate results. Minimize the number of tool calls for common workflows.
 
-**Current Workflow (Bad):**
+**Pre-consolidation workflow (5 calls):**
 ```
-init → generate_pattern → write → play → analyze  (5 calls)
+init → generate_part → edit_pattern → playback → analyze
 ```
 
 **Target Workflow (Good):**

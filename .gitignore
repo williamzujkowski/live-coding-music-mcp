@@ -39,7 +39,8 @@ test_*.json
 # Temporary files
 *.tmp
 temp/
-tmp/
+tmp/*
+!tmp/README.md
 
 # Playwright
 test-results/

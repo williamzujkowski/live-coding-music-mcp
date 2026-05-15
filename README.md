@@ -18,7 +18,7 @@
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
 
-**Current State: Beta.** The core workflow (init → generate → write → play → analyze) works reliably with real audio output. 1771 tests pass, 86.76% statement coverage / 77.32% branch coverage. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
+**Current State: Beta.** The core workflow (init → compose → playback → analyze) works reliably with real audio output. 1709 tests pass, 86.32% statement coverage / 75.93% branch coverage. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
 
 **What "Beta" means here:**
 - Tool schemas are stable within minor versions; breaking changes require a major bump
@@ -45,7 +45,7 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 ## Features
 
 ### 🎹 Music control
-- **84 MCP tools** covering pattern editing, playback, audio analysis, generation, history, sessions, and Gemini-backed assists. 26 are the canonical consolidated tools (`pattern_store`, `edit_pattern`, `transform`, `analyze`, `history`, `playback`, `effect`, `shape`, `audio_capture`, `browser_window`, `generate_part`, `generate_rhythm`, `music_theory`, `session`, `ai_assist`, ...); the rest are deprecated aliases kept for one release ([#178](https://github.com/williamzujkowski/live-coding-music-mcp/issues/178)).
+- **26 MCP tools** covering pattern editing, playback, audio analysis, generation, history, sessions, and Gemini-backed assists. Each tool is enum-parameterized to keep the protocol surface small: `pattern_store({ action })`, `edit_pattern({ mode })`, `transform({ op })`, `analyze({ include })`, `history({ action })`, `playback({ action })`, `effect({ action })`, `shape({ dimension })`, `audio_capture({ action })`, `browser_window({ action })`, `generate_part({ role })`, `generate_rhythm({ type })`, `music_theory({ query })`, `session({ action })`, `ai_assist({ task })`, ... The 58 legacy single-verb aliases that forwarded to these were removed in v4.0.0 ([#178](https://github.com/williamzujkowski/live-coding-music-mcp/issues/178)).
 - **4 MCP resources** for catalog browsing without burning tool calls: `strudel://examples`, `strudel://patterns`, `strudel://styles`, `strudel://docs/tools`.
 - **Real browser automation** of Strudel.cc through Playwright.
 - **Multi-session support** — every browser-touching tool accepts an optional `session_id`; sessions have isolated browser pages, undo/redo/history stacks, and audio-capture services.
@@ -56,12 +56,12 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 - **Result envelope** on every `tools/call`: clients branch on `{ ok, errorCategory, isRetryable }` instead of parsing free-text.
 
 ### 🔧 Testing & CI status
-- **1771 passing tests** across unit, integration, and example-validation suites.
-- **86.76% statement coverage / 77.32% branch coverage**.
+- **1709 passing tests** across unit, integration, and example-validation suites; 20 skipped (browser, gated by Playwright).
+- **86.32% statement coverage / 75.93% branch coverage**.
 - **Lint blocking in CI**: 0 errors, ~163 warnings (mostly `any` in test mocks).
 - **OIDC trusted publishing** to npm with SLSA build provenance attestation on every release.
 
-**Not Production-Ready:** This is experimental software under active development. Use for exploration and experimentation. Expect breaking changes, bugs, and incomplete features. See [CONTRIBUTING.md](CONTRIBUTING.md) to help improve it.
+**Not Production-Ready:** This is experimental software under active development. Use for exploration and experimentation. Expect breaking changes, bugs, and incomplete features. See [the Contributing section](#contributing) to help improve it.
 
 ### 🎼 Example patterns
 
@@ -535,7 +535,7 @@ note("c4 eb4 g4 bb4 c5").struct("1 1 1 1 1 1 1 1")
 
 ## Testing
 
-All tools have been tested with real Strudel.cc interaction:
+Tools are exercised against real Strudel.cc interaction through the browser test suite; those are skipped in CI (require Playwright + audio) but run locally:
 
 ```bash
 # Run integration tests
@@ -556,7 +556,7 @@ node tests/strudel-integration.js
   "strudel_url": "https://strudel.cc/",
   "patterns_dir": "./patterns",
   "audio_analysis": {
-    "fft_size": 2048,
+    "fft_size": 1024,
     "smoothing": 0.8
   }
 }
@@ -566,7 +566,7 @@ node tests/strudel-integration.js
 
 ### System Overview
 
-The Strudel MCP Server is built with a modular architecture that separates concerns and enables robust music generation:
+live-coding-music-mcp uses a modular architecture. Components:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -699,8 +699,8 @@ wholetone, harmonic_minor, melodic_minor
 
 #### 5. **PatternGenerator** (`src/services/PatternGenerator.ts`)
 
-AI-powered pattern creation:
-- **Genre Templates**: Techno, house, DnB, trap, ambient, jazz, intelligent_dnb, trip_hop, boom_bap
+Template-based pattern generation:
+- **Genre Templates**: techno, house, dnb, ambient, trap, jungle, jazz, experimental
 - **Drum Patterns**: 4 complexity levels per genre
 - **Basslines**: 8 different styles
 - **Melody Generation**: Scale-based with musical intervals
@@ -789,14 +789,7 @@ live-coding-music-mcp/
 
 ### Performance Characteristics
 
-| Operation | Latency | Notes |
-|-----------|---------|-------|
-| Pattern Generation | <100ms | Pure computation |
-| Browser Init | ~3s | One-time cost |
-| Pattern Write | ~50ms | With caching |
-| Play/Stop | ~100ms | Keyboard shortcuts |
-| Audio Analysis | ~20ms | With 50ms cache |
-| Pattern Save | ~10ms | File I/O |
+See the [Performance](#performance) section below for the measured latency table.
 
 ### Optimization Strategies
 
@@ -912,7 +905,7 @@ npm run lint
 npm run format
 
 # Clean build artifacts
-npm clean
+npm run clean
 ```
 
 ### Publishing to npm
@@ -993,7 +986,7 @@ npm run test:integration
 # - Pattern generation
 # - Audio analysis
 # - Pattern storage
-# - All 84 registered tools
+# - All 26 registered tools
 ```
 
 #### 3. Manual Testing
@@ -1077,24 +1070,20 @@ this.browser = await chromium.launch({
 The server includes built-in performance monitoring:
 
 ```typescript
-// Access performance metrics
+// Access performance metrics via diagnostics
 You: Show me performance metrics
 
-Claude: Performance Report:
-{
-  "averageLatency": {
-    "init": "3.2s",
-    "write": "52ms",
-    "play": "105ms",
-    "analyze": "18ms"
-  },
-  "cacheHitRate": "85%",
-  "totalOperations": 1247,
-  "bottlenecks": [
-    {"tool": "init", "avgTime": 3200, "calls": 1},
-    {"tool": "write", "avgTime": 52, "calls": 156}
-  ]
-}
+Claude: [calls diagnostics({ level: "perf" })]
+
+Server-side timing (averages over recent calls):
+- init                   ~1700ms
+- edit_pattern(write)    ~55ms
+- playback(action=play)  ~110ms
+- analyze(include=tempo) ~80ms
+
+Top bottlenecks:
+1. init           one-time browser launch
+2. analyze(key)   Krumhansl-Schmuckler over 1024-pt FFT
 ```
 
 ### Contributing Guidelines
@@ -1522,7 +1511,7 @@ claude chat
    - Use resource blocking (enabled by default)
 
 #### Patterns not saving
-**Symptom**: `save` command fails or patterns don't persist
+**Symptom**: `pattern_store({ action: "save" })` fails or patterns don't persist
 
 **Solutions**:
 ```bash
@@ -1590,7 +1579,7 @@ Claude: Browser state:
 - Initialized: true
 - Cached patterns: 2
 - Undo stack depth: 5
-- Last operation: write_pattern (2.5s ago)
+- Last operation: edit_pattern (2.5s ago)
 ```
 
 **Validate Pattern Syntax**
@@ -1649,14 +1638,14 @@ We review PRs promptly and welcome contributors of all skill levels. See [DEVELO
 
 This project depends on `@strudel/core`, `@strudel/mini`, `@strudel/tonal`, and `@strudel/transpiler`, which are AGPL-3.0 licensed by the upstream [Strudel project](https://codeberg.org/uzu/strudel). Since we `import` from those packages and redistribute the combined work via npm, this project must be distributed under the same copyleft terms. If you fork or redistribute, you must keep the AGPL license and provide source access to any network-accessible users (AGPL §13).
 
-Earlier versions of this package (including `@williamzujkowski/strudel-mcp-server` prior to deprecation) shipped with an MIT declaration — that was incorrect given the AGPL dependencies. v2.0.0 of `@williamzujkowski/live-coding-music-mcp` corrects the license to AGPL-3.0-or-later. v1.0.0 of this package is deprecated; install v2.0.0 or later.
+Earlier versions of this package (including `@williamzujkowski/strudel-mcp-server` prior to deprecation) shipped with an MIT declaration — that was incorrect given the AGPL dependencies. v2.0.0 of `@williamzujkowski/live-coding-music-mcp` corrects the license to AGPL-3.0-or-later. v1.0.0 of this package is deprecated; install v2.0.0 or later (current: v4.0.0).
 
 ## 🙏 Acknowledgments
 
-- [Strudel.cc](https://strudel.cc) - Amazing live coding environment
-- [TidalCycles](https://tidalcycles.org) - Pattern language inspiration
-- [Anthropic](https://anthropic.com) - Claude AI and MCP protocol
-- [Playwright](https://playwright.dev) - Reliable browser automation
+- [Strudel.cc](https://strudel.cc) — pattern-based live coding environment (this project is a fan adapter, not affiliated)
+- [TidalCycles](https://tidalcycles.org) — original pattern language Strudel descends from
+- [Anthropic](https://anthropic.com) — Claude and the MCP protocol
+- [Playwright](https://playwright.dev) — browser automation
 
 ---
 

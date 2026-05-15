@@ -6,16 +6,14 @@ Curated collection of music patterns showcasing the MCP server's generation capa
 
 ```
 examples/
-├── techno/          - Hard driving beats, acid basslines, 120-140 BPM
-├── house/           - 4/4 groove, soulful chords, 120-130 BPM
-├── dnb/             - Fast breakbeats, sub bass, 160-180 BPM
-├── ambient/         - Atmospheric pads, slow tempo, 60-90 BPM
-├── trap/            - 808 bass, hi-hat rolls, 130-150 BPM
-├── jungle/          - Chopped breaks, reggae influence, 160-180 BPM
-├── jazz/            - Swing feel, complex chords, 100-180 BPM
-├── intelligent_dnb/ - Atmospheric, liquid, LTJ Bukem style, 160-175 BPM
-├── trip_hop/        - Portishead/Massive Attack style, 80-100 BPM
-└── boom_bap/        - DJ Premier/Alchemist style, 85-100 BPM
+├── techno/    - Hard driving beats, acid basslines, 120-140 BPM
+├── house/     - 4/4 groove, soulful chords, 120-130 BPM
+├── dnb/       - Fast breakbeats, sub bass, 160-180 BPM
+├── ambient/   - Atmospheric pads, slow tempo, 60-90 BPM
+├── trap/      - 808 bass, hi-hat rolls, 130-150 BPM
+├── jungle/    - Chopped breaks, reggae influence, 160-180 BPM
+├── jazz/      - Swing feel, complex chords, 100-180 BPM
+└── longform/  - Multi-minute pieces (dark-ambient journey, driving techno, etc.)
 ```
 
 ## Pattern Format
@@ -41,26 +39,28 @@ Each pattern is stored as JSON with metadata:
 
 Load patterns using the MCP server:
 
+Agents can browse the bundled examples through the `strudel://examples` MCP resource without burning tool calls. To load and play one through the tools:
+
 ```typescript
-// List available examples
-await client.call("list", { path: "patterns/examples" });
+// List saved patterns (on-disk catalog)
+await client.call("pattern_store", { action: "list" });
 
-// Load specific pattern
-await client.call("load", { name: "hard-techno" });
+// Load a specific pattern into the current session
+await client.call("pattern_store", { action: "load", name: "hard-techno" });
 
-// Play the pattern
-await client.call("play");
+// Play it
+await client.call("playback", { action: "play" });
 ```
 
 ### Manual Testing
 
 ```bash
-# Generate a pattern
-echo '{"name":"generate_pattern","arguments":{"style":"techno","bpm":135,"key":"Am"}}' | \
+# Generate + write + play a full pattern in one tool call
+echo '{"jsonrpc":"2.0","method":"tools/call","id":1,"params":{"name":"compose","arguments":{"style":"techno","tempo":135,"key":"Am"}}}' | \
   node dist/index.js
 
-# Save to examples
-echo '{"name":"save","arguments":{"name":"my-pattern","tags":["techno"]}}' | \
+# Save the current session pattern under a name
+echo '{"jsonrpc":"2.0","method":"tools/call","id":2,"params":{"name":"pattern_store","arguments":{"action":"save","name":"my-pattern","tags":["techno"]}}}' | \
   node dist/index.js
 ```
 
@@ -139,23 +139,3 @@ Examples are validated by `src/__tests__/validation/GenreValidation.test.ts`:
 
 Run validation: `npm test -- GenreValidation`
 
-### Intelligent DnB
-- **BPM**: 160-175
-- **Key signatures**: Minor scales with jazz extensions (Cm9, Fm9, Bbm9)
-- **Elements**: Rolling breakbeats (amen, breaks165), sine sub bass, Rhodes, strings
-- **Patterns**: Atmospheric, jazz-influenced, LTJ Bukem / Good Looking Records style
-- **Aliases**: liquid_dnb, atmospheric_dnb, bukem
-
-### Trip Hop
-- **BPM**: 80-100
-- **Key signatures**: Minor scales (Dm7, Gm7, Am7)
-- **Elements**: Slow heavy drums, dusty textures, dark Rhodes, vinyl crackle
-- **Patterns**: Half-time feel, moody, Portishead / Massive Attack style
-- **Aliases**: triphop, portishead, massive_attack, flying_lotus
-
-### Boom Bap
-- **BPM**: 85-100
-- **Key signatures**: Minor scales (Em7, Am7, Dm7)
-- **Elements**: Hard-hitting kicks, crispy snares, soul samples, horn stabs
-- **Patterns**: Swing feel, classic hip-hop, DJ Premier / Alchemist style
-- **Aliases**: boombap, golden_era, premier, alchemist, daringer, hitboy
