@@ -38,7 +38,7 @@ function makeCtx(initialized = true) {
       queryEvents: jest.fn(),
       transpile: jest.fn(),
     } as any,
-    midiExportService: {} as any,
+    midiExportService: {} as any, midiImportService: {} as any,
     getAudioCaptureService: async (_sid?: string) => ({}) as any, dropAudioCaptureService: jest.fn(),
     getHistory: () => ({ undoStack: [], redoStack: [], historyStack: [], maxHistory: 100 }), historyEntryId: () => 1, dropHistory: jest.fn(),
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } as any,

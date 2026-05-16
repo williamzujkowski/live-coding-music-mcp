@@ -133,8 +133,9 @@ describe('MCP resources', () => {
     it('returns every registered tool with a description', async () => {
       const result = await readResource('strudel://docs/tools', ctx);
       const data = JSON.parse(result.text);
-      // 25 consolidated tool defs + the unlisted `init` we prepend = 26
-      expect(data.count).toBe(26);
+      // 26 consolidated tool defs + the unlisted `init` we prepend = 27
+      // (import_midi added in #201)
+      expect(data.count).toBe(27);
       const initTool = data.tools.find((t: any) => t.name === 'init');
       expect(initTool).toBeDefined();
       const compose = data.tools.find((t: any) => t.name === 'compose');

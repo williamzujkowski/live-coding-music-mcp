@@ -40,7 +40,7 @@ function makeCtx(initialized = true) {
     sessionManager: {} as any,
     geminiService: {} as any,
     strudelEngine: {} as any,
-    midiExportService: {} as any,
+    midiExportService: {} as any, midiImportService: {} as any,
     getAudioCaptureService: async (_sid?: string) => ({}) as any, dropAudioCaptureService: jest.fn(),
     getHistory: (sid?: string) => {
       const b = getBundle(sid ?? 'default');

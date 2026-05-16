@@ -14,6 +14,7 @@ import { PatternGenerator } from '../services/PatternGenerator.js';
 import { GeminiService } from '../services/GeminiService.js';
 import { AudioCaptureService } from '../services/AudioCaptureService.js';
 import { MIDIExportService } from '../services/MIDIExportService.js';
+import { MIDIImportService } from '../services/MIDIImportService.js';
 import { SessionManager } from '../services/SessionManager.js';
 import { readFileSync, existsSync } from 'fs';
 import { Logger } from '../utils/Logger.js';
@@ -68,6 +69,7 @@ export class StrudelMCPServer {
    */
   private audioCaptureServices: Map<string, AudioCaptureService> = new Map();
   private midiExportService: MIDIExportService;
+  private midiImportService: MIDIImportService;
   private sessionManager: SessionManager;
   private logger: Logger;
   private perfMonitor: PerformanceMonitor;
@@ -110,6 +112,7 @@ export class StrudelMCPServer {
     this.generator = new PatternGenerator();
     this.geminiService = new GeminiService();
     this.midiExportService = new MIDIExportService();
+    this.midiImportService = new MIDIImportService();
     this.sessionManager = new SessionManager(config.headless, audioAnalysisConfig);
     this.logger = new Logger();
     this.perfMonitor = new PerformanceMonitor();
@@ -365,6 +368,7 @@ export class StrudelMCPServer {
       geminiService: this.geminiService,
       strudelEngine: this.strudelEngine,
       midiExportService: this.midiExportService,
+      midiImportService: this.midiImportService,
       getAudioCaptureService: (sessionId?: string) => this.getAudioCaptureService(sessionId),
       dropAudioCaptureService: (sessionId: string) => { this.audioCaptureServices.delete(sessionId); },
       getHistory: (sessionId?: string) => {

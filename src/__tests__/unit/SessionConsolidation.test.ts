@@ -29,7 +29,7 @@ function makeCtx() {
     generator: {} as any, theory: {} as any,
     sessionManager: sm as any,
     geminiService: {} as any, strudelEngine: {} as any,
-    midiExportService: {} as any,
+    midiExportService: {} as any, midiImportService: {} as any,
     getAudioCaptureService: async (_sid?: string) => ({}) as any, dropAudioCaptureService: jest.fn(),
     getHistory: () => ({ undoStack: [], redoStack: [], historyStack: [], maxHistory: 100 }),
     historyEntryId: () => 1,

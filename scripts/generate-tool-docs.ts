@@ -79,7 +79,7 @@ function categorizeTools(tools: Tool[]): Map<string, Tool[]> {
     init: 'Setup',
     edit_pattern: 'Pattern Editing', get_pattern: 'Pattern Editing',
     playback: 'Playback', set_tempo: 'Playback',
-    pattern_store: 'Storage',
+    pattern_store: 'Storage', import_midi: 'Storage',
     history: 'History',
     compose: 'Generation', generate_part: 'Generation', generate_rhythm: 'Generation',
     music_theory: 'Music Theory',
