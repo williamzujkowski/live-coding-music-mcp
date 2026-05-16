@@ -8,8 +8,13 @@ updates:
       actions:
         patterns: ["*"]
   # Docker base image is pinned by SHA — Dependabot bumps the digest when
-  # node:22-alpine moves so the pin doesn't go stale.
+  # node:22-alpine moves so the pin doesn't go stale. Major Node version
+  # bumps are intentional decisions tied to LTS cadence and our CI matrix,
+  # so we ignore them here and bump explicitly in a separate PR.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
