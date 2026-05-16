@@ -46,13 +46,42 @@ export class StrudelController {
   }
 
   /**
-   * Initializes the browser and navigates to Strudel.cc
+   * Returns true iff both the browser and its page are still alive.
+   * Used by `initialize()` to detect a stale session where the user
+   * (or a crash) closed the page out from under us, and by callers
+   * that want to verify before issuing a tool call (#202).
+   */
+  isAlive(): boolean {
+    return this.browser !== null && this._page !== null && !this._page.isClosed();
+  }
+
+  /**
+   * Initializes the browser and navigates to Strudel.cc.
+   *
+   * Idempotent and self-healing (#202): if a previous init succeeded but
+   * the page has since been closed (manual user close, crash, navigation
+   * error), the next call tears down the dead browser and re-initializes
+   * rather than returning "Already initialized" and leaving callers to
+   * fail with `Target page, context or browser has been closed`.
+   *
    * @returns Success message when initialization is complete
    * @throws {Error} When browser launch or page navigation fails
    */
   async initialize(): Promise<string> {
-    if (this.browser) {
+    if (this.isAlive()) {
       return 'Already initialized';
+    }
+    // Browser handle exists but page is dead — clean up before re-init so
+    // we don't leak a dangling Chromium process.
+    if (this.browser !== null) {
+      this.logger.warn('Stale browser detected (page closed); recreating');
+      try {
+        await this.cleanup();
+      } catch (e: any) {
+        // cleanup failures shouldn't block re-init; the next launch is
+        // what matters. The stale process becomes the OS's problem.
+        this.logger.warn(`Cleanup during recovery failed: ${e?.message ?? e}`);
+      }
     }
 
     this.browser = await chromium.launch({

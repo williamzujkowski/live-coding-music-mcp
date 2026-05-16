@@ -6,6 +6,16 @@ export class MockPage implements Partial<Page> {
   private evaluateHandlers: Map<string, Function> = new Map();
   private url: string = '';
   private eventHandlers: Map<string, Function[]> = new Map();
+  private closed: boolean = false;
+
+  /** Simulate the user closing the page (or a crash). */
+  forceClose(): void {
+    this.closed = true;
+  }
+
+  isClosed(): boolean {
+    return this.closed;
+  }
 
   on(event: string, handler: Function): this {
     if (!this.eventHandlers.has(event)) {

@@ -52,6 +52,33 @@ describe('StrudelController', () => {
       expect(chromium.launch).toHaveBeenCalledTimes(1);
     });
 
+    test('should recover when the page has been closed under us (#202)', async () => {
+      // First init succeeds.
+      const first = await controller.initialize();
+      expect(first).toContain('initialized');
+      expect(controller.isAlive()).toBe(true);
+
+      // User closes the page (or it crashes). Browser handle still exists,
+      // but isAlive() should now report false.
+      mockPage.forceClose();
+      expect(controller.isAlive()).toBe(false);
+
+      // Stub launch to return a fresh browser/page on the second call so
+      // we can verify init tears down the dead one and rebuilds.
+      const freshPage = createMockPage();
+      const freshBrowser = new MockBrowser();
+      freshBrowser.newContext = jest.fn().mockResolvedValue({
+        newPage: jest.fn().mockResolvedValue(freshPage),
+      });
+      (chromium.launch as jest.Mock).mockResolvedValueOnce(freshBrowser);
+
+      const second = await controller.initialize();
+      expect(second).toContain('initialized');
+      expect(second).not.toBe('Already initialized');
+      expect(chromium.launch).toHaveBeenCalledTimes(2);
+      expect(controller.isAlive()).toBe(true);
+    });
+
     test('should wait for editor selector', async () => {
       mockPage.waitForSelector = jest.fn().mockResolvedValue(true);
 
