@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@95e58e9a2cdfd71adc6e0353d5c52f41a045d225  # v4.35.2
+        uses: github/codeql-action/init@9e0d7b8d25671d64c341c19c0152d693099fb5ba  # v4.35.5
         with:
           languages: ${{ matrix.language }}
           # Use the extended query suite — same set Scorecard expects to see
@@ -48,6 +48,6 @@ jobs:
           queries: security-extended
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225  # v4.35.2
+        uses: github/codeql-action/analyze@9e0d7b8d25671d64c341c19c0152d693099fb5ba  # v4.35.5
         with:
           category: '/language:${{ matrix.language }}'
