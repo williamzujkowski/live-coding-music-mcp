@@ -44,7 +44,7 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 
 ## Features
 
-### 🎹 Music control
+### Music control
 - **27 MCP tools** covering pattern editing, playback, audio analysis, generation, history, sessions, MIDI import/export, and Gemini-backed assists. Each tool is enum-parameterized to keep the protocol surface small: `pattern_store({ action })`, `edit_pattern({ mode })`, `transform({ op })`, `analyze({ include })`, `history({ action })`, `playback({ action })`, `effect({ action })`, `shape({ dimension })`, `audio_capture({ action })`, `browser_window({ action })`, `generate_part({ role })`, `generate_rhythm({ type })`, `music_theory({ query })`, `session({ action })`, `ai_assist({ task })`, ... The 58 legacy single-verb aliases that forwarded to these were removed in v4.0.0 ([#178](https://github.com/williamzujkowski/live-coding-music-mcp/issues/178)).
 - **4 MCP resources** for catalog browsing without burning tool calls: `strudel://examples`, `strudel://patterns`, `strudel://styles`, `strudel://docs/tools`.
 - **Real browser automation** of Strudel.cc through Playwright.
@@ -55,7 +55,7 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 - **Pattern persistence**: JSON-backed save/load with tags + the in-memory edit history (undo/redo/restore/compare).
 - **Result envelope** on every `tools/call`: clients branch on `{ ok, errorCategory, isRetryable }` instead of parsing free-text.
 
-### 🔧 Testing & CI status
+### Testing & CI status
 - **1709 passing tests** across unit, integration, and example-validation suites; 20 skipped (browser, gated by Playwright).
 - **86.32% statement coverage / 75.93% branch coverage**.
 - **Lint blocking in CI**: 0 errors, ~163 warnings (mostly `any` in test mocks).
@@ -63,7 +63,7 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 
 **Not Production-Ready:** This is experimental software under active development. Use for exploration and experimentation. Expect breaking changes, bugs, and incomplete features. See [the Contributing section](#contributing) to help improve it.
 
-### 🎼 Example patterns
+### Example patterns
 
 18 example patterns ship in [`patterns/examples/`](patterns/examples/), grouped by genre:
 
@@ -867,7 +867,7 @@ s("bd*4")
   .every(8, x => x.sometimes(y => y.fast(2)))
 ```
 
-## 🔒 Security
+## Security
 
 ### Pattern Validation
 
@@ -892,7 +892,7 @@ All patterns are validated before execution:
 
 Found a vulnerability? Please [open a security issue](https://github.com/williamzujkowski/live-coding-music-mcp/security/advisories/new) or email the maintainer directly. Do not disclose publicly until patched.
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -1091,7 +1091,7 @@ If you encounter issues not covered here:
 4. **Consult Strudel docs**: [Strudel.cc documentation](https://strudel.cc/learn)
 5. **Create new issue**: Include error messages, OS, Node version, and steps to reproduce
 
-## 🤝 Contributing
+## Contributing
 
 PRs welcome — bug fixes, docs, tests, new tools. See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the contribution guide and **[DEVELOPMENT.md](DEVELOPMENT.md)** for setup and workflow.
 
@@ -1099,7 +1099,7 @@ For non-trivial work, open a GitHub issue first ([issue policy in CLAUDE.md](CLA
 
 [GitHub Discussions](https://github.com/williamzujkowski/live-coding-music-mcp/discussions) are open for use-case questions and design conversations.
 
-## 📄 License
+## License
 
 **AGPL-3.0-or-later** — see [LICENSE](LICENSE) for the full text.
 
@@ -1107,7 +1107,7 @@ This project depends on `@strudel/core`, `@strudel/mini`, `@strudel/tonal`, and 
 
 Earlier versions of this package (including `@williamzujkowski/strudel-mcp-server` prior to deprecation) shipped with an MIT declaration — that was incorrect given the AGPL dependencies. v2.0.0 of `@williamzujkowski/live-coding-music-mcp` corrects the license to AGPL-3.0-or-later. v1.0.0 of this package is deprecated; install v2.0.0 or later (current: v4.0.0).
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [Strudel.cc](https://strudel.cc) — pattern-based live coding environment (this project is a fan adapter, not affiliated)
 - [TidalCycles](https://tidalcycles.org) — original pattern language Strudel descends from
