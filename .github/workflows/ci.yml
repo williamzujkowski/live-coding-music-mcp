@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Least-privilege default for GITHUB_TOKEN — the build job only needs to
+# read the repo. Individual jobs can elevate if they ever need to.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest

@@ -20,11 +20,12 @@ on:
         default: true
         type: boolean
 
-# Required for OIDC trusted publishing and build provenance attestation
+# Least-privilege default at the workflow level — read-only.
+# The publish job opts into the writes it needs (release upload, version
+# bump push, attestation log). Scoping at the job level rather than
+# top-level was Scorecard finding #18.
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 # A real release goes through the `release: published` event. A
 # workflow_dispatch run is dry by default — it exercises the whole
@@ -39,6 +40,13 @@ jobs:
     # Environment is optional but recommended for additional protection
     # Configure this environment in GitHub repo settings if desired
     environment: npm-publish
+    # contents:write — version bump push + release artifact upload
+    # id-token:write — OIDC trusted publishing to npm
+    # attestations:write — SLSA build provenance log
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6

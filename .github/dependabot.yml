@@ -7,3 +7,9 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  # Docker base image is pinned by SHA — Dependabot bumps the digest when
+  # node:22-alpine moves so the pin doesn't go stale.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
