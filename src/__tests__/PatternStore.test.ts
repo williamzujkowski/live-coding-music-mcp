@@ -8,9 +8,11 @@ describe('PatternStore', () => {
   let testDir: string;
 
   beforeEach(async () => {
-    // Create a temporary directory for testing
-    testDir = path.join(tmpdir(), 'strudel-test-' + Date.now());
-    await fs.mkdir(testDir, { recursive: true });
+    // Create a temporary directory for testing. fs.mkdtemp atomically creates
+    // a uniquely-named directory with an unpredictable random suffix and 0700
+    // permissions, so there is no predictable path an attacker could
+    // pre-create or symlink (unlike tmpdir()+Date.now()).
+    testDir = await fs.mkdtemp(path.join(tmpdir(), 'strudel-test-'));
     store = new PatternStore(testDir);
   });
 
