@@ -445,6 +445,13 @@ export class StrudelMCPServer {
     if (name === 'init') {
       const initResult = await this.controller.initialize();
       this.isInitialized = true;
+      // Install the recorder hook before any pattern playback connects the
+      // Strudel audio graph. Otherwise audio_capture can miss the first
+      // GainNode.connect call and remain disconnected even while diagnostics
+      // reports healthy WebAudio playback.
+      if (this._page) {
+        await this.getAudioCaptureService();
+      }
       // Replay any pattern generated before init landed.
       if (this.generatedPatterns.size > 0) {
         const lastPattern = Array.from(this.generatedPatterns.values()).pop();
@@ -481,6 +488,9 @@ export class StrudelMCPServer {
     if (this.isInitialized) return;
     await this.controller.initialize();
     this.isInitialized = true;
+    if (this._page) {
+      await this.getAudioCaptureService();
+    }
   }
 
   /** Getter for page access in audio capture. */
