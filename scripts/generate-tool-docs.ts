@@ -81,7 +81,7 @@ function categorizeTools(tools: Tool[]): Map<string, Tool[]> {
     playback: 'Playback', set_tempo: 'Playback',
     pattern_store: 'Storage', import_midi: 'Storage',
     history: 'History',
-    compose: 'Generation', generate_part: 'Generation', generate_rhythm: 'Generation',
+    compose: 'Generation', generate_part: 'Generation', generate_rhythm: 'Generation', generate_music: 'Generation',
     music_theory: 'Music Theory',
     transform: 'Transform', effect: 'Transform', shape: 'Transform',
     ai_assist: 'AI',

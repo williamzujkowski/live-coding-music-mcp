@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-27-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-28-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -257,7 +257,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 <!-- TOOLS:START -->
 
-**27 tools** across 14 categories:
+**28 tools** across 14 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -302,13 +302,14 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 </details>
 
-<details><summary><strong>Generation</strong> (3)</summary>
+<details><summary><strong>Generation</strong> (4)</summary>
 
 | Tool | Description |
 |------|-------------|
 | `compose` | Generate, write, and play a complete pattern in one step. Auto-initializes default browser if needed. |
 | `generate_part` | Generate a single instrumental layer and append it to the current session pattern.  |
 | `generate_rhythm` | Generate a rhythmic pattern and append it to the current session.  |
+| `generate_music` | Generate music with the MiniMax music API and return the generated audio as a URL or hexadecimal payload. |
 
 </details>
 
@@ -384,7 +385,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 </details>
 
-_Auto-generated from source. 27 tools registered._
+_Auto-generated from source. 28 tools registered._
 
 <!-- TOOLS:END -->
 

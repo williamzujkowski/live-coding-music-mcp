@@ -12,6 +12,7 @@ import { PatternStore } from '../PatternStore.js';
 import { MusicTheory } from '../services/MusicTheory.js';
 import { PatternGenerator } from '../services/PatternGenerator.js';
 import { GeminiService } from '../services/GeminiService.js';
+import { MiniMaxMusicService } from '../services/MiniMaxMusicService.js';
 import { AudioCaptureService } from '../services/AudioCaptureService.js';
 import { MIDIExportService } from '../services/MIDIExportService.js';
 import { MIDIImportService } from '../services/MIDIImportService.js';
@@ -32,6 +33,7 @@ import { sessionModule } from './tools/session.js';
 import { captureModule } from './tools/capture.js';
 import { aiModule } from './tools/ai.js';
 import { composeModule } from './tools/compose.js';
+import { musicModule } from './tools/music.js';
 import type { Envelope, ToolContext, HistoryEntry } from './tools/types.js';
 import { categorizeError, err, isEnvelope, ok } from './tools/types.js';
 import { readResource, resources as mcpResources } from './resources.js';
@@ -61,6 +63,7 @@ export class StrudelMCPServer {
   private theory: MusicTheory;
   private generator: PatternGenerator;
   private geminiService: GeminiService;
+  private miniMaxMusicService: MiniMaxMusicService;
   /**
    * Per-session AudioCaptureService instances (#180). Keyed by session id
    * (or 'default' for the legacy/single-session path). Each session's
@@ -111,6 +114,7 @@ export class StrudelMCPServer {
     this.theory = new MusicTheory();
     this.generator = new PatternGenerator();
     this.geminiService = new GeminiService();
+    this.miniMaxMusicService = new MiniMaxMusicService();
     this.midiExportService = new MIDIExportService();
     this.midiImportService = new MIDIImportService();
     this.sessionManager = new SessionManager(config.headless, audioAnalysisConfig);
@@ -131,6 +135,7 @@ export class StrudelMCPServer {
       ...playbackModule.tools,
       ...transformModule.tools,
       ...generateModule.tools,
+      ...musicModule.tools,
       ...analysisModule.tools,
       ...storageModule.tools,
       ...historyModule.tools,
@@ -366,6 +371,7 @@ export class StrudelMCPServer {
       theory: this.theory,
       sessionManager: this.sessionManager,
       geminiService: this.geminiService,
+      miniMaxMusicService: this.miniMaxMusicService,
       strudelEngine: this.strudelEngine,
       midiExportService: this.midiExportService,
       midiImportService: this.midiImportService,
@@ -412,6 +418,9 @@ export class StrudelMCPServer {
     }
     if (generateModule.toolNames.has(name)) {
       return await generateModule.execute(name, args, ctx);
+    }
+    if (musicModule.toolNames.has(name)) {
+      return await musicModule.execute(name, args, ctx);
     }
     if (sessionModule.toolNames.has(name)) {
       return await sessionModule.execute(name, args, ctx);
