@@ -210,7 +210,7 @@ echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | live-coding-music-mcp
 npm run validate
 ```
 
-You should see a JSON response listing **26 tools**. If you see fewer, the build is out of date — run `npm run build`.
+You should see a JSON response listing **28 tools**. If you see fewer, the build is out of date — run `npm run build`.
 
 ### 4. Make your first sound
 
