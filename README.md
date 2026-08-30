@@ -210,7 +210,7 @@ echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | live-coding-music-mcp
 npm run validate
 ```
 
-You should see a JSON response listing **26 tools**. If you see fewer, the build is out of date — run `npm run build`.
+You should see a JSON response listing **27 tools**. If you see fewer, the build is out of date — run `npm run build`.
 
 ### 4. Make your first sound
 
@@ -876,11 +876,23 @@ All patterns are validated before execution:
 - **Eval blocks** are rejected
 - **Path traversal** attacks are blocked in PatternStore
 
-### Browser Sandboxing
+### Browser Isolation
 
-- Playwright runs Chromium in sandbox mode
-- No access to local filesystem from browser context
-- Resource blocking prevents loading external content
+Be precise about what this does and does not give you:
+
+- **The OS-level Chrome sandbox is disabled.** Chromium is launched with `--no-sandbox` and
+  `--disable-setuid-sandbox` ([`src/StrudelController.ts`](src/StrudelController.ts)) for headless
+  and container compatibility, where the sandbox otherwise needs `CAP_SYS_ADMIN` or user namespaces.
+  This is a deliberate trade-off, not a security feature.
+- **The browser context is a fresh, non-persistent Playwright context** — no profile on disk, no
+  cookies or storage carried over between runs, and no `file://` navigation is ever performed.
+- **Resource blocking is a performance optimization, not a security boundary.** Images, fonts, and
+  media are aborted to speed up page load; scripts, stylesheets, and network requests from
+  strudel.cc are allowed through as normal.
+- **Patterns are validated before execution** (see above), which is the actual pre-execution control.
+
+If you need real isolation, run the whole MCP server inside a locked-down container or VM. The
+server does not sandbox itself.
 
 ### Known Limitations
 
@@ -959,7 +971,7 @@ npm run build
 # Check if server responds
 echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | node dist/index.js
 
-# Should return JSON with 26 tools
+# Should return JSON with 27 tools
 
 # Reinstall MCP server in Claude
 claude mcp remove strudel

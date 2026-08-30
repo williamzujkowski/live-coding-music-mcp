@@ -132,6 +132,34 @@ function generateToolSection(tools: Tool[]): string {
   return lines.join('\n');
 }
 
+/**
+ * Every hand-written tool-count mention in README.md.
+ *
+ * The auto-generated table between the TOOLS markers is regenerated wholesale,
+ * but these counts live in prose outside the markers and used to drift silently
+ * (#221: badge said 27 while Quick Start said 26, so users "fixed" a non-problem).
+ * Both `inject` and `check` run this list, so CI fails on drift instead of
+ * shipping a README that contradicts itself.
+ */
+const COUNT_PATTERNS: { pattern: RegExp; replace: (n: number) => string }[] = [
+  // Badge: [![Tools](https://img.shields.io/badge/tools-27-green.svg)]()
+  { pattern: /tools-\d+-green/g, replace: n => `tools-${String(n)}-green` },
+  // Feature bullet: - **27 MCP tools** covering ...
+  { pattern: /\*\*\d+ MCP tools\*\*/g, replace: n => `**${String(n)} MCP tools**` },
+  // Quick Start: You should see a JSON response listing **27 tools**.
+  { pattern: /listing \*\*\d+ tools\*\*/g, replace: n => `listing **${String(n)} tools**` },
+  // Troubleshooting snippet comment: # Should return JSON with 27 tools
+  { pattern: /# Should return JSON with \d+ tools/g, replace: n => `# Should return JSON with ${String(n)} tools` },
+];
+
+function patchToolCounts(readme: string, count: number): string {
+  let out = readme;
+  for (const { pattern, replace } of COUNT_PATTERNS) {
+    out = out.replace(pattern, replace(count));
+  }
+  return out;
+}
+
 function inject(): void {
   const tools = extractTools();
   console.log(`Found ${String(tools.length)} tools in source`);
@@ -149,11 +177,8 @@ function inject(): void {
     return;
   }
 
-  // Also update tool count badge
-  readme = readme.replace(
-    /tools-\d+-green/,
-    `tools-${String(tools.length)}-green`
-  );
+  // Keep every hand-written count in sync with the generated table (#221)
+  readme = patchToolCounts(readme, tools.length);
 
   writeFileSync(README_PATH, readme);
   console.log(`Injected ${String(tools.length)} tools into README.md`);
@@ -175,6 +200,13 @@ function check(): void {
   const current = readme.slice(startIdx, endIdx + END_MARKER.length);
   if (current !== expected) {
     console.error(`Tool documentation drift detected (${String(tools.length)} tools in source)`);
+    console.error('Run: npx tsx scripts/generate-tool-docs.ts');
+    process.exit(1);
+  }
+
+  // Hand-written counts outside the markers drift too (#221).
+  if (patchToolCounts(readme, tools.length) !== readme) {
+    console.error(`Tool count drift outside the generated table (${String(tools.length)} tools in source)`);
     console.error('Run: npx tsx scripts/generate-tool-docs.ts');
     process.exit(1);
   }
