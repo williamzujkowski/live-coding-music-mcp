@@ -3,6 +3,7 @@ import * as path from 'path';
 import { promises as fs } from 'fs';
 import { AudioAnalyzer } from './AudioAnalyzer.js';
 import { PatternValidator, ValidationResult } from './utils/PatternValidator.js';
+import { DEFAULT_STRUDEL_URL } from './utils/ServerConfig.js';
 import { ErrorRecovery } from './utils/ErrorRecovery.js';
 import { Logger } from './utils/Logger.js';
 import {
@@ -50,6 +51,8 @@ export class StrudelController {
   private errorRecovery: ErrorRecovery;
   private logger: Logger;
   private isHeadless: boolean;
+  /** Strudel REPL URL; `strudel_url` in config.json (#227). */
+  private readonly strudelUrl: string;
   private editorCache: string = '';
   private cacheTimestamp: number = 0;
   private readonly CACHE_TTL = 100; // milliseconds
@@ -65,8 +68,10 @@ export class StrudelController {
   constructor(
     headless: boolean = false,
     audioAnalysisConfig?: import('./types/AudioAnalysis.js').AudioAnalysisConfig,
+    strudelUrl: string = DEFAULT_STRUDEL_URL,
   ) {
     this.isHeadless = headless;
+    this.strudelUrl = strudelUrl;
     this.analyzer = new AudioAnalyzer(audioAnalysisConfig);
     this.validator = new PatternValidator();
     this.errorRecovery = new ErrorRecovery();
@@ -144,7 +149,7 @@ export class StrudelController {
       }
     });
 
-    await this._page.goto('https://strudel.cc/', {
+    await this._page.goto(this.strudelUrl, {
       waitUntil: 'domcontentloaded', // Changed from networkidle for faster load
       timeout: 15000,
     });
