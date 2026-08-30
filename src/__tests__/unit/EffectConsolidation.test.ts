@@ -61,6 +61,9 @@ describe('effect consolidation (#153)', () => {
    * `(a+)+Z` against a crafted pattern blocked the event loop for 25
    * seconds — the whole server stops answering stdio, with no timeout to
    * break out of a synchronous String.replace.
+   *
+   * Removal no longer builds a RegExp at all, so the sink is gone rather
+   * than guarded; the identifier check remains as the input contract.
    */
   describe('regex injection (#236)', () => {
     it('rejects a catastrophic-backtracking effect name, quickly', async () => {
@@ -68,12 +71,6 @@ describe('effect consolidation (#153)', () => {
 
       const started = Date.now();
       await expect(
-        // The payload is the point of the test: it must be refused before
-        // it can reach the RegExp. validateIdentifier throws first, and
-        // the interpolation is escaped besides, so it never becomes a
-        // pattern — CodeQL traces the literal to the sink without
-        // modelling either guard.
-        // codeql[js/redos]
         execute('effect', { action: 'remove', effect: '(a+)+Z' }, ctx),
       ).rejects.toThrow(/Invalid effect/);
 
@@ -81,7 +78,6 @@ describe('effect consolidation (#153)', () => {
       expect(Date.now() - started).toBeLessThan(1000);
     });
 
-    // codeql[js/redos] — rejected payloads, never compiled into a RegExp.
     it.each(['(a+)+Z', '.*', 'a|b', 'lpf()', 'lpf;rm -rf ~', '2fast', ''])(
       'rejects %p as an effect name',
       async effect => {
@@ -103,6 +99,53 @@ describe('effect consolidation (#153)', () => {
       const { ctx, pattern } = makeCtx();
       await execute('effect', { action: 'add', effect: 'lpf', params: '1000' }, ctx);
       expect(pattern()).toContain('lpf');
+    });
+  });
+
+  /**
+   * The old `\.effect\([^)]*\)` regex stopped at the FIRST `)`, so a
+   * nested call left a stray paren behind and produced a pattern that no
+   * longer parsed. Scanning balanced parens fixes that too.
+   */
+  describe('removal handles nested parentheses', () => {
+    it('removes a call containing a nested call', async () => {
+      const { ctx, pattern } = makeCtx('s("bd").lpf(add(1,2)).gain(0.5)');
+
+      await execute('effect', { action: 'remove', effect: 'lpf' }, ctx);
+
+      expect(pattern()).toBe('s("bd").gain(0.5)');
+    });
+
+    it('removes every occurrence, not just the first', async () => {
+      const { ctx, pattern } = makeCtx('s("bd").gain(0.5).lpf(200).gain(0.8)');
+
+      await execute('effect', { action: 'remove', effect: 'gain' }, ctx);
+
+      expect(pattern()).toBe('s("bd").lpf(200)');
+    });
+
+    it('removes an empty-argument call', async () => {
+      const { ctx, pattern } = makeCtx('s("bd").rev().gain(0.5)');
+
+      await execute('effect', { action: 'remove', effect: 'rev' }, ctx);
+
+      expect(pattern()).toBe('s("bd").gain(0.5)');
+    });
+
+    it('leaves an unbalanced pattern alone rather than mangling it', async () => {
+      const { ctx } = makeCtx('s("bd").lpf(200');
+
+      const result = await execute('effect', { action: 'remove', effect: 'lpf' }, ctx);
+
+      expect(result).toContain('No lpf effect found');
+    });
+
+    it('does not match an effect name that is only a suffix', async () => {
+      const { ctx } = makeCtx('s("bd").hicutoff(200)');
+
+      const result = await execute('effect', { action: 'remove', effect: 'cutoff' }, ctx);
+
+      expect(result).toContain('No cutoff effect found');
     });
   });
 });
