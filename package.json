@@ -31,7 +31,8 @@
     "validate": "echo '{\"jsonrpc\":\"2.0\",\"method\":\"tools/list\",\"id\":1}' | node dist/index.js",
     "benchmark": "tsx src/__tests__/benchmarks/latency.benchmark.ts",
     "benchmark:gate": "tsx src/__tests__/benchmarks/latency.benchmark.ts --gate",
-    "clean": "rm -rf dist coverage"
+    "clean": "rm -rf dist coverage",
+    "test:sandbox": "tsx scripts/verify-sandbox.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -41,6 +42,7 @@
     "@strudel/tonal": "1.2.5",
     "@strudel/transpiler": "1.2.5",
     "@tonejs/midi": "^2.0.28",
+    "acorn": "8.16.0",
     "google-auth-library": "^10.5.0",
     "playwright": "^1.52.0"
   },
