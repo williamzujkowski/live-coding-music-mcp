@@ -82,7 +82,6 @@ export class StrudelMCPServer {
   private logger: Logger;
   private perfMonitor: PerformanceMonitor;
   private strudelEngine: StrudelEngine;
-  private sessionHistory: string[] = [];
   /**
    * Per-session undo/redo/history bundles (#179). Keyed by session id;
    * 'default' for the legacy/single-session path. Bundles are lazily

@@ -113,7 +113,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       }
 
       // Auto-init only the default session. Named sessions must be
-      // created via `create_session` first — ctx.getController(sid)
+      // created via `session({ action: "create" })` first — ctx.getController(sid)
       // throws if missing, which the dispatcher renders as err('business').
       if (!sid) {
         await ctx.ensureInitialized();

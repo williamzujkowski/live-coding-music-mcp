@@ -100,7 +100,7 @@ export interface ToolContext {
    *     single-user behaviour for callers that don't know about sessions.
    *   - explicit string → SessionManager.getSession(id); **throws** if the
    *     session doesn't exist. Named sessions must be created via the
-   *     `create_session` tool before use.
+   *     `session({ action: 'create' })` before use.
    *
    * Tools should call this instead of touching `controller` directly when
    * they're stateful-on-the-browser. The dispatcher wraps the throw into
