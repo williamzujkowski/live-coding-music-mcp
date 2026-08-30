@@ -343,15 +343,16 @@ describe('MIDIExportService', () => {
 
   describe('exportToFile', () => {
     const testFilename = 'test-midi-export.mid';
-    // Exports are confined to a directory now (#224); point it somewhere
-    // disposable so the tests don't litter the repo.
-    const exportDir = require('path').join(
-      require('os').tmpdir(),
-      'strudel-midi-export-tests',
-    );
+    // Exports are confined to a directory now (#224); point it at a fresh
+    // mkdtemp so the tests don't litter the repo and can't collide with a
+    // parallel run (a fixed temp path is also a CodeQL js/insecure-temporary-file).
+    let exportDir: string;
     let service: MIDIExportService;
 
     beforeEach(() => {
+      exportDir = require('fs').mkdtempSync(
+        require('path').join(require('os').tmpdir(), 'strudel-midi-export-'),
+      );
       service = new MIDIExportService(exportDir);
     });
 

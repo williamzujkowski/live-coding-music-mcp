@@ -252,7 +252,11 @@ async function opEffectRemove(args: any, ctx: ToolContext, sid?: string): Promis
   // against a crafted pattern wedged the event loop for 25s (#236).
   InputValidator.validateIdentifier(args.effect, 'effect');
   const p = await ctx.getCurrentPatternSafe(sid);
-  const regex = new RegExp(`\\.${args.effect}\\([^)]*\\)`, 'g');
+  // Escape as well as validate. The identifier check already makes this
+  // a no-op, but it keeps the RegExp safe by construction if the charset
+  // is ever loosened — and means the sink is not relying on a caller.
+  const escaped = args.effect.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`\\.${escaped}\\([^)]*\\)`, 'g');
   const stripped = p.replace(regex, '');
   if (stripped === p) return `No ${args.effect} effect found to remove`;
   await ctx.writePatternSafe(stripped, sid);
