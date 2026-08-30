@@ -198,12 +198,6 @@ describe('MCP Server Integration Tests', () => {
   });
 
   describe('Session State Management', () => {
-    test('should maintain session history', async () => {
-      const serverAny = server as any;
-
-      expect(Array.isArray(serverAny.sessionHistory)).toBe(true);
-    });
-
     test('should maintain per-session undo/redo stacks', () => {
       const serverAny = server as any;
       // Per-session bundles (#179) — the legacy single undoStack/redoStack

@@ -4,9 +4,11 @@
  * Owns two tools: `audio_capture(action=start|stop|sample)` and
  * `export_midi` (kept separate — MIDI is symbolic, audio is waveform).
  *
- * The AudioCaptureService is lazy-instantiated module-side: we need
- * the current Playwright page for `injectRecorder()`, and that only
- * exists after `init`. The singleton survives across tool calls.
+ * AudioCaptureService instances are lazy-created per session: we need the
+ * session's Playwright page for `injectRecorder()`, and that only exists
+ * after `init`. The server holds them in a Map keyed by session id (#180),
+ * so each instance survives across tool calls and sessions do not share
+ * a recorder.
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -29,7 +31,7 @@ function blobToBase64(arrayBuffer: ArrayBuffer): string {
 const SESSION_ID_PROP = {
   session_id: {
     type: 'string',
-    description: 'Optional session ID (#108). Routes page reference to the named session. Note: AudioCaptureService is currently server-wide — concurrent captures across sessions will conflict.',
+    description: 'Optional session ID (#108). Routes the capture to the named session, which has its own recorder — concurrent captures across sessions are safe (#180).',
   },
 };
 
@@ -44,7 +46,7 @@ export const tools: Tool[] = [
       'Example: audio_capture({ action: "sample", duration: 3000 }). ' +
       'Audio must be playing for capture to record meaningful data. ' +
       'For MIDI export use export_midi; for runtime diagnostics use diagnostics. ' +
-      'Note: the AudioCaptureService is currently a server-wide singleton — concurrent captures across sessions will conflict.',
+      'Each session has its own recorder, so captures in different sessions do not interfere (#180).',
     inputSchema: {
       type: 'object',
       properties: {
