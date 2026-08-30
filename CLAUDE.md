@@ -155,7 +155,7 @@ Adding context guidelines to CLAUDE.md after line 70.
 ## Project Purpose
 This is an **open source, actively developed** MCP server enabling AI agents to generate music via Strudel.cc using browser automation.
 
-**Current State:** Beta. 1709 tests pass, 20 skipped (browser), 0 fail. 86.32% statement / 75.93% branch coverage. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
+**Current State:** Beta. `npm test` reports 1903 passing, 51 skipped, 0 failing. 86.89% statement / 77.3% branch coverage. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
 
 ## GitHub Issues Workflow
 
@@ -232,6 +232,7 @@ Per-domain tool modules (src/server/tools/*.ts)
     ↓
 Services: MusicTheory, PatternGenerator, SessionManager,
           AudioCaptureService, GeminiService, MIDIExportService,
+          MIDIImportService,
           StrudelEngine
     ↓
 Controllers: StrudelController, AudioAnalyzer
@@ -243,7 +244,7 @@ Integration: Playwright → Strudel.cc
 
 ## Key Components
 
-### 1. StrudelMCPServer (`src/server/server.ts`, ~510 lines)
+### 1. StrudelMCPServer (`src/server/server.ts`, ~520 lines)
 - **Purpose**: MCP protocol handling, dispatch to per-domain tool modules, response envelope wrapping
 - **Tools**: 26 registered (consolidated; #120 introduced the canonical shape in v3.0.0, #178 removed the deprecated aliases in v4.0.0)
 - **Resources**: 4 MCP resources (#131) — examples, patterns, styles, tool docs
@@ -254,7 +255,7 @@ Integration: Playwright → Strudel.cc
 - **Purpose**: Browser automation via Playwright
 - **Key Methods**: `initialize()`, `writePattern()`, `play()`, `stop()`, `getCurrentPattern()`
 - **Optimizations**: Editor caching (100ms TTL), resource blocking, direct CodeMirror API access
-- **Location**: Lines 71-80 use CodeMirror internal API `.__view` for performance
+- **API**: Drives `window.strudelMirror` (`writePattern`, `getCurrentPattern`, `play`, `stop`). Note `editor.__view` on the DOM node is *not* exposed by strudel.cc — see the comment in `initialize()`
 
 ### 3. AudioAnalyzer (`src/AudioAnalyzer.ts`)
 - **Purpose**: Real-time FFT audio analysis and music information retrieval
@@ -269,12 +270,12 @@ Integration: Playwright → Strudel.cc
 
 ### 4. MusicTheory (`src/services/MusicTheory.ts`)
 - **Purpose**: Music theory calculations
-- **Features**: 15+ scales, 8+ chord progressions, Euclidean rhythms
+- **Features**: 14 scales, 8 chord progressions, Euclidean rhythms
 - **Key Methods**: `generateScale()`, `generateChordProgression()`, `euclid()`
 
 ### 5. PatternGenerator (`src/services/PatternGenerator.ts`)
 - **Purpose**: Genre-based pattern generation
-- **Styles**: techno, house, dnb, ambient, trap, jungle, jazz, experimental
+- **Styles**: techno, house, dnb, breakbeat, trap, jungle, ambient, experimental, intelligent_dnb, trip_hop, boom_bap (plus aliases: liquid_dnb, atmospheric_dnb, bukem, triphop, ...). `jazz` is a bassline/harmony style only — it has no drum pattern and falls back to techno drums
 - **Key Methods**: `generateCompletePattern()`, `generateDrums()`, `generateBassline()`
 
 ### 6. PatternStore (`src/PatternStore.ts`)
@@ -290,16 +291,20 @@ Integration: Playwright → Strudel.cc
 
 ## Performance Characteristics
 
-| Operation | Latency | Notes |
-|-----------|---------|-------|
-| Page Load | 1.5-2s | With resource blocking |
-| Pattern Write | 50-80ms | Cached editor access |
-| Pattern Read (cached) | 10-15ms | 100ms TTL |
-| Play/Stop | 100-150ms | Keyboard shortcuts |
-| Audio Analysis | 10-15ms | FFT with typed arrays |
-| Tempo Detection | <100ms | Onset-based, 90%+ accuracy |
-| Key Detection | <100ms | Krumhansl-Schmuckler algorithm |
-| Rhythm Analysis | <100ms | Complexity, density, syncopation |
+Rows marked **measured** are covered by `src/__tests__/benchmarks/latency.benchmark.ts`
+(`npm run benchmark`, gated in CI via `benchmark:gate`). The rest are single-machine
+estimates — treat them as rough, not as guarantees.
+
+| Operation | Latency | Source | Notes |
+|-----------|---------|--------|-------|
+| Page Load | 1.5-2s | measured | With resource blocking |
+| Pattern Write | 50-80ms | measured | Cached editor access; `targetP95Ms: 80` |
+| Pattern Read (cached) | 10-15ms | measured | 100ms TTL |
+| Play/Stop | 100-150ms | measured | Via `strudelMirror.evaluate()`/`.stop()`, then state confirmed |
+| Audio Analysis | 10-15ms | estimate | FFT with typed arrays |
+| Tempo Detection | <100ms | estimate | Onset-based; accuracy degrades under headless audio |
+| Key Detection | <100ms | estimate | Krumhansl-Schmuckler; best-effort |
+| Rhythm Analysis | <100ms | estimate | Complexity, density, syncopation |
 
 ## Development Workflow
 
@@ -413,10 +418,10 @@ if (!validation.isValid) {
 src/
 ├── index.ts                    # Entry point
 ├── StrudelController.ts        # Browser automation (~800 lines)
-├── AudioAnalyzer.ts            # Audio analysis (~800 lines)
+├── AudioAnalyzer.ts            # Audio analysis (~890 lines)
 ├── PatternStore.ts             # On-disk JSON persistence
 ├── server/
-│   ├── server.ts                    # MCP dispatcher (~510 lines, post-#104)
+│   ├── server.ts                    # MCP dispatcher (~520 lines, post-#104)
 │   ├── resources.ts                 # MCP resources (#131)
 │   └── tools/                       # Per-domain handlers (#104)
 │       ├── ai.ts, analysis.ts, capture.ts, compose.ts,
@@ -430,8 +435,11 @@ src/
 │   ├── SessionManager.ts       # Multi-session lifecycle (#108)
 │   ├── AudioCaptureService.ts  # Audio recording (per-session, #180)
 │   ├── StrudelEngine.ts        # @strudel/* wrapper
-│   └── StrudelEngineHelpers.ts # Pure helpers (#107, direct-tested)
-│   └── MIDIExportService.ts    # MIDI export
+│   ├── StrudelEngineHelpers.ts # Pure helpers (#107, direct-tested)
+│   ├── MIDIExportService.ts    # Strudel -> MIDI export
+│   └── MIDIImportService.ts    # MIDI -> Strudel import (#203)
+├── types/
+│   └── AudioAnalysis.ts        # Analysis result + config types
 ├── utils/
 │   ├── Logger.ts               # Logging (22 lines)
 │   ├── PatternValidator.ts     # Validation (286 lines)
@@ -442,10 +450,10 @@ src/
 ```
 
 ## Testing Strategy
-- **Unit Tests**: MusicTheory, PatternGenerator (100% coverage)
+- **Unit Tests**: MusicTheory (100% statements, 75% branches), PatternGenerator (78.4% statements) — the 100% target below is a target, not the current state
 - **Integration Tests**: StrudelController, PatternStore (77-85% coverage)
 - **Mock Infrastructure**: MockPlaywright, TestFixtures
-- **Coverage Target**: 80% overall, 100% for services
+- **Coverage Target**: 80% overall, 100% for services. Current: 86.89% overall; PatternGenerator sits at 78.4% and StrudelEngine at 0% (its tests run against a mock because @strudel/core is ESM and Jest is not configured for it — `npm run test:sandbox` covers the real engine)
 
 ## Debugging Tips
 ```bash
@@ -576,7 +584,7 @@ if (!this._page) throw new Error('Error');
 ```
 
 **Error Recovery:**
-- Use `ErrorRecovery` class for retries (lines 17-335 in ErrorRecovery.ts)
+- Use `ErrorRecovery` class for retries (lines 15-338 in ErrorRecovery.ts)
 - Exponential backoff for browser operations
 - Circuit breakers for external resources (Strudel.cc)
 
@@ -601,7 +609,7 @@ if (pattern.match(/gain\s*\(\s*[3-9]|gain\s*\(\s*[1-9]\d/)) {
 
 **File Operations:**
 ```typescript
-// Always sanitize filenames (PatternStore.ts:52)
+// Always sanitize filenames (PatternStore.ts:183)
 const sanitized = path.basename(filename);
 if (sanitized !== filename) {
   throw new Error('Invalid filename - path traversal detected');
@@ -647,15 +655,15 @@ if (this.editorCache && (now - this.cacheTimestamp) < this.CACHE_TTL) {
 ```
 
 **Resource Optimization:**
-- Block unnecessary resources (images, fonts) in Playwright (StrudelController.ts:61-68)
-- Use `Promise.all` for parallel I/O (PatternStore.ts:95-109)
+- Block unnecessary resources (images, fonts) in Playwright (StrudelController.ts:109-115)
+- Use `Promise.all` for parallel I/O (PatternStore.ts:135)
 - Direct CodeMirror API > keyboard simulation (80% faster)
 
 ### 6. Testing Standards
 
 **Test Coverage Requirements:**
 - Overall: 80% statement coverage minimum
-- Services (MusicTheory, PatternGenerator): 100% coverage
+- Services (MusicTheory, PatternGenerator): 100% coverage target — PatternGenerator is currently 78.4%
 - Controllers (StrudelController): 70%+ coverage
 - Integration tests: Key workflows covered
 
