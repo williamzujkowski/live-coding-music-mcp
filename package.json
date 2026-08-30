@@ -32,7 +32,8 @@
     "benchmark": "tsx src/__tests__/benchmarks/latency.benchmark.ts",
     "benchmark:gate": "tsx src/__tests__/benchmarks/latency.benchmark.ts --gate",
     "clean": "rm -rf dist coverage",
-    "test:sandbox": "tsx scripts/verify-sandbox.ts"
+    "test:sandbox": "tsx scripts/verify-sandbox.ts",
+    "test:export-audio": "tsx scripts/verify-export-audio.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

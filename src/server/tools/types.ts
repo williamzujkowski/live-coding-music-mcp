@@ -14,6 +14,7 @@ import type { PatternGenerator } from '../../services/PatternGenerator.js';
 import type { MusicTheory } from '../../services/MusicTheory.js';
 import type { SessionManager } from '../../services/SessionManager.js';
 import type { MIDIExportService } from '../../services/MIDIExportService.js';
+import type { AudioExportService } from '../../services/AudioExportService.js';
 import type { MIDIImportService } from '../../services/MIDIImportService.js';
 import type { AudioCaptureService } from '../../services/AudioCaptureService.js';
 import type { GeminiService } from '../../services/GeminiService.js';
@@ -60,6 +61,7 @@ export interface ToolContext {
   strudelEngine: StrudelEngine;
   midiExportService: MIDIExportService;
   midiImportService: MIDIImportService;
+  audioExportService: AudioExportService;
   /**
    * Lazily returns the per-session AudioCaptureService (#180). When no
    * `sessionId` is given, returns the default-session service (legacy

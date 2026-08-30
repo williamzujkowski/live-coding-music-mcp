@@ -14,6 +14,7 @@ import { PatternGenerator } from '../services/PatternGenerator.js';
 import { GeminiService } from '../services/GeminiService.js';
 import { AudioCaptureService } from '../services/AudioCaptureService.js';
 import { MIDIExportService } from '../services/MIDIExportService.js';
+import { AudioExportService } from '../services/AudioExportService.js';
 import { MIDIImportService } from '../services/MIDIImportService.js';
 import { SessionManager } from '../services/SessionManager.js';
 import { readFileSync, existsSync } from 'fs';
@@ -77,6 +78,7 @@ export class StrudelMCPServer {
    */
   private audioCaptureServices: Map<string, AudioCaptureService> = new Map();
   private midiExportService: MIDIExportService;
+  private audioExportService: AudioExportService;
   private midiImportService: MIDIImportService;
   private sessionManager: SessionManager;
   private logger: Logger;
@@ -121,6 +123,8 @@ export class StrudelMCPServer {
     // Exports are confined to this directory (#224); `exports_dir` in
     // config.json relocates it.
     this.midiExportService = new MIDIExportService(config.exportsDir);
+    // Shares the export directory and sanitizer with MIDI export (#223, #224).
+    this.audioExportService = new AudioExportService(config.exportsDir);
     this.midiImportService = new MIDIImportService();
     this.sessionManager = new SessionManager(config.headless, audioAnalysisConfig, config.strudelUrl);
     this.logger = new Logger();
@@ -384,6 +388,7 @@ export class StrudelMCPServer {
       geminiService: this.geminiService,
       strudelEngine: this.strudelEngine,
       midiExportService: this.midiExportService,
+      audioExportService: this.audioExportService,
       midiImportService: this.midiImportService,
       getAudioCaptureService: (sessionId?: string) => this.getAudioCaptureService(sessionId),
       dropAudioCaptureService: (sessionId: string) => { this.audioCaptureServices.delete(sessionId); },
