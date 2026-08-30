@@ -99,10 +99,10 @@ describe('E2E Browser Integration Tests', () => {
       expect(stopResult).toBe('Stopped');
       expect(controller.getPlaybackState()).toBe(false);
 
-      // Wait a moment for audio to fully stop
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      // Verify audio stopped
+      // No sleep. stop() confirms the scheduler actually stopped (#218) and
+      // invalidates the analysis cache (#211), so the next analysis is
+      // fresh by construction. The old 50ms wait sat exactly on the cache
+      // TTL boundary, which is what made this test flake on CI.
       const silentAnalysis = await controller.analyzeAudio();
       expect(silentAnalysis.features.isPlaying).toBe(false);
       expect(silentAnalysis.features.isSilent).toBe(true);

@@ -362,6 +362,7 @@ export class StrudelController {
 
     if (!(await this.waitForPlaybackState(true, 3000))) {
       this.isPlaying = await this.readPlaybackState();
+      this.analyzer.clearCache();
       throw new Error(
         'Playback did not start. The pattern may have a syntax error — ' +
         'check diagnostics({ level: "errors" }).'
@@ -369,6 +370,10 @@ export class StrudelController {
     }
 
     this.isPlaying = true;
+    // Playback state just changed, so any cached analysis describes the
+    // previous state. Without this, analyze() can report the old state for
+    // up to ANALYSIS_CACHE_TTL after play/stop (#211).
+    this.analyzer.clearCache();
     return 'Playing';
   }
 
@@ -403,11 +408,15 @@ export class StrudelController {
 
       if (!(await this.waitForPlaybackState(false, 2000))) {
         this.isPlaying = await this.readPlaybackState();
+        this.analyzer.clearCache();
         throw new Error('Failed to stop playback: Strudel scheduler is still running.');
       }
     }
 
     this.isPlaying = false;
+    // See play(): a stale cached analysis would report audio still playing
+    // immediately after a successful stop (#211).
+    this.analyzer.clearCache();
     return 'Stopped';
   }
 
