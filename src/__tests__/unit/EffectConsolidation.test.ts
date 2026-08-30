@@ -68,6 +68,12 @@ describe('effect consolidation (#153)', () => {
 
       const started = Date.now();
       await expect(
+        // The payload is the point of the test: it must be refused before
+        // it can reach the RegExp. validateIdentifier throws first, and
+        // the interpolation is escaped besides, so it never becomes a
+        // pattern — CodeQL traces the literal to the sink without
+        // modelling either guard.
+        // codeql[js/redos]
         execute('effect', { action: 'remove', effect: '(a+)+Z' }, ctx),
       ).rejects.toThrow(/Invalid effect/);
 
@@ -75,6 +81,7 @@ describe('effect consolidation (#153)', () => {
       expect(Date.now() - started).toBeLessThan(1000);
     });
 
+    // codeql[js/redos] — rejected payloads, never compiled into a RegExp.
     it.each(['(a+)+Z', '.*', 'a|b', 'lpf()', 'lpf;rm -rf ~', '2fast', ''])(
       'rejects %p as an effect name',
       async effect => {
