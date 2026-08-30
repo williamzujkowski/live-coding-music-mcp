@@ -4,6 +4,7 @@ import { promises as fs } from 'fs';
 import { AudioAnalyzer } from './AudioAnalyzer.js';
 import { PatternValidator, ValidationResult } from './utils/PatternValidator.js';
 import { DEFAULT_STRUDEL_URL } from './utils/ServerConfig.js';
+import { resolveSafeOutputPath } from './utils/SafePath.js';
 import { ErrorRecovery } from './utils/ErrorRecovery.js';
 import { Logger } from './utils/Logger.js';
 import {
@@ -835,21 +836,23 @@ export class StrudelController {
     }
 
     try {
-      // Default to tmp/ directory for screenshots
+      // Confine to tmp/. The old guard was inverted — it passed any
+      // filename *containing* a separator through unsanitized, which is
+      // exactly what a traversal payload looks like (#234).
       const tmpDir = path.join(process.cwd(), 'tmp');
       await fs.mkdir(tmpDir, { recursive: true });
 
-      // If filename has no path component, save to tmp/
-      let screenshotPath: string;
-      if (filename && path.dirname(filename) !== '.') {
-        screenshotPath = filename;
-      } else {
-        const name = filename || `strudel-screenshot-${Date.now()}.png`;
-        screenshotPath = path.join(tmpDir, name);
-      }
+      const target = resolveSafeOutputPath(filename, {
+        directory: tmpDir,
+        extension: '.png',
+        defaultName: `strudel-screenshot-${Date.now()}.png`,
+      });
 
-      await this._page.screenshot({ path: screenshotPath, fullPage: false });
-      return `Screenshot saved to ${screenshotPath}`;
+      await this._page.screenshot({ path: target.path, fullPage: false });
+
+      return target.wasModified
+        ? `Screenshot saved to ${target.path} (requested name '${String(target.requested)}' was not usable)`
+        : `Screenshot saved to ${target.path}`;
     } catch (error: any) {
       this.logger.error('Failed to take screenshot', error);
       throw new Error(`Failed to take screenshot: ${error.message}`);

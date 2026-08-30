@@ -343,13 +343,65 @@ describe('MIDIExportService', () => {
 
   describe('exportToFile', () => {
     const testFilename = 'test-midi-export.mid';
+    // Exports are confined to a directory now (#224); point it somewhere
+    // disposable so the tests don't litter the repo.
+    const exportDir = require('path').join(
+      require('os').tmpdir(),
+      'strudel-midi-export-tests',
+    );
+    let service: MIDIExportService;
+
+    beforeEach(() => {
+      service = new MIDIExportService(exportDir);
+    });
 
     afterEach(() => {
-      // Clean up test file
-      const path = require('path').resolve(testFilename);
-      if (existsSync(path)) {
-        unlinkSync(path);
-      }
+      require('fs').rmSync(exportDir, { recursive: true, force: true });
+    });
+
+    /**
+     * #224: exportToFile used bare `resolve(filename)` and would write
+     * anywhere the process could reach. The filename is a model-generated
+     * MCP argument, so this was reachable by prompt injection.
+     */
+    describe('path traversal (#224)', () => {
+      const path = require('path');
+
+      it.each([
+        '../../../../tmp/strudel-escape',
+        '/tmp/strudel-absolute-escape',
+        '..\\..\\evil',
+        'nested/dir/file',
+      ])('confines %s to the export directory', requested => {
+        const result = service.exportToFile('note("c4")', requested);
+
+        expect(result.success).toBe(true);
+        expect(path.dirname(result.output)).toBe(path.resolve(exportDir));
+        expect(existsSync(result.output)).toBe(true);
+      });
+
+      it('does not create the file the traversal asked for', () => {
+        const escapee = path.join(require('os').tmpdir(), 'strudel-escape.mid');
+        if (existsSync(escapee)) unlinkSync(escapee);
+
+        service.exportToFile('note("c4")', '../../../../tmp/strudel-escape');
+
+        expect(existsSync(escapee)).toBe(false);
+      });
+
+      it('reports the sanitization instead of silently rewriting', () => {
+        const result = service.exportToFile('note("c4")', '../../secrets/key');
+
+        expect(result.sanitizedFilename).toBe('key.mid');
+        expect(result.requestedFilename).toBe('../../secrets/key');
+      });
+
+      it('leaves an ordinary filename unflagged', () => {
+        const result = service.exportToFile('note("c4")', testFilename);
+
+        expect(result.sanitizedFilename).toBeUndefined();
+        expect(result.requestedFilename).toBeUndefined();
+      });
     });
 
     it('should export pattern to MIDI file', () => {

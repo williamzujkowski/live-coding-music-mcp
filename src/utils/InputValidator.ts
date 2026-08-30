@@ -233,6 +233,34 @@ export class InputValidator {
   }
 
   /**
+   * Validates that a value is a plain JavaScript-style identifier.
+   *
+   * Use this wherever a caller-supplied name is interpolated into a
+   * RegExp or into generated pattern source. `effect({action:"remove"})`
+   * built `new RegExp(`\\.${args.effect}\\(...`)` from a raw argument,
+   * so `effect: "(a+)+Z"` against a crafted pattern blocked the event
+   * loop for 25 seconds — the server stops answering stdio entirely (#236).
+   *
+   * @param value - Value to validate
+   * @param fieldName - Field name for the error message
+   * @throws {Error} When the value is not a plain identifier
+   *
+   * @example
+   * InputValidator.validateIdentifier('lpf', 'effect');       // ✓ Valid
+   * InputValidator.validateIdentifier('(a+)+Z', 'effect');    // ✗ Throws
+   *
+   * @nist si-10 "Information input validation"
+   */
+  static validateIdentifier(value: unknown, fieldName: string): void {
+    if (typeof value !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
+      throw new Error(
+        `Invalid ${fieldName}: ${String(value)}. ` +
+        'Must be a plain identifier (letters, digits and underscore, not starting with a digit).'
+      );
+    }
+  }
+
+  /**
    * Validates string length to prevent resource exhaustion
    *
    * @param str - String to validate

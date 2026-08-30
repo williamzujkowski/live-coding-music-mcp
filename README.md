@@ -612,6 +612,7 @@ node tests/strudel-integration.js
   "headless": false,        // Set true for background operation
   "strudel_url": "https://strudel.cc/",
   "patterns_dir": "./patterns",
+  "exports_dir": "./exports",
   "audio_analysis": {
     "fft_size": 1024,       // power of 2 in [32, 32768]; default 1024
     "smoothing": 0.8        // number in [0, 1]; default 0.8
@@ -622,6 +623,10 @@ node tests/strudel-integration.js
 `strudel_url` is the REPL the browser is pointed at — set it to run against a self-hosted or
 pinned Strudel build. Only `http`/`https` are accepted; anything else falls back to the default
 with a logged warning. `patterns_dir` is where `pattern_store` reads and writes.
+
+`exports_dir` is where `export_midi({format:"file"})` writes. Exported filenames are reduced to a
+basename and confined to this directory — a name containing path separators is sanitized rather
+than honoured, and the response reports the path actually written.
 
 Unknown top-level keys are logged as warnings at startup rather than silently ignored.
 

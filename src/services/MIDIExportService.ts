@@ -15,8 +15,8 @@
 import * as midiModule from '@tonejs/midi';
 // Handle both ESM and CJS interop
 const Midi = (midiModule as any).Midi || (midiModule as any).default?.Midi;
-import { writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { writeFileSync, mkdirSync } from 'fs';
+import { resolveSafeOutputPath, resolveExportDirectory } from '../utils/SafePath.js';
 
 /** Represents a single note event parsed from a Strudel pattern */
 export interface NoteEvent {
@@ -58,6 +58,10 @@ export interface MIDIExportResult {
   bpm: number;
   /** Error message if failed */
   error?: string;
+  /** Set when the requested filename had to be sanitized (#224). */
+  sanitizedFilename?: string;
+  /** The caller's original filename, when it was sanitized (#224). */
+  requestedFilename?: string;
 }
 
 /**
@@ -98,6 +102,16 @@ const CHORD_INTERVALS: Record<string, number[]> = {
 };
 
 export class MIDIExportService {
+  /** Directory file exports are confined to. */
+  private readonly exportDir: string;
+
+  /**
+   * @param exportDir - Export directory (default `./exports`, or `exports_dir`)
+   */
+  constructor(exportDir?: string) {
+    this.exportDir = resolveExportDirectory(exportDir);
+  }
+
   /**
    * Converts a note name (e.g., "C4", "D#5", "Bb3") to MIDI number
    * @param noteName - Note name with optional accidental and octave
@@ -460,20 +474,31 @@ export class MIDIExportService {
 
       const midi = this.convertToMidi(notes, options);
 
-      // Ensure filename has .mid extension
-      const finalFilename = filename.endsWith('.mid') ? filename : `${filename}.mid`;
-      const outputPath = resolve(finalFilename);
+      // Confine the write to the export directory. `filename` comes from
+      // MCP tool arguments, so it is model-generated and may be hostile;
+      // this used to be a bare resolve() that wrote anywhere (#224).
+      const target = resolveSafeOutputPath(filename, {
+        directory: this.exportDir,
+        extension: '.mid',
+        defaultName: 'pattern.mid',
+      });
 
-      // Write MIDI data
+      mkdirSync(this.exportDir, { recursive: true });
+
       const midiArray = midi.toArray();
-      writeFileSync(outputPath, Buffer.from(midiArray));
+      writeFileSync(target.path, Buffer.from(midiArray));
 
       return {
         success: true,
-        output: outputPath,
+        output: target.path,
         noteCount: notes.length,
         bars: options.bars || 4,
-        bpm: options.bpm || 120
+        bpm: options.bpm || 120,
+        // Surfaced so the caller knows the file did not land where it
+        // asked, rather than silently believing the traversal worked.
+        ...(target.wasModified
+          ? { sanitizedFilename: target.filename, requestedFilename: target.requested }
+          : {}),
       };
     } catch (error: any) {
       return {

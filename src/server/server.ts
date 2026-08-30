@@ -119,7 +119,9 @@ export class StrudelMCPServer {
     this.theory = new MusicTheory();
     this.generator = new PatternGenerator();
     this.geminiService = new GeminiService();
-    this.midiExportService = new MIDIExportService();
+    // Exports are confined to this directory (#224); `exports_dir` in
+    // config.json relocates it.
+    this.midiExportService = new MIDIExportService(config.exportsDir);
     this.midiImportService = new MIDIImportService();
     this.sessionManager = new SessionManager(config.headless, audioAnalysisConfig, config.strudelUrl);
     this.logger = new Logger();

@@ -5,8 +5,8 @@
 import { execute } from '../../server/tools/transform';
 import type { ToolContext } from '../../server/tools/types';
 
-function makeCtx() {
-  let pattern = 's("bd")';
+function makeCtx(initial = 's("bd")') {
+  let pattern = initial;
   const ctx: ToolContext = {
     controller: {} as any, perfMonitor: {} as any, store: {} as any, generator: {} as any,
     theory: {} as any, sessionManager: {} as any, geminiService: {} as any,
@@ -53,5 +53,49 @@ describe('effect consolidation (#153)', () => {
   it('throws on invalid action', async () => {
     const { ctx } = makeCtx();
     await expect(execute('effect', { action: 'toggle', effect: 'lpf' }, ctx)).rejects.toThrow(/Invalid action/);
+  });
+
+  /**
+   * #236: `effect` was interpolated raw into `new RegExp(...)`, so a
+   * caller controlled regex *syntax* as well as the subject string.
+   * `(a+)+Z` against a crafted pattern blocked the event loop for 25
+   * seconds — the whole server stops answering stdio, with no timeout to
+   * break out of a synchronous String.replace.
+   */
+  describe('regex injection (#236)', () => {
+    it('rejects a catastrophic-backtracking effect name, quickly', async () => {
+      const { ctx } = makeCtx('s("bd").' + 'a'.repeat(30) + 'x');
+
+      const started = Date.now();
+      await expect(
+        execute('effect', { action: 'remove', effect: '(a+)+Z' }, ctx),
+      ).rejects.toThrow(/Invalid effect/);
+
+      // The unguarded version took ~25s on this input.
+      expect(Date.now() - started).toBeLessThan(1000);
+    });
+
+    it.each(['(a+)+Z', '.*', 'a|b', 'lpf()', 'lpf;rm -rf ~', '2fast', ''])(
+      'rejects %p as an effect name',
+      async effect => {
+        const { ctx } = makeCtx();
+        await expect(
+          execute('effect', { action: 'remove', effect }, ctx),
+        ).rejects.toThrow();
+      },
+    );
+
+    it('rejects an injected effect name on add too', async () => {
+      const { ctx } = makeCtx();
+      await expect(
+        execute('effect', { action: 'add', effect: 'gain(9).x', params: '1' }, ctx),
+      ).rejects.toThrow(/Invalid effect/);
+    });
+
+    it('still accepts ordinary effect names', async () => {
+      const { ctx, pattern } = makeCtx();
+      await execute('effect', { action: 'add', effect: 'lpf', params: '1000' }, ctx);
+      expect(pattern()).toContain('lpf');
+    });
   });
 });

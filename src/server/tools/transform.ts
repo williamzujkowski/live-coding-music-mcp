@@ -234,6 +234,9 @@ async function opScale(args: any, ctx: ToolContext, sid?: string): Promise<unkno
 
 async function opEffectAdd(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   InputValidator.validateStringLength(args.effect, 'effect', 100, false);
+  // Concatenated straight into the pattern source, so it must be a plain
+  // method name and not arbitrary code (#236).
+  InputValidator.validateIdentifier(args.effect, 'effect');
   if (args.params) InputValidator.validateStringLength(args.params, 'params', 1000, true);
   const p = await ctx.getCurrentPatternSafe(sid);
   const withEffect = args.params
@@ -245,6 +248,9 @@ async function opEffectAdd(args: any, ctx: ToolContext, sid?: string): Promise<u
 
 async function opEffectRemove(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   InputValidator.validateStringLength(args.effect, 'effect', 100, false);
+  // Interpolating this raw let a caller inject regex syntax; `(a+)+Z`
+  // against a crafted pattern wedged the event loop for 25s (#236).
+  InputValidator.validateIdentifier(args.effect, 'effect');
   const p = await ctx.getCurrentPatternSafe(sid);
   const regex = new RegExp(`\\.${args.effect}\\([^)]*\\)`, 'g');
   const stripped = p.replace(regex, '');
