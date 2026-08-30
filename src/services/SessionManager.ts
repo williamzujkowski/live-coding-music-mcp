@@ -1,5 +1,6 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { StrudelController, waitForStrudelReady } from '../StrudelController.js';
+import { DEFAULT_STRUDEL_URL } from '../utils/ServerConfig.js';
 import { Logger } from '../utils/Logger.js';
 import type { AudioAnalysisConfig } from '../types/AudioAnalysis.js';
 
@@ -47,10 +48,17 @@ export class SessionManager {
 
   private cleanupTimer: NodeJS.Timeout | null = null;
   private audioAnalysisConfig?: AudioAnalysisConfig;
+  /** Strudel REPL URL; `strudel_url` in config.json (#227). */
+  private readonly strudelUrl: string;
 
-  constructor(headless: boolean = false, audioAnalysisConfig?: AudioAnalysisConfig) {
+  constructor(
+    headless: boolean = false,
+    audioAnalysisConfig?: AudioAnalysisConfig,
+    strudelUrl: string = DEFAULT_STRUDEL_URL,
+  ) {
     this.isHeadless = headless;
     this.audioAnalysisConfig = audioAnalysisConfig;
+    this.strudelUrl = strudelUrl;
     this.logger = new Logger();
   }
 
@@ -116,7 +124,7 @@ export class SessionManager {
     const page = await context.newPage();
 
     // Create controller with injected page (using a factory pattern)
-    const controller = new StrudelController(this.isHeadless, this.audioAnalysisConfig);
+    const controller = new StrudelController(this.isHeadless, this.audioAnalysisConfig, this.strudelUrl);
 
     // Initialize the controller with the existing page
     await this.initializeControllerWithPage(controller, page);
@@ -157,7 +165,7 @@ export class SessionManager {
     });
 
     // Navigate to Strudel
-    await page.goto('https://strudel.cc/', {
+    await page.goto(this.strudelUrl, {
       waitUntil: 'domcontentloaded',
       timeout: 15000,
     });

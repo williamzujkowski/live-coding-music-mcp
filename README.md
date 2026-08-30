@@ -619,6 +619,12 @@ node tests/strudel-integration.js
 }
 ```
 
+`strudel_url` is the REPL the browser is pointed at — set it to run against a self-hosted or
+pinned Strudel build. Only `http`/`https` are accepted; anything else falls back to the default
+with a logged warning. `patterns_dir` is where `pattern_store` reads and writes.
+
+Unknown top-level keys are logged as warnings at startup rather than silently ignored.
+
 `audio_analysis.fft_size` tunes the FFT bin count on the `AnalyserNode` attached to Strudel's audio graph — larger = better frequency resolution at higher CPU cost. `smoothing` is the analyser's `smoothingTimeConstant` (higher = steadier spectrum, more lag). Invalid values fall back to defaults with a warning; the frequency-band boundaries inside `analyze` rescale automatically so band Hz coverage stays consistent across FFT sizes.
 
 ## Architecture

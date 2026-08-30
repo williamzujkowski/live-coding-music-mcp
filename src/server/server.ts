@@ -36,23 +36,31 @@ import type { Envelope, ToolContext, HistoryEntry } from './tools/types.js';
 import { categorizeError, err, isEnvelope, ok } from './tools/types.js';
 import { readResource, resources as mcpResources } from './resources.js';
 import { join } from 'node:path';
+import { parseServerConfig } from '../utils/ServerConfig.js';
 
 const configPath = './config.json';
-const config = existsSync(configPath)
-  ? JSON.parse(readFileSync(configPath, 'utf-8'))
-  : { headless: false };
 
-// Translate config.audio_analysis (snake_case in JSON) to the camelCase
-// AudioAnalysisConfig the analyzer expects. Invalid values are normalized
-// to undefined here so the analyzer falls back to its own defaults
-// without a downstream warning for a value the user never set. (#195)
-const audioAnalysisConfig: { fftSize?: number; smoothing?: number } | undefined =
-  config.audio_analysis
-    ? {
-        fftSize: typeof config.audio_analysis.fft_size === 'number' ? config.audio_analysis.fft_size : undefined,
-        smoothing: typeof config.audio_analysis.smoothing === 'number' ? config.audio_analysis.smoothing : undefined,
-      }
-    : undefined;
+/**
+ * Parsed once at module load. parseServerConfig never throws — a bad
+ * value falls back to its default and records a warning — so a typo in
+ * config.json cannot stop the server starting. It also warns about keys
+ * nothing reads, which is what stops the next `strudel_url` from being
+ * silently ignored for two releases (#227).
+ */
+function loadConfig(): ReturnType<typeof parseServerConfig> {
+  if (!existsSync(configPath)) return parseServerConfig(undefined);
+  try {
+    return parseServerConfig(JSON.parse(readFileSync(configPath, 'utf-8')));
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    const parsed = parseServerConfig(undefined);
+    parsed.warnings.push(`config.json could not be parsed (${message}); using defaults`);
+    return parsed;
+  }
+}
+
+const config = loadConfig();
+const audioAnalysisConfig = config.audioAnalysis;
 
 export class StrudelMCPServer {
   private server: Server;
@@ -106,15 +114,22 @@ export class StrudelMCPServer {
       }
     );
 
-    this.controller = new StrudelController(config.headless, audioAnalysisConfig);
-    this.store = new PatternStore('./patterns');
+    this.controller = new StrudelController(config.headless, audioAnalysisConfig, config.strudelUrl);
+    this.store = new PatternStore(config.patternsDir);
     this.theory = new MusicTheory();
     this.generator = new PatternGenerator();
     this.geminiService = new GeminiService();
     this.midiExportService = new MIDIExportService();
     this.midiImportService = new MIDIImportService();
-    this.sessionManager = new SessionManager(config.headless, audioAnalysisConfig);
+    this.sessionManager = new SessionManager(config.headless, audioAnalysisConfig, config.strudelUrl);
     this.logger = new Logger();
+
+    // A config problem the user never sees is how #227 survived: two
+    // documented keys were read by nothing, with no warning anywhere.
+    for (const warning of config.warnings) {
+      this.logger.warn(warning);
+    }
+
     this.perfMonitor = new PerformanceMonitor();
     this.strudelEngine = new StrudelEngine();
     this.setupHandlers();
