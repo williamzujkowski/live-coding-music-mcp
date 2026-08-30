@@ -114,7 +114,7 @@ src/__tests__/
 └── browser/      — real-browser tests (require Chromium + audio)
 ```
 
-Coverage target: 80% overall, 100% on services (MusicTheory, PatternGenerator). Browser tests are skipped in CI because they need Playwright + audio.
+Coverage target: 80% overall, 100% on services (MusicTheory, PatternGenerator). Currently 86.73% overall; MusicTheory is at 100% statements, PatternGenerator at 78.4% — below the overall floor, so it is the first place to add tests. Browser tests are skipped in CI because they need Playwright + audio.
 
 ## Debugging
 
