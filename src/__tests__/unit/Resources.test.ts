@@ -7,6 +7,7 @@
  * server.ts) is exercised by the existing MCP integration tests.
  */
 
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isResourceUri, readResource, resources } from '../../server/resources';
 
@@ -133,9 +134,20 @@ describe('MCP resources', () => {
     it('returns every registered tool with a description', async () => {
       const result = await readResource('strudel://docs/tools', ctx);
       const data = JSON.parse(result.text);
-      // 26 consolidated tool defs + the unlisted `init` we prepend = 27
-      // (import_midi added in #201)
-      expect(data.count).toBe(27);
+      // Derived, not hardcoded: this used to assert a literal and broke
+      // every time a tool landed, which teaches people to bump the number
+      // rather than check the resource is right. Same drift problem as
+      // #246, one layer down.
+      const moduleToolCount = readdirSync(join(__dirname, '..', '..', 'server', 'tools'))
+        .filter(f => f.endsWith('.ts') && f !== 'types.ts')
+        .reduce((total, file) => {
+          const src = readFileSync(join(__dirname, '..', '..', 'server', 'tools', file), 'utf-8');
+          return total + [...src.matchAll(/^\s{4}name: '([a-z_]+)',$/gm)].length;
+        }, 0);
+
+      // + 1 for `init`, which server.ts defines inline rather than in a module.
+      expect(data.count).toBe(moduleToolCount + 1);
+      expect(data.count).toBeGreaterThan(20);
       const initTool = data.tools.find((t: any) => t.name === 'init');
       expect(initTool).toBeDefined();
       const compose = data.tools.find((t: any) => t.name === 'compose');

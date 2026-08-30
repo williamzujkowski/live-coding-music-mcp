@@ -1,8 +1,9 @@
 /**
  * capture domain — audio recording and MIDI export.
  *
- * Owns two tools: `audio_capture(action=start|stop|sample)` and
- * `export_midi` (kept separate — MIDI is symbolic, audio is waveform).
+ * Owns three tools: `audio_capture(action=start|stop|sample)`,
+ * `export_audio` (records a window and writes a file), and `export_midi`
+ * (kept separate — MIDI is symbolic, audio is waveform).
  *
  * AudioCaptureService instances are lazy-created per session: we need the
  * session's Playwright page for `injectRecorder()`, and that only exists
@@ -60,6 +61,27 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: 'export_audio',
+    description:
+      'Record a window of live Strudel audio and write it to a file. ' +
+      'Returns a path plus what was actually recorded, not a wall of base64 — ' +
+      'prefer this over audio_capture when you want the audio to exist somewhere. ' +
+      'format=wav (default) decodes to 16-bit PCM a DAW will open; format=webm writes the raw Opus recording. ' +
+      'Reports silent captures instead of writing a silent file and claiming success. ' +
+      'Audio must already be playing: call playback({ action: "play" }) first. ' +
+      'Example: export_audio({ duration: 4000, filename: "take-01" }).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        duration: { type: 'number', description: 'Window to record in ms (100-30000, default 5000)' },
+        format: { type: 'string', enum: ['wav', 'webm'], description: 'Output format (default wav)' },
+        filename: { type: 'string', description: 'Output filename; reduced to a basename and confined to the export directory' },
+        output: { type: 'string', enum: ['file', 'base64'], description: 'file (default) writes to disk and returns a path; base64 returns bytes inline' },
+        ...SESSION_ID_PROP,
+      },
+    },
+  },
+  {
     name: 'export_midi',
     description: 'Export current pattern to MIDI file. Parses note(), n(), and chord() functions.',
     inputSchema: {
@@ -93,6 +115,9 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
           throw new Error(`Invalid action: ${a}. Must be one of: start, stop, sample`);
       }
     }
+
+    case 'export_audio':
+      return await exportAudio(args, ctx, sid);
 
     case 'export_midi':
       return await exportMidi(args?.filename, args?.duration, args?.bpm, args?.format, ctx, sid);
@@ -169,6 +194,36 @@ async function captureAudioSample(duration: number | undefined, ctx: ToolContext
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, message: `Failed to capture audio sample: ${message}` };
+  }
+}
+
+async function exportAudio(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
+  try {
+    const service = ctx.audioExportService;
+    // Ensures the recorder is injected for this session; export needs the
+    // same GainNode interception audio_capture uses.
+    await ctx.getAudioCaptureService(sid);
+
+    const result = await service.exportAudio(ctx.getController(sid).page!, {
+      duration: args?.duration,
+      format: args?.format,
+      filename: args?.filename,
+      output: args?.output,
+    });
+
+    if (!result.success) {
+      return { success: false, message: result.error ?? 'Audio export failed.' };
+    }
+
+    return {
+      ...result,
+      message: result.path
+        ? `Exported ${String(result.bytes)} bytes of ${result.format} to ${result.path}`
+        : `Captured ${String(result.bytes)} bytes of ${result.format}`,
+    };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, message: `Audio export failed: ${message}` };
   }
 }
 

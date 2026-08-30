@@ -13,7 +13,7 @@
 [![CI](https://github.com/williamzujkowski/live-coding-music-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/williamzujkowski/live-coding-music-mcp/actions)
 [![npm version](https://img.shields.io/npm/v/@williamzujkowski/live-coding-music-mcp.svg)](https://www.npmjs.com/package/@williamzujkowski/live-coding-music-mcp)
 [![Nerq Trust](https://nerq.ai/badge/live-coding-music-mcp)](https://nerq.ai/kya/live-coding-music-mcp)
-[![Tools](https://img.shields.io/badge/tools-27-green.svg)]()
+[![Tools](https://img.shields.io/badge/tools-28-green.svg)]()
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
@@ -45,7 +45,7 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 ## Features
 
 ### Music control
-- **27 MCP tools** covering pattern editing, playback, audio analysis, generation, history, sessions, MIDI import/export, and Gemini-backed assists. Each tool is enum-parameterized to keep the protocol surface small: `pattern_store({ action })`, `edit_pattern({ mode })`, `transform({ op })`, `analyze({ include })`, `history({ action })`, `playback({ action })`, `effect({ action })`, `shape({ dimension })`, `audio_capture({ action })`, `browser_window({ action })`, `generate_part({ role })`, `generate_rhythm({ type })`, `music_theory({ query })`, `session({ action })`, `ai_assist({ task })`, ... The 58 legacy single-verb aliases that forwarded to these were removed in v4.0.0 ([#178](https://github.com/williamzujkowski/live-coding-music-mcp/issues/178)).
+- **28 MCP tools** covering pattern editing, playback, audio analysis, generation, history, sessions, MIDI import/export, and Gemini-backed assists. Each tool is enum-parameterized to keep the protocol surface small: `pattern_store({ action })`, `edit_pattern({ mode })`, `transform({ op })`, `analyze({ include })`, `history({ action })`, `playback({ action })`, `effect({ action })`, `shape({ dimension })`, `audio_capture({ action })`, `browser_window({ action })`, `generate_part({ role })`, `generate_rhythm({ type })`, `music_theory({ query })`, `session({ action })`, `ai_assist({ task })`, ... The 58 legacy single-verb aliases that forwarded to these were removed in v4.0.0 ([#178](https://github.com/williamzujkowski/live-coding-music-mcp/issues/178)).
 - **4 MCP resources** for catalog browsing without burning tool calls: `strudel://examples`, `strudel://patterns`, `strudel://styles`, `strudel://docs/tools`.
 - **Real browser automation** of Strudel.cc through Playwright.
 - **Multi-session support** — every browser-touching tool accepts an optional `session_id`; sessions have isolated browser pages, undo/redo/history stacks, and audio-capture services.
@@ -210,7 +210,7 @@ echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | live-coding-music-mcp
 npm run validate
 ```
 
-You should see a JSON response listing **27 tools**. If you see fewer, the build is out of date — run `npm run build`.
+You should see a JSON response listing **28 tools**. If you see fewer, the build is out of date — run `npm run build`.
 
 ### 4. Make your first sound
 
@@ -257,7 +257,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 <!-- TOOLS:START -->
 
-**27 tools** across 14 categories:
+**28 tools** across 15 categories:
 
 <details><summary><strong>Setup</strong> (1)</summary>
 
@@ -384,7 +384,15 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 </details>
 
-_Auto-generated from source. 27 tools registered._
+<details><summary><strong>Other</strong> (1)</summary>
+
+| Tool | Description |
+|------|-------------|
+| `export_audio` | Record a window of live Strudel audio and write it to a file.  |
+
+</details>
+
+_Auto-generated from source. 28 tools registered._
 
 <!-- TOOLS:END -->
 
@@ -982,7 +990,7 @@ npm run build
 # Check if server responds
 echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | node dist/index.js
 
-# Should return JSON with 27 tools
+# Should return JSON with 28 tools
 
 # Reinstall MCP server in Claude
 claude mcp remove strudel
