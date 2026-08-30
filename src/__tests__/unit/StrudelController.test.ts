@@ -234,6 +234,60 @@ describe('StrudelController', () => {
     });
 
     /**
+     * #211: analyzeAudio() caches for ANALYSIS_CACHE_TTL (50ms). play()
+     * and stop() change the very state that analysis reports, so without
+     * invalidation a call right after stop returns the pre-stop result
+     * and says audio is still playing. That surfaced as a CI flake in the
+     * E2E workflow test, which slept exactly 50ms — right on the boundary.
+     *
+     * Asserted by cache state rather than by timing, so it cannot flake.
+     */
+    describe('analysis cache invalidation (#211)', () => {
+      it('stop() clears the cached analysis', async () => {
+        await controller.play();
+        await controller.analyzeAudio();          // populates the cache
+        const clearSpy = jest.spyOn(controller.analyzer, 'clearCache');
+
+        await controller.stop();
+
+        expect(clearSpy).toHaveBeenCalled();
+      });
+
+      it('play() clears the cached analysis', async () => {
+        await controller.analyzeAudio();
+        const clearSpy = jest.spyOn(controller.analyzer, 'clearCache');
+
+        await controller.play();
+
+        expect(clearSpy).toHaveBeenCalled();
+      });
+
+      it('analysis taken immediately after stop reports not playing', async () => {
+        await controller.play();
+        const playing = await controller.analyzeAudio();
+        expect(playing.features.isPlaying).toBe(true);
+
+        await controller.stop();
+        // No sleep: with a live cache this returned the stale `true`.
+        const stopped = await controller.analyzeAudio();
+
+        expect(stopped.features.isPlaying).toBe(false);
+        expect(stopped.features.isSilent).toBe(true);
+      });
+
+      it('analysis taken immediately after play reports playing', async () => {
+        await controller.play();
+        await controller.stop();
+        await controller.analyzeAudio();          // caches "stopped"
+
+        await controller.play();
+        const analysis = await controller.analyzeAudio();
+
+        expect(analysis.features.isPlaying).toBe(true);
+      });
+    });
+
+    /**
      * The bug in #218 was not that stopping failed — it was that failing
      * to stop was reported as success. If the scheduler stays started,
      * stop() must surface that instead of claiming "Stopped".
