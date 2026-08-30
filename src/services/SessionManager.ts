@@ -1,5 +1,5 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
-import { StrudelController } from '../StrudelController.js';
+import { StrudelController, waitForStrudelReady } from '../StrudelController.js';
 import { Logger } from '../utils/Logger.js';
 import type { AudioAnalysisConfig } from '../types/AudioAnalysis.js';
 
@@ -162,21 +162,19 @@ export class SessionManager {
       timeout: 15000,
     });
 
-    // Wait for editor
-    await page.waitForSelector('.cm-content', { timeout: 8000 });
-
-    // Wait for CodeMirror to initialize
-    await page.waitForFunction(
-      () => {
-        const editor = document.querySelector('.cm-content');
-        return editor && (editor as any).__view;
-      },
-      { timeout: 5000 }
-    );
+    // Same readiness gate as StrudelController.initialize(). This used to
+    // wait on `editor.__view`, which strudel.cc does not expose, so every
+    // named session stalled and threw (#228).
+    await waitForStrudelReady(page);
 
     // Inject page into controller via internal method
     (controller as any)._page = page;
     (controller as any).browser = null; // Controller doesn't own the browser
+
+    // Console monitoring was previously only wired up on the single-session
+    // path, so diagnostics and validate_pattern_runtime reported zero errors
+    // for every named session (#228).
+    controller.setupConsoleMonitoring();
 
     // Inject audio analyzer
     await controller.analyzer.inject(page);

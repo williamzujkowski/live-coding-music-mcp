@@ -66,6 +66,31 @@ export class MockPage implements Partial<Page> {
     }
   }
 
+  /**
+   * Minimal Locator stand-in. Without this the controller's transport
+   * button clicks threw TypeError and silently fell through to their
+   * keyboard fallbacks, so the mocked tier never exercised the click
+   * path at all — the same class of mock/reality gap as #218.
+   *
+   * Mirrors real strudel.cc: the button's title is "play" when stopped
+   * and "stop" while playing, so a click on the wrong title finds
+   * nothing, exactly as in the browser.
+   */
+  locator(selector: string) {
+    const target = selector.includes('"stop"') ? 'stop' : 'play';
+    const handle = {
+      first: () => handle,
+      click: async (_options?: any): Promise<void> => {
+        const visible = this.isPlayingState ? 'stop' : 'play';
+        if (target !== visible) {
+          throw new Error(`locator(${selector}) resolved to no element`);
+        }
+        this.isPlayingState = target === 'play';
+      },
+    };
+    return handle;
+  }
+
   async type(text: string, _options?: any): Promise<void> {
     this.content += text;
   }
@@ -146,6 +171,20 @@ export class MockPage implements Partial<Page> {
 
     // Handle strudelMirror API (the correct API for strudel.cc)
     if (fnString.includes('strudelMirror')) {
+      // Playback control + state, mirroring the real API (#218). Order
+      // matters: these must be checked before the code/dispatch branches
+      // so a stop() call isn't mistaken for a document read.
+      if (fnString.includes('stop')) {
+        this.isPlayingState = false;
+        return undefined;
+      }
+      if (fnString.includes('evaluate')) {
+        this.isPlayingState = true;
+        return undefined;
+      }
+      if (fnString.includes('started')) {
+        return this.isPlayingState;
+      }
       // Handle reading via sm.code or sm.editor.state.doc
       if (fnString.includes('sm?.code') || fnString.includes('sm.code') ||
           fnString.includes('editor?.state?.doc') || fnString.includes('editor.state.doc')) {

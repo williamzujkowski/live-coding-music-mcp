@@ -507,20 +507,29 @@ describe('E2E Browser Integration Tests', () => {
       await controller.initialize();
       await controller.writePattern(samplePatterns.simple);
 
-      // Mock keyboard failure
+      // Break both transport paths for the first attempt only: the button
+      // click AND the keyboard fallback. Failing just the keyboard no
+      // longer fails play(), since playback is driven through the button
+      // and strudelMirror rather than keyboard shortcuts (#218).
       const originalPress = mockPage.keyboard.press;
-      let pressCallCount = 0;
+      const originalLocator = mockPage.locator.bind(mockPage);
+      let attempt = 0;
 
       mockPage.keyboard.press = jest.fn(async (key: string) => {
-        pressCallCount++;
-        if (pressCallCount === 1) {
-          throw new Error('Keyboard error');
-        }
+        if (attempt === 1) throw new Error('Keyboard error');
         return originalPress.call(mockPage.keyboard, key);
       });
+      mockPage.locator = jest.fn((selector: string) => {
+        if (attempt === 1) {
+          return { first: () => ({ click: async () => { throw new Error('Button not found'); } }) } as any;
+        }
+        return originalLocator(selector);
+      }) as any;
 
-      // First play should fail
+      // First play should fail: no way to reach the transport.
+      attempt = 1;
       await expect(controller.play()).rejects.toThrow();
+      attempt = 2;
 
       // Second play should succeed (recovery)
       const result = await controller.play();
