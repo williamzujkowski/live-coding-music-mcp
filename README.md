@@ -18,7 +18,7 @@
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
 
-**Current State: Beta.** The core workflow (init → compose → playback → analyze) works reliably with real audio output. 1709 tests pass, 86.32% statement coverage / 75.93% branch coverage. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
+**Current State: Beta.** The core workflow (init → compose → playback → analyze) works reliably with real audio output. `npm test` reports 1903 passing tests, 86.89% statement coverage / 77.3% branch coverage. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
 
 **What "Beta" means here:**
 - Tool schemas are stable within minor versions; breaking changes require a major bump
@@ -51,14 +51,14 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 - **Multi-session support** — every browser-touching tool accepts an optional `session_id`; sessions have isolated browser pages, undo/redo/history stacks, and audio-capture services.
 - **Audio analysis** via Web Audio API (FFT spectrum, tempo detection, key detection, rhythm complexity).
 - **Template-based pattern generation** across 8 genres (techno, house, dnb, ambient, trap, jungle, jazz, experimental); optional Gemini-backed `ai_assist` for feedback, suggestions, and jamming.
-- **Music theory helpers**: 15+ scales, 8+ chord progression styles, euclidean and polyrhythm generation.
+- **Music theory helpers**: 14 scales, 8 chord progression styles, euclidean and polyrhythm generation.
 - **Pattern persistence**: JSON-backed save/load with tags + the in-memory edit history (undo/redo/restore/compare).
 - **Result envelope** on every `tools/call`: clients branch on `{ ok, errorCategory, isRetryable }` instead of parsing free-text.
 
 ### Testing & CI status
-- **1709 passing tests** across unit, integration, and example-validation suites; 20 skipped (browser, gated by Playwright).
-- **86.32% statement coverage / 75.93% branch coverage**.
-- **Lint blocking in CI**: 0 errors, ~163 warnings (mostly `any` in test mocks).
+- **1903 passing tests** across unit, integration, and example-validation suites; 51 skipped under `npm test` (browser and other Playwright-gated cases). Note `npx jest` without `--coverage` reports a different skip count — see [#246](https://github.com/williamzujkowski/live-coding-music-mcp/issues/246).
+- **86.89% statement coverage / 77.3% branch coverage** (90.56% functions, 87.47% lines).
+- **Lint blocking in CI**: 0 errors, 190 warnings (mostly `any` in test mocks).
 - **OIDC trusted publishing** to npm with SLSA build provenance attestation on every release.
 
 **Not Production-Ready:** This is experimental software under active development. Use for exploration and experimentation. Expect breaking changes, bugs, and incomplete features. See [the Contributing section](#contributing) to help improve it.
@@ -614,7 +614,7 @@ node tests/strudel-integration.js
   "patterns_dir": "./patterns",
   "exports_dir": "./exports",
   "audio_analysis": {
-    "fft_size": 1024,       // power of 2 in [32, 32768]; default 1024
+    "fft_size": 2048,       // power of 2 in [32, 32768]; code default is 1024
     "smoothing": 0.8        // number in [0, 1]; default 0.8
   }
 }
@@ -634,7 +634,7 @@ Unknown top-level keys are logged as warnings at startup rather than silently ig
 
 ## Architecture
 
-The server is a thin MCP dispatcher (`src/server/server.ts`, ~510 lines) over twelve per-domain tool modules (`src/server/tools/*.ts`), six services (MusicTheory, PatternGenerator, SessionManager, AudioCaptureService, GeminiService, MIDIExportService, StrudelEngine), two controllers (StrudelController for Playwright, AudioAnalyzer for Web Audio API), and a JSON-on-disk PatternStore. Browser automation hits the CodeMirror editor on strudel.cc directly via `editor.__view.dispatch(...)` rather than keyboard simulation — about 80% faster.
+The server is a thin MCP dispatcher (`src/server/server.ts`, ~520 lines) over twelve per-domain tool modules (`src/server/tools/*.ts`), eight services (MusicTheory, PatternGenerator, SessionManager, AudioCaptureService, GeminiService, MIDIExportService, MIDIImportService, StrudelEngine), two controllers (StrudelController for Playwright, AudioAnalyzer for Web Audio API), and a JSON-on-disk PatternStore. Browser automation drives the editor on strudel.cc through `window.strudelMirror.editor.dispatch(...)` rather than keyboard simulation — about 80% faster.
 
 For the full breakdown — component diagram, per-component responsibilities, directory layout, data flow, and optimization strategies — see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 

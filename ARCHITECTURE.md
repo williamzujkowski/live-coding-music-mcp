@@ -52,7 +52,7 @@ live-coding-music-mcp uses a modular architecture. Components:
 
 ## Core Components
 
-### 1. StrudelMCPServer (`src/server/server.ts`, ~510 lines)
+### 1. StrudelMCPServer (`src/server/server.ts`, ~520 lines)
 
 Thin MCP dispatcher that:
 - Aggregates 26 tool definitions from the per-domain modules in `src/server/tools/`
@@ -73,10 +73,10 @@ Notable state:
 Browser automation layer using Playwright:
 - **Browser Management**: Chromium instance lifecycle
 - **Editor Control**: CodeMirror manipulation via direct API access (faster than keyboard simulation)
-- **Playback Control**: Keyboard shortcuts for play/stop
+- **Playback Control**: `strudelMirror.evaluate()` / `.stop()`, with the resulting scheduler state read back to confirm (#218)
 - **Performance Optimizations**:
   - Editor content caching (100ms TTL)
-  - Direct CodeMirror API access (`editor.__view.dispatch(...)`)
+  - Direct editor API access (`window.strudelMirror.editor.dispatch(...)`)
   - Resource blocking (images, fonts) on page load
   - Fast DOM content loading
 
@@ -84,8 +84,11 @@ Browser automation layer using Playwright:
 // Example: optimized pattern writing
 async writePattern(pattern: string) {
   await this.page.evaluate((newPattern) => {
-    const editor = document.querySelector('.cm-content');
-    const view = editor.__view;
+    // strudel.cc exposes its editor as window.strudelMirror. The
+    // CodeMirror `__view` property on the .cm-content DOM node is NOT
+    // exposed — reaching for it returns undefined.
+    const sm = (window as any).strudelMirror;
+    const view = sm.editor;
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: newPattern }
     });
@@ -93,7 +96,7 @@ async writePattern(pattern: string) {
 }
 ```
 
-### 3. AudioAnalyzer (`src/AudioAnalyzer.ts`, ~800 lines)
+### 3. AudioAnalyzer (`src/AudioAnalyzer.ts`, ~890 lines)
 
 Real-time audio analysis via Web Audio API injection:
 - **FFT Analysis**: 1024-point FFT for spectral data
@@ -148,7 +151,7 @@ Persistent pattern storage:
 live-coding-music-mcp/
 ├── src/
 │   ├── server/
-│   │   ├── server.ts                    # MCP dispatcher (~510 lines)
+│   │   ├── server.ts                    # MCP dispatcher (~520 lines)
 │   │   ├── resources.ts                 # MCP resources (#131)
 │   │   └── tools/
 │   │       ├── ai.ts, analysis.ts, capture.ts, compose.ts,
@@ -160,7 +163,8 @@ live-coding-music-mcp/
 │   │   ├── PatternGenerator.ts           # Template-based generation
 │   │   ├── SessionManager.ts             # Multi-session lifecycle (#108)
 │   │   ├── AudioCaptureService.ts        # Audio recording
-│   │   ├── MIDIExportService.ts          # MIDI export
+│   │   ├── MIDIExportService.ts          # Strudel -> MIDI export
+│   │   ├── MIDIImportService.ts          # MIDI -> Strudel import (#203)
 │   │   ├── GeminiService.ts              # Gemini API client (ai_assist)
 │   │   ├── StrudelEngine.ts              # @strudel/* wrapper
 │   │   └── StrudelEngineHelpers.ts       # Pure helpers (#107)
@@ -171,7 +175,7 @@ live-coding-music-mcp/
 │   │   ├── PerformanceMonitor.ts
 │   │   └── InputValidator.ts             # Input bound checks
 │   ├── StrudelController.ts              # Browser automation (~800 lines)
-│   ├── AudioAnalyzer.ts                  # Audio analysis (~800 lines)
+│   ├── AudioAnalyzer.ts                  # Audio analysis (~890 lines)
 │   ├── PatternStore.ts                   # On-disk pattern persistence
 │   └── index.ts                          # Entry point
 ├── src/__tests__/                        # Jest suites (unit + integration + browser)
@@ -224,8 +228,8 @@ See the [Performance section in the README](README.md#performance) for the measu
    - Only essential JavaScript/CSS loads
 
 3. **Direct API Access**
-   - CodeMirror view manipulation via `editor.__view`
-   - Keyboard shortcuts over button clicks where possible
+   - Editor manipulation via `window.strudelMirror.editor`
+   - The strudelMirror API over keyboard shortcuts: keyboard events only reach strudel.cc's CodeMirror keymap when the editor has focus, and resolve successfully either way (#218)
 
 4. **Lazy Loading**
    - Browser starts only on first browser-touching tool call
