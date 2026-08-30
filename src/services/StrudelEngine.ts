@@ -14,6 +14,15 @@
  */
 
 import * as strudelCore from '@strudel/core';
+// Imported for its side effects as well as its exports: Strudel's
+// register() attaches .scale()/.voicing()/.transpose() onto
+// Pattern.prototype at module load. Without this, local validation
+// rejected `n("0 2 4").scale("C:minor")` — an idiom that appears
+// throughout this project's own docs — with the misleading
+// "n(...).scale is not a function", while the browser path accepted it
+// (#232). Local and browser validation disagreeing about the same
+// pattern is worse than either being wrong consistently.
+import * as strudelTonal from '@strudel/tonal';
 import { mini } from '@strudel/mini';
 import { transpiler } from '@strudel/transpiler';
 import { assertPatternIsSafe, runPatternCode, PatternSafetyError } from './PatternSandbox.js';
@@ -135,6 +144,7 @@ export class StrudelEngine {
     // Build execution context with all Strudel functions
     this.context = {
       ...strudelCore,
+      ...strudelTonal,
       m: mini,
       mini,
     };

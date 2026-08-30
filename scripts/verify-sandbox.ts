@@ -52,6 +52,11 @@ const LEGITIMATE: string[] = [
   's("bd").every(4, x => x.fast(2))',
   'seq(s("bd"), s("sd")).cpm(120)',
   'note("c a f e").sometimesBy(0.3, x => x.speed(2))',
+  // @strudel/tonal is loaded into the context (#232); these used to fail
+  // with "n(...).scale is not a function" while the browser accepted them.
+  'n("0 2 4").scale("C:minor")',
+  'note("c e g").transpose(2)',
+  'n("0 2 4").scale("C:major").voicing()',
 ];
 
 async function main(): Promise<void> {

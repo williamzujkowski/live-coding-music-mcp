@@ -29,3 +29,17 @@ declare module '@strudel/transpiler' {
   }
   export function transpiler(code: string): TranspilerResult;
 }
+
+declare module '@strudel/tonal' {
+  /**
+   * Registers .scale()/.voicing()/.transpose() and friends onto
+   * Pattern.prototype as an import side effect, and exports the same
+   * helpers as standalone functions (#232).
+   */
+  export function scale(name: string): any;
+  export function voicing(...args: unknown[]): any;
+  export function transpose(amount: unknown): any;
+  export function scaleTranspose(amount: unknown): any;
+  export function rootNotes(octave?: number): any;
+  export function addVoicings(name: string, dictionary: unknown, range?: unknown): void;
+}
