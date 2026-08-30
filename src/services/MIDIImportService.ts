@@ -92,6 +92,20 @@ export const MAX_TRACKS = 64;
 /** Maximum total note count after parse — protects memory in the renderer. */
 export const MAX_NOTES = 50_000;
 
+/**
+ * Cap on bars rendered from a file (~8 minutes at 4/4, 120bpm).
+ *
+ * Without this, `bars` came straight from the file's own timing and fed
+ * `new Array(bars * stepsPerCycle)`. A single note at a huge tick offset
+ * with a tiny ppq made that astronomically large: a 36-byte file rendered
+ * a 17.8MB pattern in 174MB of heap, and a 37-byte one aborted V8
+ * outright with a FATAL ERROR the tool's try/catch cannot intercept —
+ * killing the server and every open browser session with it (#235).
+ * The 1MB input cap in storage.ts does not help: the amplification is
+ * time-based, not size-based.
+ */
+export const MAX_BARS = 512;
+
 /** Convert MIDI note number to Strudel pitch notation (e.g. 60 → "c4"). */
 function midiToNoteName(midi: number): string {
   const names = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
@@ -202,9 +216,27 @@ export class MIDIImportService {
     const secondsPerBar = secondsPerBeat * 4;
     const stepSeconds = secondsPerBar / stepsPerCycle;
 
+    if (options.bars !== undefined) {
+      if (!Number.isInteger(options.bars) || options.bars < 1 || options.bars > MAX_BARS) {
+        throw new Error(`Invalid bars: ${options.bars}. Must be an integer in [1, ${MAX_BARS}].`);
+      }
+    }
+
     const fileBars = Math.max(1, Math.ceil(lastEnd / secondsPerBar) || 1);
-    const bars = options.bars && options.bars > 0 ? Math.min(options.bars, fileBars) : fileBars;
+    if (fileBars > MAX_BARS && options.bars === undefined) {
+      throw new Error(
+        `MIDI file spans too many bars (${fileBars} > ${MAX_BARS}). ` +
+        `Pass bars=<n> to import a prefix.`
+      );
+    }
+    const bars = Math.min(options.bars ?? fileBars, MAX_BARS);
     const totalSteps = bars * stepsPerCycle;
+
+    // Belt and braces before the per-step allocations below: stepsPerCycle
+    // and bars are both bounded above, so this should be unreachable.
+    if (!Number.isSafeInteger(totalSteps) || totalSteps < 1 || totalSteps > MAX_BARS * 64) {
+      throw new Error(`Refusing to render ${totalSteps} steps.`);
+    }
 
     const drumMap: Record<number, string> = { ...GM_DRUM_MAP, ...(options.drum_map ?? {}) };
     const unmappedSet = new Set<number>();

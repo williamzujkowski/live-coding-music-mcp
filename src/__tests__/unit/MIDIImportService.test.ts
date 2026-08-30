@@ -12,7 +12,7 @@
 import * as midiModule from '@tonejs/midi';
 const Midi: any = (midiModule as any).Midi || (midiModule as any).default?.Midi;
 
-import { MIDIImportService, GM_DRUM_MAP, MAX_NOTES } from '../../services/MIDIImportService';
+import { MIDIImportService, GM_DRUM_MAP, MAX_NOTES, MAX_BARS } from '../../services/MIDIImportService';
 
 /** Build a synthetic .mid Buffer with the given tracks. Returns raw bytes. */
 function buildMidi(
@@ -225,6 +225,66 @@ describe('MIDIImportService', () => {
       }));
       const buf = buildMidi(120, [{ channel: 0, notes }]);
       expect(() => service.convertBuffer(buf)).toThrow(/too many notes/);
+    });
+  });
+
+  /**
+   * #235: `bars` came straight from the file's own timing and fed
+   * `new Array(bars * stepsPerCycle)`. One note at a huge time offset made
+   * that astronomically large — a 36-byte file rendered a 17.8MB pattern
+   * in 174MB of heap, and a 37-byte one aborted V8 with a FATAL ERROR that
+   * the tool's try/catch cannot intercept, killing the whole server. The
+   * 1MB input cap does not help: the amplification is time-based.
+   */
+  describe('bar-count amplification (#235)', () => {
+    /** One note parked far in the future — tiny file, enormous span. */
+    const farFutureNote = (seconds: number): Buffer =>
+      buildMidi(120, [{ channel: 0, notes: [{ midi: 60, time: seconds, duration: 0.1 }] }]);
+
+    it('refuses a file spanning more bars than the cap', () => {
+      // 120bpm => 2s per bar, so 100_000s is ~50_000 bars.
+      const buf = farFutureNote(100_000);
+
+      expect(() => service.convertBuffer(buf, {})).toThrow(/too many bars/);
+    });
+
+    it('stays small instead of allocating gigabytes', () => {
+      const buf = farFutureNote(100_000);
+      expect(buf.length).toBeLessThan(500); // tiny input...
+
+      // ...and no giant allocation: it throws rather than rendering.
+      expect(() => service.convertBuffer(buf, {})).toThrow();
+    });
+
+    it('names the escape hatch in the error', () => {
+      expect(() => service.convertBuffer(farFutureNote(100_000), {}))
+        .toThrow(/Pass bars=/);
+    });
+
+    it('honours the escape hatch: an explicit bars cap still imports', () => {
+      const result = service.convertBuffer(farFutureNote(100_000), { bars: 2 });
+
+      expect(result.pattern.length).toBeLessThan(10_000);
+    });
+
+    it.each([0, -1, 1.5, MAX_BARS + 1, 1e9])('rejects bars=%p', bars => {
+      const buf = buildMidi(120, [{ channel: 0, notes: [{ midi: 60, time: 0 }] }]);
+
+      expect(() => service.convertBuffer(buf, { bars: bars as number }))
+        .toThrow(/Invalid bars/);
+    });
+
+    it('leaves an ordinary file unaffected', () => {
+      const buf = buildMidi(120, [
+        { channel: 0, notes: [{ midi: 60, time: 0 }, { midi: 62, time: 0.5 }] },
+      ]);
+
+      expect(() => service.convertBuffer(buf, {})).not.toThrow();
+    });
+
+    it('caps at a sane value', () => {
+      expect(MAX_BARS).toBeGreaterThan(0);
+      expect(MAX_BARS).toBeLessThanOrEqual(4096);
     });
   });
 
