@@ -16,6 +16,7 @@
 import * as strudelCore from '@strudel/core';
 import { mini } from '@strudel/mini';
 import { transpiler } from '@strudel/transpiler';
+import { assertPatternIsSafe, runPatternCode, PatternSafetyError } from './PatternSandbox.js';
 import {
   calculateComplexity,
   checkCommonIssues,
@@ -153,6 +154,24 @@ export class StrudelEngine {
    * }
    * ```
    */
+  /**
+   * Validates then executes pattern code inside the sandbox.
+   *
+   * Replaces the bare `new Function(...)` this class used at three sites,
+   * which executed caller-supplied JavaScript directly in the server
+   * process (#229).
+   *
+   * @param code - Original pattern source, for the AST allowlist
+   * @param transpiledCode - Transpiler output, actually executed
+   * @returns The Pattern the code produced
+   * @throws {PatternSafetyError} When the pattern is rejected pre-execution
+   * @nist si-10 "Information input validation"
+   */
+  private evaluatePattern(code: string, transpiledCode: string): any {
+    assertPatternIsSafe(code, Object.keys(this.context));
+    return runPatternCode(transpiledCode, this.context);
+  }
+
   transpile(code: string): TranspileResult {
     if (!code || code.trim().length === 0) {
       return {
@@ -180,7 +199,11 @@ export class StrudelEngine {
   }
 
   /**
-   * Validate pattern syntax without execution
+   * Validate a pattern by building it in the sandbox
+   *
+   * Note: this *does* execute the pattern (that is the only way to learn
+   * whether it produces a Pattern), but inside PatternSandbox rather than
+   * in the server process. The JSDoc previously claimed no execution.
    *
    * @param code - Strudel pattern code
    * @returns Validation result with errors and suggestions
@@ -222,16 +245,21 @@ export class StrudelEngine {
     }
 
     try {
-      const fn = new Function(...Object.keys(this.context), transpileResult.transpiledCode!);
-      const pattern = fn(...Object.values(this.context));
+      const pattern = this.evaluatePattern(code, transpileResult.transpiledCode!);
 
       if (!pattern || typeof pattern.queryArc !== 'function') {
         errors.push('Code did not produce a valid pattern');
         suggestions.push('Ensure your code returns a pattern (e.g., s("bd"), note("c3"), stack(...))');
       }
     } catch (error: any) {
-      errors.push(`Runtime error: ${error.message}`);
-      suggestions.push(...getSuggestionsForError(error.message));
+      if (error instanceof PatternSafetyError) {
+        // Rejected before execution — report it as such rather than as a
+        // runtime error, so callers can tell "unsafe" from "buggy" (#229).
+        errors.push(`Pattern rejected: ${error.message}`);
+      } else {
+        errors.push(`Runtime error: ${error.message}`);
+        suggestions.push(...getSuggestionsForError(error.message));
+      }
     }
 
     checkCommonIssues(code, warnings, suggestions);
@@ -268,8 +296,7 @@ export class StrudelEngine {
     }
 
     try {
-      const fn = new Function(...Object.keys(this.context), transpileResult.transpiledCode!);
-      const pattern = fn(...Object.values(this.context));
+      const pattern = this.evaluatePattern(code, transpileResult.transpiledCode!);
 
       if (!pattern || typeof pattern.queryArc !== 'function') {
         throw new Error('Code did not produce a valid pattern');
@@ -296,8 +323,7 @@ export class StrudelEngine {
     }
 
     try {
-      const fn = new Function(...Object.keys(this.context), transpileResult.transpiledCode!);
-      const pattern = fn(...Object.values(this.context));
+      const pattern = this.evaluatePattern(code, transpileResult.transpiledCode!);
 
       if (!pattern || typeof pattern.queryArc !== 'function') {
         throw new Error('Code did not produce a valid pattern');
