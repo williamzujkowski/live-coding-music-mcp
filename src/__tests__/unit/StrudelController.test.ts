@@ -198,20 +198,58 @@ describe('StrudelController', () => {
       expect(controller.getPlaybackState()).toBe(false);
     });
 
-    test('should use keyboard shortcut for play', async () => {
+    /**
+     * #218: Ctrl+Period is a CodeMirror keymap binding, so
+     * page.keyboard.press only reaches it while the editor holds focus —
+     * and it resolves successfully either way. stop() therefore reported
+     * "Stopped" while audio kept playing. Playback is now driven through
+     * strudelMirror, whose effect we can actually observe.
+     */
+    test('stop drives strudelMirror.stop(), not the keyboard', async () => {
       const pressSpy = jest.spyOn(mockPage.keyboard, 'press');
+      const evalSpy = jest.spyOn(mockPage, 'evaluate');
 
       await controller.play();
-
-      expect(pressSpy).toHaveBeenCalledWith('ControlOrMeta+Enter');
-    });
-
-    test('should use keyboard shortcut for stop', async () => {
-      const pressSpy = jest.spyOn(mockPage.keyboard, 'press');
-
+      pressSpy.mockClear();
       await controller.stop();
 
-      expect(pressSpy).toHaveBeenCalledWith('ControlOrMeta+Period');
+      const stoppedViaApi = evalSpy.mock.calls.some(
+        ([fn]) => typeof fn === 'function' && /strudelMirror[\s\S]*stop/.test(fn.toString()),
+      );
+      expect(stoppedViaApi).toBe(true);
+      expect(pressSpy).not.toHaveBeenCalledWith('ControlOrMeta+Period');
+    });
+
+    test('play resumes via strudelMirror once the user gesture is established', async () => {
+      await controller.play(); // first play establishes the gesture
+      await controller.stop();
+
+      const evalSpy = jest.spyOn(mockPage, 'evaluate');
+      await controller.play();
+
+      const playedViaApi = evalSpy.mock.calls.some(
+        ([fn]) => typeof fn === 'function' && /strudelMirror[\s\S]*evaluate/.test(fn.toString()),
+      );
+      expect(playedViaApi).toBe(true);
+    });
+
+    /**
+     * The bug in #218 was not that stopping failed — it was that failing
+     * to stop was reported as success. If the scheduler stays started,
+     * stop() must surface that instead of claiming "Stopped".
+     */
+    test('stop reports failure when the scheduler keeps running', async () => {
+      await controller.play();
+
+      // Simulate strudel ignoring every stop attempt.
+      jest.spyOn(mockPage, 'evaluate').mockImplementation(async (fn: any) => {
+        const src = typeof fn === 'function' ? fn.toString() : '';
+        if (/started/.test(src)) return true; // still playing
+        return undefined;                     // swallow stop()
+      });
+      jest.spyOn(mockPage, 'click').mockResolvedValue(undefined);
+
+      await expect(controller.stop()).rejects.toThrow(/still running/i);
     });
   });
 

@@ -14,6 +14,34 @@ import {
   BrowserDiagnostics
 } from './types/AudioAnalysis.js';
 
+/**
+ * Waits until strudel.cc's editor is actually driveable.
+ *
+ * Single source of truth for "the page is ready", shared by
+ * StrudelController.initialize() and SessionManager's per-session page
+ * setup. They used to carry separate predicates and drifted: the session
+ * path waited on `editor.__view`, a CodeMirror internal strudel.cc does
+ * not expose, so every named session stalled 5s and then threw (#228).
+ *
+ * @param page - Playwright page pointed at strudel.cc
+ * @param timeoutMs - Maximum time to wait for the editor API
+ * @throws {Error} When the editor does not become ready in time
+ */
+export async function waitForStrudelReady(page: Page, timeoutMs = 5000): Promise<void> {
+  await page.waitForSelector('.cm-content', { timeout: 8000 });
+  try {
+    await page.waitForFunction(
+      () => Boolean((window as any).strudelMirror?.editor?.dispatch),
+      { timeout: timeoutMs }
+    );
+  } catch {
+    throw new Error(
+      `Strudel editor did not become ready within ${timeoutMs}ms. ` +
+      'The page may have failed to load or strudel.cc may have changed its API.'
+    );
+  }
+}
+
 export class StrudelController {
   private browser: Browser | null = null;
   private _page: Page | null = null;
@@ -121,15 +149,7 @@ export class StrudelController {
       timeout: 15000,
     });
 
-    // Wait for editor element to appear
-    await this._page.waitForSelector('.cm-content', { timeout: 8000 });
-
-    // Wait for strudelMirror API to be available
-    // This is the correct API exposed by strudel.cc (not __view on DOM elements)
-    await this._page.waitForFunction(
-      () => (window as any).strudelMirror?.editor?.dispatch,
-      { timeout: 5000 }
-    );
+    await waitForStrudelReady(this._page);
 
     // Set up console monitoring for runtime errors
     this.setupConsoleMonitoring();
@@ -153,7 +173,7 @@ export class StrudelController {
    * Sets up console error/warning monitoring
    * Captures Strudel runtime errors that static validation can't catch
    */
-  private setupConsoleMonitoring(): void {
+  setupConsoleMonitoring(): void {
     if (!this._page) return;
 
     this._page.on('console', (msg) => {
@@ -271,17 +291,52 @@ export class StrudelController {
   }
 
   /**
+   * Reads Strudel's own scheduler state.
+   *
+   * `this.isPlaying` used to be set optimistically, which is how #218
+   * happened: stop() reported "Stopped" and diagnostics reported
+   * playing:false while audio kept running. Ask the page instead.
+   *
+   * @returns True if Strudel's REPL scheduler is started
+   */
+  private async readPlaybackState(): Promise<boolean> {
+    if (!this._page) return false;
+    try {
+      return await this._page.evaluate(() => {
+        const sm = (window as any).strudelMirror;
+        return Boolean(sm?.repl?.state?.started ?? sm?.repl?.scheduler?.started);
+      });
+    } catch {
+      // Page closed or navigating — treat as not playing rather than throwing.
+      return false;
+    }
+  }
+
+  /**
+   * Polls until Strudel's scheduler reaches the desired state.
+   * @param desired - State to wait for
+   * @param timeoutMs - Maximum time to wait
+   * @returns True if the state was reached before the timeout
+   */
+  private async waitForPlaybackState(desired: boolean, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      if (await this.readPlaybackState() === desired) return true;
+      if (Date.now() >= deadline) return false;
+      await this._page?.waitForTimeout(50);
+    }
+  }
+
+  /**
    * Starts playing the current pattern
    * @returns Success message
-   * @throws {Error} When not initialized
+   * @throws {Error} When not initialized, or when playback fails to start
    */
   async play(): Promise<string> {
     if (!this._page) throw new Error('Browser not initialized. Run init tool first.');
 
     // First play per session: click the play button to establish the user
     // gesture the AudioContext needs. Slow (~3s in headless) but only once.
-    // Subsequent plays: use Ctrl+Enter — AudioContext is already resumed,
-    // so the keyboard shortcut resumes playback cleanly and fast.
     if (!this.hasEstablishedGesture) {
       try {
         const playButton = this._page.locator('button[title="play"]').first();
@@ -291,10 +346,21 @@ export class StrudelController {
         await this._page.keyboard.press('ControlOrMeta+Enter');
       }
     } else {
-      await this._page.keyboard.press('ControlOrMeta+Enter');
+      // AudioContext is already resumed, so drive strudelMirror directly.
+      // Ctrl+Enter is a CodeMirror keymap binding and only fires when the
+      // editor holds focus — see the comment on stop() (#218).
+      await this._page.evaluate(() => {
+        (window as any).strudelMirror?.evaluate?.();
+      });
     }
 
-    await this._page.waitForTimeout(50);
+    if (!(await this.waitForPlaybackState(true, 3000))) {
+      this.isPlaying = await this.readPlaybackState();
+      throw new Error(
+        'Playback did not start. The pattern may have a syntax error — ' +
+        'check diagnostics({ level: "errors" }).'
+      );
+    }
 
     this.isPlaying = true;
     return 'Playing';
@@ -303,20 +369,36 @@ export class StrudelController {
   /**
    * Stops the currently playing pattern
    * @returns Success message
-   * @throws {Error} When not initialized
+   * @throws {Error} When not initialized, or when playback fails to stop
    */
   async stop(): Promise<string> {
     if (!this._page) throw new Error('Browser not initialized. Run init tool first.');
 
-    // Ctrl+Period stops cleanly when AudioContext is running (i.e. after
-    // a successful play). No user gesture needed — we only need one to
-    // RESUME AudioContext, not to stop it. Fall back to the button click
-    // if keyboard fails (e.g. editor lost focus).
-    try {
-      await this._page.keyboard.press('ControlOrMeta+Period');
-    } catch {
-      const playButton = this._page.locator('button[title="play"]').first();
-      await playButton.click({ timeout: 2000 });
+    // Drive strudelMirror.stop() directly. Ctrl+Period is bound in the
+    // CodeMirror keymap, so page.keyboard.press only reaches it while the
+    // editor holds focus — and it RESOLVES either way, so the old catch
+    // block never fired and stop() reported success while audio kept
+    // playing (#218). Verified against live strudel.cc: after a keyboard
+    // stop without focus, repl.state.started stayed true; after
+    // strudelMirror.stop() it went false.
+    await this._page.evaluate(() => {
+      (window as any).strudelMirror?.stop?.();
+    });
+
+    if (!(await this.waitForPlaybackState(false, 2000))) {
+      // Fall back to the transport button. Note the title flips to "stop"
+      // while playing, so the old `button[title="play"]` locator could not
+      // have matched here either.
+      try {
+        await this._page.locator('button[title="stop"]').first().click({ timeout: 2000 });
+      } catch {
+        await this._page.keyboard.press('ControlOrMeta+Period');
+      }
+
+      if (!(await this.waitForPlaybackState(false, 2000))) {
+        this.isPlaying = await this.readPlaybackState();
+        throw new Error('Failed to stop playback: Strudel scheduler is still running.');
+      }
     }
 
     this.isPlaying = false;
