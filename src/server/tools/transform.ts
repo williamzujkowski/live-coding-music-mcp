@@ -234,6 +234,9 @@ async function opScale(args: any, ctx: ToolContext, sid?: string): Promise<unkno
 
 async function opEffectAdd(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   InputValidator.validateStringLength(args.effect, 'effect', 100, false);
+  // Concatenated straight into the pattern source, so it must be a plain
+  // method name and not arbitrary code (#236).
+  InputValidator.validateIdentifier(args.effect, 'effect');
   if (args.params) InputValidator.validateStringLength(args.params, 'params', 1000, true);
   const p = await ctx.getCurrentPatternSafe(sid);
   const withEffect = args.params
@@ -243,11 +246,61 @@ async function opEffectAdd(args: any, ctx: ToolContext, sid?: string): Promise<u
   return `Added ${args.effect} effect`;
 }
 
+/**
+ * Removes every `.effect(...)` call from a pattern.
+ *
+ * Deliberately not a RegExp. The old implementation interpolated the
+ * caller's effect name into `new RegExp(...)`, which handed the caller
+ * regex *syntax* — `(a+)+Z` against a crafted pattern blocked the event
+ * loop for 25 seconds, and a synchronous String.replace has no timeout to
+ * break out of (#236).
+ *
+ * Scanning also fixes a correctness bug the regex had: `[^)]*` stops at
+ * the FIRST `)`, so `.lpf(add(1,2))` was left as a stray `)`. This walks
+ * balanced parentheses instead.
+ *
+ * @param pattern - Pattern source to strip
+ * @param effect - Effect name (validated as an identifier by the caller)
+ * @returns The pattern with every matching call removed
+ */
+function stripEffectCalls(pattern: string, effect: string): string {
+  const needle = `.${effect}(`;
+  let out = '';
+  let cursor = 0;
+
+  for (;;) {
+    const start = pattern.indexOf(needle, cursor);
+    if (start === -1) break;
+
+    // Walk to the matching close paren, respecting nesting.
+    let depth = 0;
+    let end = -1;
+    for (let i = start + needle.length - 1; i < pattern.length; i++) {
+      const ch = pattern[i];
+      if (ch === '(') depth++;
+      else if (ch === ')') {
+        depth--;
+        if (depth === 0) { end = i; break; }
+      }
+    }
+
+    // Unbalanced: leave the rest untouched rather than mangling it.
+    if (end === -1) break;
+
+    out += pattern.slice(cursor, start);
+    cursor = end + 1;
+  }
+
+  return out + pattern.slice(cursor);
+}
+
 async function opEffectRemove(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   InputValidator.validateStringLength(args.effect, 'effect', 100, false);
+  // Must be a plain identifier: it is matched literally below, and was
+  // previously interpolated into a RegExp (#236).
+  InputValidator.validateIdentifier(args.effect, 'effect');
   const p = await ctx.getCurrentPatternSafe(sid);
-  const regex = new RegExp(`\\.${args.effect}\\([^)]*\\)`, 'g');
-  const stripped = p.replace(regex, '');
+  const stripped = stripEffectCalls(p, args.effect);
   if (stripped === p) return `No ${args.effect} effect found to remove`;
   await ctx.writePatternSafe(stripped, sid);
   return `Removed ${args.effect} effect`;
