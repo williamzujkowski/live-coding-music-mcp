@@ -213,6 +213,22 @@ describe('StrudelMCPServer', () => {
         expect(result).toContain('initialized');
       });
 
+      test('should eagerly create audio capture service when browser page is available', async () => {
+        await (server as any).executeTool('init', {});
+
+        expect(AudioCaptureService).toHaveBeenCalledTimes(1);
+        const captureService = (AudioCaptureService as jest.Mock).mock.instances[0];
+        expect(captureService.injectRecorder).toHaveBeenCalledWith(mockController.page);
+      });
+
+      test('should not create audio capture service when init mock has no browser page', async () => {
+        Object.defineProperty(mockController, 'page', { value: undefined });
+
+        await (server as any).executeTool('init', {});
+
+        expect(AudioCaptureService).not.toHaveBeenCalled();
+      });
+
     });
 
     describe('edit_pattern write', () => {

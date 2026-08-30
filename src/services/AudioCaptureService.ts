@@ -265,7 +265,28 @@ export class AudioCaptureService {
       if (!capture) {
         return { success: false, error: 'Audio capture not initialized.' };
       }
-      return await capture.stopCapture();
+
+      const captureResult = await capture.stopCapture();
+      if (!captureResult.success || !captureResult.blob) {
+        return captureResult;
+      }
+
+      // Playwright cannot serialize a browser Blob into a Node Blob with
+      // methods intact. Convert to base64 inside the browser context and
+      // rehydrate a real Node-side Blob below.
+      const buffer = await captureResult.blob.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+
+      return {
+        success: true,
+        audio: btoa(binary),
+        duration: captureResult.duration,
+        format: captureResult.format,
+      };
     });
 
     this._isCapturing = false;
@@ -276,8 +297,12 @@ export class AudioCaptureService {
 
     this.logger.debug(`Audio capture stopped: ${result.duration}ms`);
 
+    const blob = result.audio
+      ? new Blob([Buffer.from(result.audio as string, 'base64')], { type: result.format as string })
+      : result.blob as Blob;
+
     return {
-      blob: result.blob as Blob,
+      blob,
       duration: result.duration as number,
       format: result.format as string,
       timestamp: Date.now()
