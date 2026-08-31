@@ -332,7 +332,29 @@ export function probeEventDensity(
             spanFraction: probeSpan / span,
           };
         }
-        if (believable || !canGrow) {
+        // A FULL window counts, distinct or not.
+        //
+        // The distinctness gate exists to stop a rate being extrapolated
+        // from a handful of stacked events — `s("bd").slow(64)` returns
+        // one hap at any span, and projecting from it refused ordinary
+        // patterns (#360 rule 1). It was never meant to discard a window
+        // that is *full*: a window holding `sampleTarget` events is
+        // evidence of density whatever their onset spelling.
+        //
+        // Discarding it let a pattern through that the probe exists to
+        // refuse. Measured, 150,000 onset instants x 250 simultaneous
+        // layers — 37,500,000 events in one cycle:
+        //
+        //   before: {"kind":"proceed","observedOnsets":3750,
+        //            "windowsWithOnsets":8}
+        //
+        // Every one of the eight windows saw the density and none of
+        // them was allowed to say so: each cleared `sampleTarget` (so
+        // the ladder stopped) but failed `minDistinct` (so it was not
+        // recorded), and `countedFloor` stayed under the cap because
+        // eight small windows hold few events in absolute terms (#460).
+        const windowIsFull = onsets.length >= sampleTarget;
+        if (believable || windowIsFull || !canGrow) {
           sampledOnsets += onsets.length;
           sampledSpan += probeSpan;
         }
