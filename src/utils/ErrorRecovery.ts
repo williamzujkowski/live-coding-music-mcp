@@ -9,6 +9,15 @@ export interface RecoveryStrategy {
   maxRetries: number;
   retryDelay: number;
   exponentialBackoff: boolean;
+  /**
+   * Randomise each delay within [50%, 100%] of its computed value.
+   *
+   * Without it, every session that hits the same upstream hiccup waits
+   * the same interval and retries in lockstep, which concentrates load
+   * on a service that is already struggling. Off by default so existing
+   * callers are unchanged; on for anything talking to strudel.cc (#315).
+   */
+  jitter?: boolean;
   fallbackAction?: () => Promise<any>;
 }
 
@@ -101,9 +110,13 @@ export class ErrorRecovery {
 
         // Don't retry on last attempt
         if (attempt < strategy.maxRetries) {
-          const delay = strategy.exponentialBackoff
+          const base = strategy.exponentialBackoff
             ? strategy.retryDelay * Math.pow(2, attempt)
             : strategy.retryDelay;
+          // Full-jitter-lite: half the computed delay plus a random half.
+          const delay = strategy.jitter
+            ? Math.round(base * (0.5 + Math.random() * 0.5))
+            : base;
 
           this.logger.debug(`Waiting ${delay}ms before retry`);
           await this.sleep(delay);

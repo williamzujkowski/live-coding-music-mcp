@@ -357,7 +357,15 @@ export function categorizeError(error: unknown): ErrorCategory {
     lower.includes('etimedout') ||
     lower.includes('network') ||
     lower.includes('fetch failed') ||
-    lower.includes('did not become ready')
+    lower.includes('did not become ready') ||
+    // Chromium spells its network errors net::ERR_*, which shares no
+    // substring with the POSIX names above — 'ERR_CONNECTION_REFUSED'
+    // does not contain 'econnrefused', and 'ERR_TIMED_OUT' does not
+    // contain 'timed out' (the underscore). So every navigation failure
+    // Playwright surfaced was landing in `internal`: a server bug the
+    // caller could do nothing about, when a refused connection is the
+    // most retryable error there is (#315).
+    lower.includes('net::err_')
   ) {
     return 'transient';
   }
