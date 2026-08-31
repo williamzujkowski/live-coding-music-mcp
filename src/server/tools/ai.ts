@@ -566,7 +566,13 @@ function generateComplementaryLayer(
     case 'melody': {
       let scaleName: 'minor' | 'major' | 'dorian' | 'pentatonic' = 'minor';
       let octaveRange: [number, number] = [4, 5];
-      if (style === 'jazz') { scaleName = 'dorian'; octaveRange = [3, 5]; }
+      // `major`, not `dorian`. The convention names the mode of the ii
+      // CHORD; rooted on the key it is the wrong collection, and over
+      // the jazz progression this server generates (Dm7 G7 Cmaj7 in C)
+      // it puts Eb against Cmaj7's E (#449). `jam_with` cannot see the
+      // host pattern's chords, so it follows the generator's choice
+      // rather than disagreeing with it.
+      if (style === 'jazz') { scaleName = 'major'; octaveRange = [3, 5]; }
       if (style === 'ambient') { scaleName = 'major'; octaveRange = [4, 6]; }
       if (existingLayers.includes('bass')) octaveRange = [4, 6];
       const scale = ctx.theory.generateScale(key, scaleName);

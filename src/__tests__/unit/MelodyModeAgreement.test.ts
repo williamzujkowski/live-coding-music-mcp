@@ -49,7 +49,18 @@ describe('melody notes belong to the progression\'s scale (#324)', () => {
     ['ambient', 'major'],
     ['breakbeat', 'major'],
     ['techno', 'minor'],
-    ['jazz', 'dorian'],
+    // 'major', not 'dorian'.
+    //
+    // This row contradicted the test's own premise. The jazz
+    // progression is `Dm7 G7 Cmaj7` — a diatonic ii-V-I in C MAJOR — so
+    // "melody notes belong to the progression's scale" makes C major
+    // the answer. C dorian puts Eb against Cmaj7's E and Bb against its
+    // B, which is precisely the disagreement this file was written to
+    // catch, asserted one row below the rows it fixed (#449).
+    //
+    // The 'dorian' convention is real, but it names the mode of the ii
+    // CHORD. Rooted on the key it is a different collection.
+    ['jazz', 'major'],
   ])('%s uses the %s scale', (style, scaleName) => {
     // Run several times: the melody is random, so one pass could pass
     // by luck.

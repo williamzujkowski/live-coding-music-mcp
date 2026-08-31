@@ -318,11 +318,27 @@ export class PatternGenerator {
                       resolvedStyle === 'house' ? 'pop' :
                       resolvedStyle === 'techno' ? 'edm' : 'pop';
 
-    // `edm` and `modal` are minor progressions; `pop` is major; `jazz`
-    // is dorian by convention here.
+    // The collection has to match the chords these are played over.
+    //
+    // `edm` and `modal` are minor progressions; `pop` is major. `jazz`
+    // was 'dorian' "by convention" — and the convention is real, but it
+    // names the mode of the ii CHORD, not of the key. Rooted on the key
+    // it gave the wrong collection outright:
+    //
+    //   jazz progression in C  ->  Dm7 G7 Cmaj7   (diatonic ii-V-I in C major)
+    //   melody scale           ->  C dorian = C D D# F G A A#
+    //
+    // Eb against Cmaj7's E, Bb against the B in both Cmaj7 and G7. The
+    // bassline for the same style is `C2 E2 G2` — a major third — so two
+    // of the three layers already agreed on major and the melody was the
+    // odd one out (#449).
+    //
+    // D dorian and C major are the same seven notes; rooted on C, the
+    // one that matches is `major`. This is the same defect the comment
+    // above records fixing for house in #324, in the style it skipped.
     type ScaleName = Parameters<MusicTheory['generateScale']>[1];
     const scaleForChords: Record<string, ScaleName> = {
-      jazz: 'dorian',
+      jazz: 'major',
       pop: 'major',
       edm: 'minor',
       modal: 'minor',
