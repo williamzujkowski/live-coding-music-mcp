@@ -35,7 +35,7 @@ jobs:
         run: npm run build
 
       - name: Run tests
-        run: npm run test:nocov -- --testPathIgnorePatterns="browser"
+        run: npm run test:nocov -- --testPathIgnorePatterns="__tests__/browser/"
 
       # Jest runs this repo as CommonJS and @strudel/* is ESM, so every
       # StrudelEngine case in the unit tier runs against a mock. The
