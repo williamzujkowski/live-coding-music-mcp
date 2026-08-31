@@ -12,6 +12,9 @@
  * run in CI.
  */
 
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { KNOWN_CLIS, createCliTransport, cliTransports, hasCliTransport } from '../../services/ai/CliTransport.js';
 
 describe('CLI transport argument construction', () => {
@@ -127,5 +130,90 @@ describe('CLI transport entries', () => {
 
   it('detects installed CLIs synchronously, so gates need not be async', () => {
     expect(typeof hasCliTransport()).toBe('boolean');
+  });
+
+  /**
+   * Findings from a cross-model review of this file, each verified against
+   * the real behaviour before being fixed.
+   */
+  describe('review findings', () => {
+    /**
+     * These CLIs are agentic and spawn their own tool subprocesses.
+     * Killing only the direct child orphans those, and an orphan holding
+     * the inherited stdout fd stops 'close' ever firing — measured, a
+     * child SIGKILLed at 500ms did not emit 'close' until 30,002ms. So
+     * the timeout has to settle on 'exit' and kill the process group.
+     */
+    it('bounds a CLI that leaves a long-lived grandchild behind', async () => {
+      const t = createCliTransport({
+        bin: 'sh',
+        label: 'Orphan',
+        // Child exits immediately; grandchild holds stdout for 30s.
+        args: () => ['-c', 'sleep 30 & exit 0'],
+      }, 1500);
+
+      const started = Date.now();
+      await t.send('ignored').catch(() => { /* timeout or empty is fine */ });
+
+      // Without the fix this waited on the grandchild, not the timeout.
+      expect(Date.now() - started).toBeLessThan(5000);
+    }, 20_000);
+
+    /** A directory is mode 755, so X_OK alone passes for it. */
+    it('does not treat a directory on PATH as an installed binary', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fakepath-'));
+      fs.mkdirSync(path.join(dir, 'pretend-cli'));
+      const originalPath = process.env.PATH;
+      process.env.PATH = dir;
+
+      try {
+        const t = createCliTransport({ bin: 'pretend-cli', label: 'Pretend', args: p => [p] });
+        expect(await t.isAvailable()).toBe(false);
+      } finally {
+        process.env.PATH = originalPath;
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    /** Model output is full of curly quotes; chunk-wise toString mangles them. */
+    it('decodes multi-byte characters that span a chunk boundary', async () => {
+      const t = createCliTransport({
+        bin: 'printf', label: 'Printf', args: () => ['%s', 'caf\u00e9 \u2014 na\u00efve \u201cquoted\u201d'],
+      });
+
+      expect(await t.send('ignored')).toBe('café — naïve “quoted”');
+    });
+
+    /** A bare `exited null` with empty stderr reads like an external kill. */
+    it('says why it killed a CLI that overran the output cap', async () => {
+      const t = createCliTransport({
+        bin: 'sh', label: 'Flood',
+        args: () => ['-c', 'yes ' + 'x'.repeat(200) + ' | head -c 20000000'],
+      }, 30_000);
+
+      await expect(t.send('ignored')).rejects.toThrow(/exceeded .* bytes/);
+    }, 40_000);
+
+    /** A different vendor's agent should not inherit our provider keys. */
+    it('does not pass the parent environment through to the CLI', async () => {
+      process.env.STRUDEL_SECRET_PROBE = 'leaked';
+      try {
+        const t = createCliTransport({
+          bin: 'sh', label: 'Env', args: () => ['-c', 'echo "[${STRUDEL_SECRET_PROBE:-absent}]"'],
+        });
+
+        expect(await t.send('ignored')).toBe('[absent]');
+      } finally {
+        delete process.env.STRUDEL_SECRET_PROBE;
+      }
+    });
+
+    it('still forwards what a CLI needs to find its own config', async () => {
+      const t = createCliTransport({
+        bin: 'sh', label: 'Env', args: () => ['-c', 'test -n "$HOME" && test -n "$PATH" && echo both'],
+      });
+
+      expect(await t.send('ignored')).toBe('both');
+    });
   });
 });
