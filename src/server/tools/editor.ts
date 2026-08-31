@@ -25,7 +25,8 @@ export const tools: Tool[] = [
       'mode=write replaces the editor contents (default; mirrors the old write tool exactly, including optional pattern validation and auto_play). ' +
       'mode=append concatenates `code` after the current pattern with a newline. ' +
       'mode=insert places `code` at the given line `position`. ' +
-      'mode=replace runs a single string-replace from `search` to `replace`. ' +
+      'mode=replace substitutes `search` with `replace` — the first occurrence only, unless replace_all is true. ' +
+      'The response reports how many occurrences matched, were replaced, and remain. ' +
       'mode=clear empties the editor. ' +
       'Example: edit_pattern({ mode: "write", pattern: "s(\\"bd\\")", auto_play: true }). ' +
       'For reading the editor without mutating it use get_pattern; for the on-disk pattern catalog use pattern_store.',
@@ -42,6 +43,7 @@ export const tools: Tool[] = [
         position: { type: 'number', description: 'Line number (mode=insert)' },
         search: { type: 'string', description: 'Text to replace (mode=replace)' },
         replace: { type: 'string', description: 'Replacement text (mode=replace)' },
+        replace_all: { type: 'boolean', description: 'mode=replace: replace every occurrence instead of just the first (default false)' },
         auto_play: { type: 'boolean', description: 'Start playback after write (mode=write only, default: false)' },
         validate: { type: 'boolean', description: 'Validate pattern before write (mode=write only, default: true)' },
         ...SESSION_ID_PROP,
@@ -107,11 +109,47 @@ async function doInsert(args: any, ctx: ToolContext, sid?: string): Promise<unkn
 async function doReplace(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   InputValidator.validateStringLength(args.search, 'search', 1000, true);
   InputValidator.validateStringLength(args.replace, 'replace', 10000, true);
+
+  const search: string = args.search ?? '';
+  if (search.length === 0) {
+    throw new Error('Invalid search: must be a non-empty string.');
+  }
+
   const pattern = await ctx.getCurrentPatternSafe(sid);
+
+  // Literal string operations throughout — never a RegExp built from
+  // `search`. Interpolating caller text into a pattern is how #236
+  // happened: `(a+)+Z` against a crafted subject blocked the event loop
+  // for 25 seconds.
+  const matches = pattern.split(search).length - 1;
+
   // Escape $ in replacement to prevent special sequence injection ($&, $1, $', etc.)
   const safeReplacement = args.replace.replace(/\$/g, '$$$$');
-  const replaced = pattern.replace(args.search, safeReplacement);
-  return await ctx.writePatternSafe(replaced, sid);
+
+  const replaceAll = args.replace_all === true;
+  const updated = replaceAll
+    ? pattern.replaceAll(search, safeReplacement)
+    : pattern.replace(search, safeReplacement);
+
+  const replaced = replaceAll ? matches : Math.min(matches, 1);
+  const remaining = matches - replaced;
+
+  await ctx.writePatternSafe(updated, sid);
+
+  // Counts are reported under BOTH settings. Previously a caller had no
+  // way to learn that other occurrences survived — and these callers are
+  // LLM agents, which do not reliably re-read the pattern to check (#243).
+  return {
+    success: true,
+    message:
+      matches === 0
+        ? `No occurrences of ${JSON.stringify(search)} found`
+        : `Replaced ${String(replaced)} of ${String(matches)} occurrence(s)` +
+          (remaining > 0 ? `; ${String(remaining)} remain. Pass replace_all: true to replace them all.` : ''),
+    replaced,
+    remaining,
+    matches,
+  };
 }
 
 async function doClear(ctx: ToolContext, sid?: string): Promise<unknown> {

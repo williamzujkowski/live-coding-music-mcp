@@ -8,8 +8,9 @@
 import { execute } from '../../server/tools/editor';
 import type { ToolContext } from '../../server/tools/types';
 
-function makeCtx(initialized = true) {
-  let pattern = 's("bd")';
+function makeCtx(initialOrFlag: string | boolean = true) {
+  const initialized = typeof initialOrFlag === 'boolean' ? initialOrFlag : true;
+  let pattern = typeof initialOrFlag === 'string' ? initialOrFlag : 's("bd")';
   let played = false;
   const controller = {
     validatePattern: jest.fn(async () => ({ valid: true, errors: [], warnings: [], suggestions: [] })),
@@ -128,5 +129,103 @@ describe('edit_pattern consolidation (#148)', () => {
       expect(result).toBe('s("bd")');
       expect(pattern()).toBe('s("bd")');
     });
+  });
+});
+
+/**
+ * #243: replace substituted only the FIRST occurrence and said nothing
+ * about it. Given `s("bd*4").gain(0.5).lpf(200).gain(0.8)`, an agent
+ * asked to swap gain for pan got one of the two changed with no signal
+ * that the other survived — and these callers are LLM agents, which do
+ * not reliably re-read the pattern to check.
+ *
+ * The behaviour was documented, so it was a contract question rather than
+ * a defect. Consensus (5/6) chose an explicit opt-in flag over silently
+ * flipping the default, since an agent that read the old schema would
+ * otherwise be surprised in the opposite direction.
+ */
+describe('edit_pattern replace occurrence handling (#243)', () => {
+  const MULTI = 's("bd*4").gain(0.5).lpf(200).gain(0.8)';
+
+  it('replaces only the first occurrence by default', async () => {
+    const { ctx, pattern } = makeCtx(MULTI);
+
+    await execute('edit_pattern', { mode: 'replace', search: 'gain', replace: 'pan' }, ctx);
+
+    expect(pattern()).toBe('s("bd*4").pan(0.5).lpf(200).gain(0.8)');
+  });
+
+  it('replaces every occurrence when asked', async () => {
+    const { ctx, pattern } = makeCtx(MULTI);
+
+    await execute('edit_pattern',
+      { mode: 'replace', search: 'gain', replace: 'pan', replace_all: true }, ctx);
+
+    expect(pattern()).toBe('s("bd*4").pan(0.5).lpf(200).pan(0.8)');
+  });
+
+  it('tells the caller what survived', async () => {
+    const { ctx } = makeCtx(MULTI);
+
+    const result = (await execute('edit_pattern',
+      { mode: 'replace', search: 'gain', replace: 'pan' }, ctx)) as any;
+
+    expect(result).toMatchObject({ matches: 2, replaced: 1, remaining: 1 });
+    expect(result.message).toMatch(/replace_all/);
+  });
+
+  it('reports nothing remaining after a replace-all', async () => {
+    const { ctx } = makeCtx(MULTI);
+
+    const result = (await execute('edit_pattern',
+      { mode: 'replace', search: 'gain', replace: 'pan', replace_all: true }, ctx)) as any;
+
+    expect(result).toMatchObject({ matches: 2, replaced: 2, remaining: 0 });
+    expect(result.message).not.toMatch(/remain/);
+  });
+
+  it('says so when nothing matched', async () => {
+    const { ctx, pattern } = makeCtx(MULTI);
+
+    const result = (await execute('edit_pattern',
+      { mode: 'replace', search: 'nope', replace: 'x' }, ctx)) as any;
+
+    expect(result).toMatchObject({ matches: 0, replaced: 0, remaining: 0 });
+    expect(result.message).toMatch(/No occurrences/);
+    expect(pattern()).toBe(MULTI);
+  });
+
+  /**
+   * Literal string ops throughout — never a RegExp built from `search`.
+   * Interpolating caller text into a pattern is how #236 happened: a
+   * crafted `(a+)+Z` blocked the event loop for 25 seconds.
+   */
+  it.each(['(a+)+Z', '.*', 'gain(0.5)', '[', '\\d+', '$&'])(
+    'treats %p as a literal, not a pattern',
+    async search => {
+      const { ctx } = makeCtx('s("bd").gain(0.5)');
+
+      const started = Date.now();
+      const result = (await execute('edit_pattern',
+        { mode: 'replace', search, replace: 'X', replace_all: true }, ctx)) as any;
+
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(typeof result.matches).toBe('number');
+    },
+  );
+
+  it('rejects an empty search rather than looping over every character', async () => {
+    const { ctx } = makeCtx(MULTI);
+
+    await expect(execute('edit_pattern', { mode: 'replace', search: '', replace: 'x' }, ctx))
+      .rejects.toThrow(/non-empty/);
+  });
+
+  it('still escapes $ sequences in the replacement', async () => {
+    const { ctx, pattern } = makeCtx('s("bd").gain(0.5)');
+
+    await execute('edit_pattern', { mode: 'replace', search: 'gain', replace: '$&x' }, ctx);
+
+    expect(pattern()).toContain('$&x');
   });
 });
