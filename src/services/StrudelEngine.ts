@@ -26,6 +26,7 @@ import * as strudelTonal from '@strudel/tonal';
 import { mini } from '@strudel/mini';
 import { transpiler } from '@strudel/transpiler';
 import { assertPatternIsSafe, runPatternCode, PatternSafetyError } from './PatternSandbox.js';
+import { clarifyEngineError, explainBrowserOnly, findBrowserOnlyCall } from './BrowserOnlyFunctions.js';
 import {
   calculateComplexity,
   checkCommonIssues,
@@ -243,9 +244,18 @@ export class StrudelEngine {
 
     const transpileResult = this.transpile(code);
     if (!transpileResult.success) {
+      // A browser-only call can fail here rather than at execution:
+      // samples("github:...") dies as "Invalid argument" because the
+      // transpiler rewrites every double-quoted string into mini(), and a
+      // URL is not mini notation (#232).
+      const browserOnlyAtTranspile = findBrowserOnlyCall(code);
+      const transpileError = browserOnlyAtTranspile !== null
+        ? (explainBrowserOnly(browserOnlyAtTranspile) ?? transpileResult.error ?? 'Syntax error')
+        : (transpileResult.error ?? 'Syntax error');
+
       return {
         valid: false,
-        errors: [transpileResult.error || 'Syntax error'],
+        errors: [transpileError],
         warnings,
         suggestions: getSuggestionsForError(transpileResult.error || ''),
         errorLocation: transpileResult.errorLocation
@@ -262,7 +272,20 @@ export class StrudelEngine {
         suggestions.push('Ensure your code returns a pattern (e.g., s("bd"), note("c3"), stack(...))');
       }
     } catch (error: any) {
-      if (error instanceof PatternSafetyError) {
+      // A browser-only function is not a broken pattern. Saying
+      // "unknown identifier 'setcpm'" about a core Strudel function
+      // reads as "you typo'd" when the truth is "this validator cannot
+      // see it" (#232).
+      // Check the source too: samples("github:...") fails as "Invalid
+      // argument" because the transpiler rewrites the URL into mini(),
+      // so the error never names the function.
+      const browserOnly = findBrowserOnlyCall(code);
+      const clarified = browserOnly !== null
+        ? (explainBrowserOnly(browserOnly) ?? error.message)
+        : clarifyEngineError(error.message);
+      if (clarified !== error.message) {
+        errors.push(clarified);
+      } else if (error instanceof PatternSafetyError) {
         // Rejected before execution — report it as such rather than as a
         // runtime error, so callers can tell "unsafe" from "buggy" (#229).
         errors.push(`Pattern rejected: ${error.message}`);

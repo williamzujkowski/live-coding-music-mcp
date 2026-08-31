@@ -59,6 +59,14 @@ const LEGITIMATE: string[] = [
   'n("0 2 4").scale("C:major").voicing()',
 ];
 
+/** Real Strudel functions the local engine cannot evaluate (#232). */
+const BROWSER_ONLY: string[] = [
+  'setcpm(120)',
+  'hush()',
+  's("bd").pianoroll()',
+  'samples("github:tidalcycles/dirt-samples")',
+];
+
 async function main(): Promise<void> {
   // A dynamic import that escapes settles asynchronously; don't let the
   // rejection abort the run before we can report it.
@@ -98,6 +106,18 @@ async function main(): Promise<void> {
     } else {
       failures++;
       console.error(`  FAIL  ${code} — ${result.errors.join('; ')}`);
+    }
+  }
+
+  console.log('\nBrowser-only functions are named, not blamed on the pattern:');
+  for (const code of BROWSER_ONLY) {
+    const result = engine.validate(code);
+    const explained = !result.valid && result.errors.join(' ').includes('real Strudel function');
+    if (explained) {
+      console.log(`  ok    ${code}`);
+    } else {
+      failures++;
+      console.error(`  FAIL  ${code} — ${result.errors.join('; ').slice(0, 70)}`);
     }
   }
 
