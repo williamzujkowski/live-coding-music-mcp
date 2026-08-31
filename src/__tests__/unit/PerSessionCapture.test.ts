@@ -5,7 +5,6 @@
  * that destroying a session releases its instance.
  */
 
-jest.mock('../../services/StrudelEngine');
 jest.mock('../../services/AudioCaptureService');
 
 import { AudioCaptureService } from '../../services/AudioCaptureService';

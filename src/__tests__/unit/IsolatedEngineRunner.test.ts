@@ -158,7 +158,12 @@ describe('IsolatedEngineRunner — containment (#307)', () => {
     await expect(runner.call('echo', ['cold'])).rejects.toThrow(/disposed/);
   });
 
-  it('reports a missing child entrypoint instead of throwing out of band', async () => {
+  it('calls a missing child entrypoint a start failure, not a death', async () => {
+    // fork() to a nonexistent path SUCCEEDS and the child exits 1 a
+    // moment later, so this arrived as kind 'crash' — which the tool
+    // layer reports as retryable. An unbuilt install is not retryable,
+    // and an agent told otherwise loops forever against a deployment
+    // problem no amount of retrying will fix.
     const broken = new IsolatedEngineRunner({
       childPath: path.join(dir, 'does-not-exist.cjs'),
       maxOldSpaceMb: 64,
@@ -166,6 +171,39 @@ describe('IsolatedEngineRunner — containment (#307)', () => {
     });
     const error = await broken.call('echo', ['x']).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(IsolatedRunnerError);
+    expect((error as IsolatedRunnerError).kind).toBe('spawn');
+    expect((error as IsolatedRunnerError).message).toContain('npm run build');
     broken.dispose();
+  }, 15000);
+
+  it('calls a child that dies before answering a start failure too', async () => {
+    // The path exists, so the existsSync guard does not fire; the child
+    // dies on its own during startup. Same advice applies: this is a
+    // build problem, not a pattern problem.
+    const dying = path.join(dir, 'dies-on-start.cjs');
+    writeFileSync(dying, "throw new Error('broken import');", 'utf8');
+    const broken = new IsolatedEngineRunner({ childPath: dying, maxOldSpaceMb: 64, timeoutMs: 4000 });
+    const error = await broken.call('echo', ['x']).catch((e: unknown) => e);
+    expect((error as IsolatedRunnerError).kind).toBe('spawn');
+    broken.dispose();
+  }, 15000);
+
+  it('still calls a mid-evaluation death a crash, not a start failure', async () => {
+    // The distinction has to cut both ways or it is just a rename: a
+    // child that answered once and then died failed at the work.
+    const suicidal = path.join(dir, 'dies-later.cjs');
+    writeFileSync(
+      suicidal,
+      `process.on('message', (m) => {
+         if (m.method === 'die') return process.exit(3);
+         process.send({ id: m.id, ok: true, result: 'alive' });
+       });`,
+      'utf8'
+    );
+    const runner2 = new IsolatedEngineRunner({ childPath: suicidal, maxOldSpaceMb: 64, timeoutMs: 4000 });
+    await expect(runner2.call('echo', [])).resolves.toBe('alive');
+    const error = await runner2.call('die', []).catch((e: unknown) => e);
+    expect((error as IsolatedRunnerError).kind).toBe('crash');
+    runner2.dispose();
   }, 15000);
 });

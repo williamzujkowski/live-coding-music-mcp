@@ -9,7 +9,6 @@
 
 // StrudelMCPServer transitively imports @strudel/* (ESM). Jest's CJS loader
 // can't load that; use the mock that already exists for unit tests.
-jest.mock('../../services/StrudelEngine');
 
 import { StrudelMCPServer } from '../../server/server';
 import {

@@ -99,7 +99,7 @@ describe('IsolatedStrudelEngine', () => {
 });
 
 describe('local-engine tools map a dead child to an envelope', () => {
-  function ctxThatDies(kind: 'oom' | 'timeout' | 'crash'): ToolContext {
+  function ctxThatDies(kind: 'oom' | 'timeout' | 'crash' | 'spawn'): ToolContext {
     const boom = (): never => {
       throw new IsolatedRunnerError(`child died: ${kind}`, kind);
     };
@@ -136,6 +136,14 @@ describe('local-engine tools map a dead child to an envelope', () => {
     expect(result.ok).toBe(false);
     expect(result.errorCategory).toBe('transient');
     expect(result.isRetryable).toBe(true);
+  });
+
+  it.each(TOOLS)('%s reports an engine that never started as a deployment problem', async (tool, extra) => {
+    const result = (await execute(tool, { pattern: 's("bd")', ...extra }, ctxThatDies('spawn'))) as any;
+    expect(result.ok).toBe(false);
+    // An unbuilt or missing child is missing on the next attempt too.
+    expect(result.errorCategory).toBe('internal');
+    expect(result.isRetryable).toBe(false);
   });
 
   it('does not tell the caller to go run the validator when the engine is what broke', async () => {

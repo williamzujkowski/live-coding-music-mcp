@@ -250,7 +250,14 @@ async function doAnalyze(args: any, controller: any): Promise<unknown> {
  * would invite an agent into a loop it cannot win.
  */
 function isolationFailure(error: IsolatedRunnerError): unknown {
+  // Not retryable, and for two different reasons. An OOM is the caller's
+  // input: `s("[bd*99999]*99999")` exhausts the cap every time it is
+  // sent. A spawn failure is the deployment: a missing or unbuilt child
+  // is missing on the next attempt too. Both would put an agent in a loop
+  // it cannot win, which is why the vote's "one retryable envelope for
+  // everything" is not what shipped.
   if (error.kind === 'oom') return err('validation', error.message);
+  if (error.kind === 'spawn') return err('internal', error.message);
   return err('transient', error.message, { isRetryable: true });
 }
 

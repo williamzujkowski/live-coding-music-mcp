@@ -38,6 +38,7 @@
  */
 
 import { fork, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
 
 /** How the child died, when it died. */
 export type RunnerFailureKind = 'oom' | 'timeout' | 'crash' | 'spawn';
@@ -84,6 +85,13 @@ export class IsolatedEngineRunner {
   private nextId = 1;
   private stderrTail = '';
   private disposed = false;
+  /**
+   * Whether the current child has ever answered anything. A child that
+   * dies without having answered once did not fail at evaluating a
+   * pattern — it failed at starting. Those want opposite advice, so they
+   * must not share a failure kind.
+   */
+  private answeredSinceSpawn = false;
   /**
    * Calls run one at a time. Not for thread-safety — for attribution: if
    * the child dies, exactly one call is in flight, so there is no question
@@ -137,7 +145,11 @@ export class IsolatedEngineRunner {
     } catch (error: unknown) {
       const detail = error instanceof Error ? error.message : String(error);
       return Promise.reject(
-        new IsolatedRunnerError(`Could not start the isolated pattern engine: ${detail}`, 'spawn')
+        new IsolatedRunnerError(
+          `Could not start the isolated pattern engine: ${detail}. This is a build or ` +
+            'install problem, not something to retry — run `npm run build`.',
+          'spawn'
+        )
       );
     }
 
@@ -164,6 +176,7 @@ export class IsolatedEngineRunner {
       const onMessage = (raw: unknown): void => {
         const message = raw as { id?: number; ok?: boolean; result?: unknown; error?: { message?: string; name?: string } } | null;
         if (!message || message.id !== id) return;
+        this.answeredSinceSpawn = true;
         if (message.ok) {
           pending.resolve(message.result);
           return;
@@ -244,6 +257,20 @@ export class IsolatedEngineRunner {
     }
     const how = signal !== null ? `signal ${signal}` : `exit code ${String(code)}`;
     const tail = this.stderrTail.trim();
+
+    // A child that never answered anything did not fail at evaluating
+    // this pattern; it failed at starting — a broken build, a bad import,
+    // a mismatched Node. Retrying that is a loop with no exit, so it gets
+    // its own kind and its own (non-retryable) advice.
+    if (!this.answeredSinceSpawn) {
+      return new IsolatedRunnerError(
+        `The isolated pattern engine could not start (${how}). This is a build or install ` +
+          `problem, not something to retry — run \`npm run build\` and check that ` +
+          `${this.options.childPath} exists.${tail ? ` Last output: ${tail}` : ''}`,
+        'spawn'
+      );
+    }
+
     return new IsolatedRunnerError(
       `The isolated pattern engine died during ${method} (${how}). The engine has been ` +
         `restarted.${tail ? ` Last output: ${tail}` : ''}`,
@@ -253,6 +280,14 @@ export class IsolatedEngineRunner {
 
   private ensureChild(): ChildProcess {
     if (this.child !== null && this.child.connected) return this.child;
+
+    // fork() to a path that does not exist succeeds, then the child exits
+    // 1 a moment later — which arrives as a death, not as a spawn
+    // failure. Checking first turns a confusing "the engine died" into an
+    // accurate "the engine was never there".
+    if (!existsSync(this.options.childPath)) {
+      throw new Error(`child entrypoint not found at ${this.options.childPath}`);
+    }
 
     const reason = this.child === null ? 'first use or after a kill' : 'disconnected child';
     // stdout is IGNORED on purpose. This process speaks MCP over its own
@@ -287,6 +322,7 @@ export class IsolatedEngineRunner {
     });
 
     this.child = child;
+    this.answeredSinceSpawn = false;
     this.options.onSpawn?.(reason);
     return child;
   }
