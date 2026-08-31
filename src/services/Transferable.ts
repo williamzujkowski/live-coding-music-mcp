@@ -7,11 +7,22 @@
  * This has no dependencies at all.
  */
 
+import { ValidationError } from '../utils/CategorisedError.js';
+
 /** Bounds on what may cross the IPC boundary. Both are far above any real result. */
 const MAX_TRANSFER_DEPTH = 32;
 const MAX_TRANSFER_NODES = 2_000_000;
 
-export class TransferError extends Error {}
+/**
+ * A result that cannot cross the IPC boundary: too many values, or
+ * nested too deep.
+ *
+ * Extends `ValidationError` because that is what it is — the caller
+ * asked for more than can be returned, and the fix is a narrower query.
+ * It reaches the parent as a reconstructed error, so the category also
+ * travels as an explicit field; see `engineChild`.
+ */
+export class TransferError extends ValidationError {}
 
 /**
  * Copies a result into something Node's IPC can carry.
