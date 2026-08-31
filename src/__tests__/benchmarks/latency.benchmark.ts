@@ -55,6 +55,13 @@ const TARGETS: Target[] = [
   // child pays a loader cost for); from dist it is faster, never slower.
   { name: 'localEngine.coldStart', targetP95Ms: 500, runs: 3 },
   { name: 'localEngine.warmCall', targetP95Ms: 5, runs: 40 },
+  // #360's density guard probes 8 windows across the requested range at
+  // 3 span scales, so query_pattern_events pays ~24 queryArc calls where
+  // it used to pay one. That is a real regression on this path — ~1ms to
+  // ~55ms — and it buys refusing two patterns that previously exhausted
+  // the heap. Gated so the cost stays where it was measured rather than
+  // drifting.
+  { name: 'localEngine.queryEvents', targetP95Ms: 90, runs: 30 },
 ];
 
 const GATE_MULTIPLIER = 1.5;
@@ -113,6 +120,14 @@ async function main() {
   const warmSamples = await measure(warmTarget.runs ?? 40, () =>
     warmEngine.validate('setcpm(120)\nstack(s("bd*4"), s("hh*8"))'));
   results.push(summarize(warmTarget, warmSamples));
+
+  // No setcpm here: it is browser-only, and the local engine refuses it.
+  const queryPattern = 'stack(s("bd*4"), s("~ cp ~ cp"), s("hh*8").gain(0.5))';
+  await warmEngine.queryEvents(queryPattern, 0, 2);
+  const queryTarget = TARGETS.find(t => t.name === 'localEngine.queryEvents')!;
+  const querySamples = await measure(queryTarget.runs ?? 30, () =>
+    warmEngine.queryEvents(queryPattern, 0, 2));
+  results.push(summarize(queryTarget, querySamples));
   warmEngine.dispose();
 
   // init is measured separately — each run destroys and recreates the browser

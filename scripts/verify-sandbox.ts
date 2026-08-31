@@ -17,13 +17,15 @@
 
 /* eslint-disable no-console */
 
-import { existsSync, unlinkSync } from 'node:fs';
+import { existsSync, unlinkSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { StrudelEngine, EVALUATOR_EXPORTS } from '../src/services/StrudelEngine.js';
 import { IsolatedStrudelEngine } from '../src/services/IsolatedStrudelEngine.js';
 import { IsolatedRunnerError } from '../src/services/IsolatedEngineRunner.js';
 import { MusicTheory } from '../src/services/MusicTheory.js';
+import { PatternGenerator } from '../src/services/PatternGenerator.js';
+import { DRUM_STYLES } from '../src/services/StyleRegistry.js';
 
 // A pattern that escaped the sandbox would create this file.
 const MARKER = join(tmpdir(), 'strudel-sandbox-escape-marker');
@@ -278,8 +280,13 @@ async function main(): Promise<void> {
 
   console.log('\nThe refusal says what to do about it:');
   {
+    // Was `s("bd").fast(100000)`, which no longer reaches the cap check:
+    // it is now caught earlier, by the empty-result check below, because
+    // Strudel does not actually produce 100,000 events for it. A pattern
+    // that genuinely exceeds the cap is the right subject for a test
+    // about the cap's wording.
     try {
-      engine.queryEvents('s("bd").fast(100000)', 0, 1);
+      engine.queryEvents('s("bd*200000")', 0, 1);
       failures++;
       console.error('  FAIL  expected a refusal');
     } catch (error: unknown) {
@@ -289,6 +296,29 @@ async function main(): Promise<void> {
       } else {
         failures++;
         console.error(`  FAIL  unhelpful message: ${message.slice(0, 80)}`);
+      }
+    }
+  }
+
+  console.log('\ns("bd").fast(100000) is refused, not answered with silence (#360):');
+  {
+    // Strudel does not produce 100,000 events for this. It throws
+    // "Maximum call stack size exceeded" internally and returns an EMPTY
+    // array — and before the density guard, materializing it cost 177 MB
+    // to arrive at that nothing. Whichever guard catches it, the one
+    // unacceptable outcome is a successful-looking result with zero
+    // events, which tells an agent its working pattern is silent.
+    try {
+      const events = engine.queryEvents('s("bd").fast(100000)', 0, 1);
+      failures++;
+      console.error(`  FAIL  reported success with ${String(events.length)} events`);
+    } catch (error: unknown) {
+      const message = (error as Error).message;
+      if (message.includes('cap') || message.includes('sampling it found some')) {
+        console.log('  ok    refused, with a reason the caller can act on');
+      } else {
+        failures++;
+        console.error(`  FAIL  wrong error: ${message.slice(0, 90)}`);
       }
     }
   }
@@ -347,7 +377,12 @@ async function main(): Promise<void> {
   // ---------------------------------------------------------------
   console.log('\nMemory containment (#307):');
   {
-    const OOM_PATTERN = 's("[bd*99999]*99999")';
+    // Deliberately the pattern that gets PAST the #360 density guard: a
+    // dense region hiding in the gap between two probe windows. That is
+    // the residual #360 documents rather than claims to have closed, and
+    // it is the reason this containment still has to hold. The payload
+    // the guard now refuses would prove nothing here.
+    const OOM_PATTERN = 's("~ [bd*99999]*99999 ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~")';
     const isolated = new IsolatedStrudelEngine({ maxOldSpaceMb: 128, timeoutMs: 15000 });
     const pid = process.pid;
     try {
@@ -381,6 +416,94 @@ async function main(): Promise<void> {
       console.error(`  FAIL  engine did not recover: ${after.errors.join('; ')}`);
     }
     isolated.dispose();
+  }
+
+  // ---------------------------------------------------------------
+  // Query density guard (#360)
+  //
+  // The old guard sampled the head of the requested range and
+  // extrapolated. Measured, that left two holes, and the cheaper one
+  // needed no exotic syntax at all — just a leading rest:
+  //
+  //   s("bd*200000")   -> refused correctly
+  //   s("~ bd*200000") -> OUT OF HEAP
+  //
+  // Both halves matter, so both are checked: the dangerous patterns must
+  // be refused, and the ordinary ones must NOT be. A guard that refuses
+  // everything passes the first half on its own.
+  // ---------------------------------------------------------------
+  console.log('\nQuery density guard (#360):');
+  {
+    const MUST_REFUSE: Record<string, string> = {
+      'dense from the first beat': 's("[bd*99999]*99999")',
+      'dense after one rest': 's("~ [bd*99999]*99999")',
+      'dense after three rests': 's("~ ~ ~ [bd*99999]*99999")',
+      'over the cap, front-loaded': 's("bd*200000")',
+      'over the cap, behind a rest': 's("~ bd*200000")',
+    };
+
+    for (const [name, code] of Object.entries(MUST_REFUSE)) {
+      const started = Date.now();
+      try {
+        engine.queryEvents(code, 0, 1);
+        failures++;
+        console.error(`  FAIL  ${name} — was accepted; this should be refused`);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/above the .* cap|roughly/.test(message)) {
+          console.log(`  ok    ${name} refused in ${String(Date.now() - started)}ms`);
+        } else {
+          failures++;
+          console.error(`  FAIL  ${name} — refused for the wrong reason: ${message}`);
+        }
+      }
+    }
+
+    // The other half: nothing real may be refused. A false refusal is a
+    // user-visible regression, and this repo ranks it worse than a slow
+    // one — so the corpus and the generator are the acceptance bar.
+    let accepted = 0;
+    const rejected: string[] = [];
+
+    const exampleDir = 'patterns/examples';
+    for (const genre of readdirSync(exampleDir, { withFileTypes: true })) {
+      if (!genre.isDirectory()) continue;
+      for (const file of readdirSync(`${exampleDir}/${genre.name}`)) {
+        if (!file.endsWith('.json')) continue;
+        const parsed = JSON.parse(
+          readFileSync(`${exampleDir}/${genre.name}/${file}`, 'utf8')
+        ) as { pattern?: string };
+        if (typeof parsed.pattern !== 'string') continue;
+        try {
+          engine.queryEvents(parsed.pattern, 0, 2);
+          accepted++;
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (/above the .* cap|roughly/.test(message)) rejected.push(`${genre.name}/${file}`);
+          else accepted++; // a syntax problem is a different test's business
+        }
+      }
+    }
+
+    const generator = new PatternGenerator();
+    for (const style of DRUM_STYLES) {
+      const generated = generator.generateCompletePattern(style, 'C', 120);
+      try {
+        engine.queryEvents(generated, 0, 2);
+        accepted++;
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/above the .* cap|roughly/.test(message)) rejected.push(`generated:${style}`);
+        else accepted++;
+      }
+    }
+
+    if (rejected.length > 0) {
+      failures++;
+      console.error(`  FAIL  the guard refused ${String(rejected.length)} real pattern(s): ${rejected.join(', ')}`);
+    } else {
+      console.log(`  ok    ${String(accepted)} real patterns (corpus + every generator style) all accepted`);
+    }
   }
 
   if (failures > 0) {

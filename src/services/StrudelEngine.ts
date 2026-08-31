@@ -27,6 +27,7 @@ import { mini } from '@strudel/mini';
 import { transpiler } from '@strudel/transpiler';
 import { assertPatternIsSafe, runPatternCode, PatternSafetyError } from './PatternSandbox.js';
 import { clarifyEngineError, explainBrowserOnly, findBrowserOnlyCall } from './BrowserOnlyFunctions.js';
+import { probeEventDensity } from './EventDensityProbe.js';
 import {
   calculateComplexity,
   checkCommonIssues,
@@ -168,14 +169,6 @@ export interface PatternMetadata {
  * is a few thousand events.
  */
 export const MAX_QUERY_EVENTS = 50_000;
-
-/**
- * Fraction of the requested range sampled to estimate density before
- * committing to the full query. Small enough that even a pathological
- * pattern's probe stays cheap, large enough to catch a real pattern's
- * first event.
- */
-const PROBE_FRACTION = 1e-4;
 
 export const EVALUATOR_EXPORTS: readonly string[] = [
   'evaluate',
@@ -414,22 +407,43 @@ export class StrudelEngine {
       // (#307). The cycle range was capped at 16; events per cycle were
       // not capped at all.
       //
-      // A tiny window costs a proportionally tiny slice of that memory
-      // and gives the density, which extrapolates to a projection.
+      // The single leading window this used to sample had two holes,
+      // both measured: it died on patterns dense enough that 1e-4 of the
+      // range was itself too big, and it saw nothing at all when the
+      // pattern opened with a rest. See EventDensityProbe (#360).
       const span = end - start;
-      const probeSpan = span * PROBE_FRACTION;
-      const probe = pattern.queryArc(start, start + probeSpan);
-      const projected = Math.round((probe.length / PROBE_FRACTION));
+      const verdict = probeEventDensity(
+        (begin: number, until: number) => pattern.queryArc(begin, until),
+        start,
+        end,
+        { maxEvents: MAX_QUERY_EVENTS }
+      );
 
-      if (projected > MAX_QUERY_EVENTS) {
+      if (verdict.kind === 'refuse') {
         throw new Error(
-          `Pattern produces roughly ${String(projected)} events over ${String(span)} cycle(s), ` +
-          `above the ${String(MAX_QUERY_EVENTS)} cap. Narrow the range, or reduce the ` +
-          'pattern density (a large .fast() multiplier is the usual cause).'
+          `Pattern produces roughly ${String(verdict.projected)} events over ` +
+          `${String(span)} cycle(s), above the ${String(MAX_QUERY_EVENTS)} cap. ` +
+          'Narrow the range, or reduce the pattern density (a large .fast() ' +
+          'multiplier is the usual cause).'
         );
       }
 
       const haps = pattern.queryArc(start, end);
+
+      // The probe found events; the full query found none. That is not a
+      // silent pattern, it is a query that failed and said nothing —
+      // Strudel answers a large enough `.fast()` with an internal
+      // "Maximum call stack size exceeded" and an EMPTY array, and
+      // reporting that as a successful zero-event result tells an agent
+      // its working pattern produces nothing (the #276 mistake again).
+      if (verdict.observedOnsets > 0 && haps.length === 0) {
+        throw new Error(
+          'The pattern produced no events, but sampling it found some — the query ' +
+          'failed inside Strudel rather than returning an empty result. A very large ' +
+          '.fast() or `*` multiplier is the usual cause; reduce it.'
+        );
+      }
+
       // Belt and braces: the projection is an extrapolation from a
       // sample, so a pattern whose density is wildly uneven could still
       // land above the cap. Truncating beats returning 40 MB of JSON.
