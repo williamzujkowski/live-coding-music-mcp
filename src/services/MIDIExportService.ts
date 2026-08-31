@@ -696,8 +696,20 @@ export class MIDIExportService {
       // Handle sub-patterns in brackets [c4 e4]
       if (part.startsWith('[')) {
         const subContent = part.replace(/[[\]]/g, '');
-        const subParts = subContent.split(/[\s,]+/);
-        subParts.forEach(subPart => {
+        // A comma inside the bracket is a CHORD — simultaneous, each
+        // note holding the whole step. A space is a SUBDIVISION — the
+        // step is split between them.
+        //
+        // Both were treated as a chord with shortened notes: every part
+        // got the step's start time and `noteDuration / subParts.length`.
+        // So `[c4 d4] e4` stacked c4 and d4 at beat 0 instead of
+        // subdividing, and `[c4,e4,g4]` — which is exactly what IMPORT
+        // emits for simultaneous notes — came back a third as long as it
+        // should be (#433 items 2 and 3).
+        const isChord = subContent.includes(',');
+        const subParts = subContent.split(/[\s,]+/).filter(p => p.length > 0);
+        const subDuration = isChord ? noteDuration : noteDuration / subParts.length;
+        subParts.forEach((subPart, subIndex) => {
           const midi = asMidiNumbers
             ? parseInt(subPart, 10)
             : this.noteNameToMidi(subPart);
@@ -705,8 +717,9 @@ export class MIDIExportService {
           if (midi !== null && !isNaN(midi) && midi >= 0 && midi <= 127) {
             notes.push({
               note: midi,
-              time: startTime + index * noteDuration,
-              duration: noteDuration / subParts.length,
+              time: startTime + index * noteDuration
+                + (isChord ? 0 : subIndex * subDuration),
+              duration: subDuration,
               velocity: 100
             });
           }
@@ -741,7 +754,12 @@ export class MIDIExportService {
     const notes: NoteEvent[] = [];
     const chords = chordString.split(/[\s,]+/).filter(c => c.length > 0);
 
-    const chordDuration = chords.length > 0 ? 1 / chords.length : 1;
+    // One pattern string spans a BAR, as everywhere else in this file —
+    // `parseNoteString` and `parseDrumString` both divide
+    // BEATS_PER_BAR. This divided 1, so `chord("C Dm")` packed both
+    // chords into beat 0-1 and left three quarters of the bar empty
+    // (#433 item 1).
+    const chordDuration = chords.length > 0 ? BEATS_PER_BAR / chords.length : BEATS_PER_BAR;
 
     chords.forEach((chord, index) => {
       if (chord === '~' || chord === '-' || chord === 'r') {
@@ -776,7 +794,14 @@ export class MIDIExportService {
 
     while ((match = quotedRegex.exec(pattern)) !== null) {
       const noteSequence = match[1];
-      const parsed = this.parseNoteString(noteSequence, notes.length);
+      // `notes.length` was passed here — a COUNT of events, used as an
+      // offset in BEATS. Two quoted sequences of three notes each put
+      // the second one three beats late, and eight notes put it eight
+      // beats out, past the end of the bar (#433 item 4).
+      //
+      // Each quoted sequence is its own lane over the same bar, which is
+      // how `parsePatternNotes` treats separate `s(...)` calls.
+      const parsed = this.parseNoteString(noteSequence, 0);
       notes.push(...parsed);
     }
 
