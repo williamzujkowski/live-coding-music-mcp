@@ -33,7 +33,11 @@ describe('the cache and the disk agree (#428)', () => {
   it('two spellings of one filename read the same content', async () => {
     const store = new PatternStore(dir);
     await store.save('My-Jam', 'VERSION-ONE', ['t']);
-    await store.save('my-jam', 'VERSION-TWO', ['t']);
+    // Deliberate now: the collision itself is refused unless asked for
+    // (#428, and PatternCollisionGuard.test.ts covers the refusal). The
+    // property under test here is that the cache does not then disagree
+    // with the file about what survived.
+    await store.save('my-jam', 'VERSION-TWO', ['t'], { overwrite: true });
 
     // Whatever the collision policy ends up being, the cache must not
     // disagree with the file about what is in it.

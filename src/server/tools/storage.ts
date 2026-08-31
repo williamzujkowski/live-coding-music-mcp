@@ -42,6 +42,13 @@ export const tools: Tool[] = [
         },
         name: { type: 'string', description: 'Pattern name (required for save/load)' },
         tags: { type: 'array', items: { type: 'string' }, description: 'Tags to attach (save only)' },
+        overwrite: {
+          type: 'boolean',
+          description:
+            'save only: replace a pattern saved under a DIFFERENT name that maps to the '
+            + 'same file (names are lowercased and stripped of punctuation, so "My Jam" '
+            + 'and "my-jam" collide). Off by default; the replaced pattern is unrecoverable.',
+        },
         tag: { type: 'string', description: 'Filter by tag (list only)' },
         ...SESSION_ID_PROP,
       },
@@ -112,7 +119,12 @@ async function doSave(args: any, ctx: ToolContext, sid?: string): Promise<unknow
     // and the pattern was gone (#287).
     return err('business', 'No pattern to save. Write or generate a pattern first.');
   }
-  await ctx.store.save(args.name, toSave, args.tags || []);
+  // A collision throws ValidationError, which `categorizeError` maps to
+  // the validation envelope at the dispatcher — so the caller gets a
+  // refusal naming the pattern in the way, not a success (#428).
+  await ctx.store.save(args.name, toSave, args.tags || [], {
+    overwrite: args.overwrite === true,
+  });
   return `Pattern saved as "${args.name}"`;
 }
 

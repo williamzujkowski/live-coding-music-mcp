@@ -56,7 +56,7 @@ describe('pattern_store consolidation (#143)', () => {
       const { ctx, store } = makeCtx();
       const result = await execute('pattern_store', { action: 'save', name: 'jam1', tags: ['techno', 'demo'] }, ctx);
       expect(result).toBe('Pattern saved as "jam1"');
-      expect(store.save).toHaveBeenCalledWith('jam1', 's("bd hh")', ['techno', 'demo']);
+      expect(store.save).toHaveBeenCalledWith('jam1', 's("bd hh")', ['techno', 'demo'], { overwrite: false });
     });
 
     it('refuses when there is no pattern to save', async () => {
@@ -84,7 +84,7 @@ describe('pattern_store consolidation (#143)', () => {
     it('defaults tags to [] when omitted', async () => {
       const { ctx, store } = makeCtx();
       await execute('pattern_store', { action: 'save', name: 'untagged' }, ctx);
-      expect(store.save).toHaveBeenCalledWith('untagged', 's("bd hh")', []);
+      expect(store.save).toHaveBeenCalledWith('untagged', 's("bd hh")', [], { overwrite: false });
     });
   });
 
