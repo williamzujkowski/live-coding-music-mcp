@@ -379,7 +379,6 @@ export class StrudelMCPServer {
     // Part of the #104 file split — each module owns its own definitions
     // and handlers. server.ts keeps the protocol + state-tracking shell.
     const ctx: ToolContext = {
-      controller: this.controller,
       perfMonitor: this.perfMonitor,
       store: this.store,
       generator: this.generator,
@@ -401,7 +400,6 @@ export class StrudelMCPServer {
           maxHistory: this.MAX_HISTORY,
         };
       },
-      historyEntryId: () => ++this.historyIdCounter,
       dropHistory: (sessionId: string) => { this.historyBundles.delete(sessionId); },
       logger: this.logger,
       isInitialized: () => this.isInitialized,

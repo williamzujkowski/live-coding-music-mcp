@@ -30,9 +30,7 @@ function makeCtx(initialized = true) {
   // Expose the default bundle as `history` for tests that push directly.
   const history = getBundle('default') as any;
   history.maxHistory = 100;
-  let idCounter = 0;
   const ctx: ToolContext = {
-    controller: controller as any,
     perfMonitor: {} as any,
     store: {} as any,
     generator: {} as any,
@@ -46,7 +44,6 @@ function makeCtx(initialized = true) {
       const b = getBundle(sid ?? 'default');
       return { ...b, maxHistory: 100 };
     },
-    historyEntryId: () => ++idCounter,
     dropHistory: (sid: string) => { bundles.delete(sid); },
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } as any,
     isInitialized: () => initialized,
