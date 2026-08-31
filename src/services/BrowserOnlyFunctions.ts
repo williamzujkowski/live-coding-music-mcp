@@ -32,7 +32,13 @@ export const BROWSER_ONLY_FUNCTIONS: ReadonlyMap<string, UnavailableReason> = ne
   // Transport: need a running scheduler, which the local engine has no
   // equivalent of — it builds patterns, it does not play them.
   ['setcpm', 'transport'],
-  ['setCps', 'transport'],
+  // Lowercase. It was listed as 'setCps', which Strudel does not have,
+  // so `setcps(170/60)` fell through to "references unknown identifier
+  // 'setcps'" — the reads-as-a-typo message #232 exists to remove. The
+  // mechanism was fine; the key was mis-cased, which is invisible on
+  // inspection because the entry looks present (#355).
+  ['setcps', 'transport'],
+  ['getcps', 'transport'],
   ['hush', 'transport'],
   // Siblings of hush and setcpm, and just as absent locally. Without
   // them, panic() and getcpm() produced the "references unknown
@@ -41,9 +47,17 @@ export const BROWSER_ONLY_FUNCTIONS: ReadonlyMap<string, UnavailableReason> = ne
   ['panic', 'transport'],
   ['getcpm', 'transport'],
   ['all', 'transport'],
+  // Used by two of Strudel's own flagship tunes (flatrave, amensister),
+  // so anyone pasting a real pattern in hits it immediately.
+  ['useRNG', 'transport'],
 
   // Loaders: fetch sample banks over the network at evaluation time.
   ['samples', 'loader'],
+  // An instrument shortcut, not a free identifier — it fails as
+  // "note(...).piano is not a function" rather than as an unknown
+  // name, so the allowlist never saw it. findBrowserOnlyCall matches
+  // `.name(` as well as `name(`, so listing it is enough (#355).
+  ['piano', 'loader'],
 
   // Visualisers: draw to a canvas.
   ['pianoroll', 'visual'],
