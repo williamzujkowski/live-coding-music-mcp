@@ -29,5 +29,3 @@ export interface LocalPatternEngine {
 
 /** The four methods that cross the isolation boundary. */
 export const ISOLATED_METHODS = ['transpile', 'validate', 'analyzePattern', 'queryEvents'] as const;
-
-export type IsolatedMethod = (typeof ISOLATED_METHODS)[number];
