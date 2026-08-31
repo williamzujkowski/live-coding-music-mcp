@@ -113,11 +113,15 @@ export class AudioAnalyzer {
    * How much a candidate's octave relatives count toward its score,
    * relative to the candidate itself.
    *
+   * 0.25, measured, not chosen. At 0.5 a 90 BPM shuffle (667ms beat with
+   * a 2:1 swing putting a hit at 444ms) read 135, because the swung
+   * offbeat gives a spurious relative real correlation. Cross-model
+   * review predicted that exact number before I measured it.
+   *
    * Enough to break a near-tie the prior would otherwise decide the
-   * wrong way, not enough to let a strong relative carry a weak
-   * candidate.
+   * wrong way; not enough to let a relative carry a candidate.
    */
-  private static readonly FAMILY_CORROBORATION = 0.5;
+  private static readonly FAMILY_CORROBORATION = 0.25;
 
   /**
    * Below this, `detectTempo` reports no tempo instead of a number.

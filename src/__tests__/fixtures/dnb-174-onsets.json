@@ -1,0 +1,188 @@
+{
+  "source": "live headless playback of patterns/examples/dnb/dnb-classic.json at setcpm(174/2)",
+  "declaredBpm": 174,
+  "readingWithoutFamilyScoring": 115,
+  "note": "Onsets dumped from _onsetHistory at the moment detectTempo answered. Times are relative to the first onset.",
+  "onsets": [
+    {
+      "t": 0,
+      "strength": 0.25265
+    },
+    {
+      "t": 81,
+      "strength": 0.075421
+    },
+    {
+      "t": 180,
+      "strength": 0.041805
+    },
+    {
+      "t": 340,
+      "strength": 0.089147
+    },
+    {
+      "t": 421,
+      "strength": 0.04293
+    },
+    {
+      "t": 521,
+      "strength": 0.033157
+    },
+    {
+      "t": 600,
+      "strength": 0.026111
+    },
+    {
+      "t": 681,
+      "strength": 0.033249
+    },
+    {
+      "t": 860,
+      "strength": 0.079266
+    },
+    {
+      "t": 1040,
+      "strength": 0.013182
+    },
+    {
+      "t": 1120,
+      "strength": 0.038205
+    },
+    {
+      "t": 1201,
+      "strength": 0.071446
+    },
+    {
+      "t": 1380,
+      "strength": 0.046262
+    },
+    {
+      "t": 1461,
+      "strength": 0.042149
+    },
+    {
+      "t": 1561,
+      "strength": 0.063442
+    },
+    {
+      "t": 1720,
+      "strength": 0.015005
+    },
+    {
+      "t": 1800,
+      "strength": 0.00805
+    },
+    {
+      "t": 1900,
+      "strength": 0.014836
+    },
+    {
+      "t": 1980,
+      "strength": 0.037048
+    },
+    {
+      "t": 2080,
+      "strength": 0.032797
+    },
+    {
+      "t": 2241,
+      "strength": 0.093934
+    },
+    {
+      "t": 2300,
+      "strength": 0.006357
+    },
+    {
+      "t": 2421,
+      "strength": 0.019363
+    },
+    {
+      "t": 2500,
+      "strength": 0.021362
+    },
+    {
+      "t": 2580,
+      "strength": 0.070044
+    },
+    {
+      "t": 2760,
+      "strength": 0.059574
+    },
+    {
+      "t": 2840,
+      "strength": 0.040411
+    },
+    {
+      "t": 2940,
+      "strength": 0.081288
+    },
+    {
+      "t": 3100,
+      "strength": 0.023177
+    },
+    {
+      "t": 3200,
+      "strength": 0.014767
+    },
+    {
+      "t": 3280,
+      "strength": 0.023637
+    },
+    {
+      "t": 3361,
+      "strength": 0.044876
+    },
+    {
+      "t": 3440,
+      "strength": 0.065717
+    },
+    {
+      "t": 3620,
+      "strength": 0.074701
+    },
+    {
+      "t": 3680,
+      "strength": 0.006962
+    },
+    {
+      "t": 3780,
+      "strength": 0.01777
+    },
+    {
+      "t": 3880,
+      "strength": 0.026831
+    },
+    {
+      "t": 3961,
+      "strength": 0.062224
+    },
+    {
+      "t": 4141,
+      "strength": 0.055185
+    },
+    {
+      "t": 4220,
+      "strength": 0.044822
+    },
+    {
+      "t": 4320,
+      "strength": 0.076831
+    },
+    {
+      "t": 4480,
+      "strength": 0.025781
+    },
+    {
+      "t": 4560,
+      "strength": 0.025965
+    },
+    {
+      "t": 4660,
+      "strength": 0.024334
+    },
+    {
+      "t": 4740,
+      "strength": 0.022503
+    }
+  ]
+}
