@@ -319,13 +319,39 @@ export class MIDIExportService {
     // Case-sensitive suffixes first: 'M7' means major 7 and must not be
     // lowercased into the 'm7' (minor 7) key (#336).
     const key = chordType.toLowerCase();
+    const known = Object.hasOwn(CASE_SENSITIVE_CHORDS, chordType)
+      || Object.hasOwn(CHORD_INTERVALS, key);
+    if (!known && chordType.length > 0) {
+      // The major-triad fallback STAYS. #336 chose it deliberately —
+      // "the fallback is fine for input nobody can interpret" — and a
+      // triad on the root the caller named is a defensible reading of
+      // `chord("Cfoo")`.
+      //
+      // What was wrong is that it happened in silence. #433 reported it
+      // as `chord("Cxyz")` exporting C major, and the sharper case was
+      // `chord("<C Dm>")` exporting a D MAJOR — but that came from the
+      // string never being tokenized (fixed below), not from the
+      // fallback. What reaches here now is genuinely uninterpretable,
+      // and the honest response is to interpret it AND say so.
+      this.unrepresented.add(chordName);
+    }
     const intervals = Object.hasOwn(CASE_SENSITIVE_CHORDS, chordType)
       ? CASE_SENSITIVE_CHORDS[chordType]
       : Object.hasOwn(CHORD_INTERVALS, key)
         ? CHORD_INTERVALS[key]
         : CHORD_INTERVALS[''];
 
-    const rootMidi = (octave + 1) * 12 + rootSemitone;
+    // Cb and B# cross the octave boundary — the same correction
+    // `noteNameToMidi` makes and this did not, so `chord("Cb")` rooted
+    // on B4 (71) instead of B3 (59), a whole octave out (#433).
+    let rootOctave = octave;
+    if (rootKey === 'cb') {
+      rootOctave -= 1;
+    } else if (rootKey === 'b#') {
+      rootOctave += 1;
+    }
+
+    const rootMidi = (rootOctave + 1) * 12 + rootSemitone;
 
     return intervals.map(interval => {
       const midi = rootMidi + interval;
@@ -417,7 +443,18 @@ export class MIDIExportService {
 
     // Extract s() sound patterns with n() modifier for samples
     // e.g., s("piano").n("0 2 4 7")
-    const soundNRegex = /s\s*\([^)]+\)\s*\.n\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/gi;
+    // `sound(...)` as well as `s(...)`.
+    //
+    // The drum pass above accepts both spellings and its lookahead skips
+    // either when `.n(` follows — handing it to this pass, which only
+    // knew `s(`. So `sound("piano").n("60 62")` matched the drum pass's
+    // lookahead, missed here, and was blocked from the bare `n()` pass
+    // by its own lookbehind: three passes, none of them taking it, zero
+    // notes and no error (#433). `s("piano").n("60 62")` worked.
+    //
+    // `\b(?:s|sound)` mirrors the drum regex exactly, so the two cannot
+    // disagree about what a lane looks like.
+    const soundNRegex = /\b(?:s|sound)\s*\([^)]+\)\s*\.n\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/gi;
     let soundNMatch;
 
     while ((soundNMatch = soundNRegex.exec(pattern)) !== null) {
@@ -752,7 +789,25 @@ export class MIDIExportService {
    */
   private parseChordString(chordString: string, startTime: number): NoteEvent[] {
     const notes: NoteEvent[] = [];
-    const chords = chordString.split(/[\s,]+/).filter(c => c.length > 0);
+    // Lanes first, then the shared tokenizer.
+    //
+    // This split on whitespace and commas directly, so it never saw
+    // brackets or alternations: `chord("<C Dm>")` became ["<C", "Dm>"],
+    // the first was rejected and the second read its suffix as "m>",
+    // which was unknown — and an unknown suffix used to mean a major
+    // triad, so the export was a D MAJOR, a chord in neither position
+    // (#433). Both halves of that are fixed; this is the half that
+    // stops the string being mangled in the first place.
+    const lanes = MIDIExportService.splitLanes(chordString);
+    if (lanes.length > 1) {
+      return lanes.flatMap(lane => this.parseChordString(lane, startTime));
+    }
+
+    const chords = MIDIExportService.expandOperators(
+      MIDIExportService.tokenize(chordString),
+      token => { this.unrepresented.add(token); },
+      token => { this.partial.add(token); },
+    );
 
     // One pattern string spans a BAR, as everywhere else in this file —
     // `parseNoteString` and `parseDrumString` both divide
