@@ -110,6 +110,9 @@ export class StrudelMCPServer {
    */
   private pendingPattern: string | null = null;
 
+  /** In-flight auto-init, so concurrent callers share one browser launch. */
+  private initPromise: Promise<void> | null = null;
+
   constructor() {
     this.server = new Server(
       {
@@ -515,10 +518,43 @@ export class StrudelMCPServer {
   }
 
   /** Idempotent browser bring-up. Used by tools that promise auto-init (e.g. `compose`). */
+  /**
+   * Initializes the default browser if it is not already up.
+   *
+   * Single-flight. The MCP SDK does not serialize tool calls — each
+   * request is dispatched through a promise chain and returns immediately
+   * — so two `compose` calls arriving together both used to pass the
+   * `isInitialized` check, both call `initialize()`, and both assign
+   * `this.browser`. The second assignment orphaned the first Chromium
+   * process, which `cleanup()` could no longer reach. With the default
+   * `headless: false` the user also got two windows, half their tool
+   * calls addressing the one they were not watching (#265).
+   *
+   * The in-flight promise is the same shape `checkADC()` already uses.
+   */
   private async ensureInitialized(): Promise<void> {
+    // `isInitialized` was only ever set true, so once the browser died —
+    // user closed the window, or cleanup() ran — this returned early and
+    // never reached the self-healing initialize(). compose, the tool that
+    // advertises auto-init, then failed permanently with 'Target page,
+    // context or browser has been closed' (#265).
+    // Strict false, and an optional call: a controller that cannot answer
+    // (or does not implement the check) should mean 'assume alive' rather
+    // than tearing down a working browser. Recovery is the optimization
+    // here; a false negative just preserves the old behaviour.
+    if (this.isInitialized && this.controller.isAlive?.() === false) {
+      this.isInitialized = false;
+    }
     if (this.isInitialized) return;
-    await this.controller.initialize();
-    this.isInitialized = true;
+
+    // Promise.resolve wrap: initialize() is not guaranteed to return a
+    // thenable (a mocked controller returns undefined), and chaining
+    // directly off it would throw before ever launching a browser.
+    this.initPromise ??= Promise.resolve(this.controller.initialize())
+      .then(() => { this.isInitialized = true; })
+      .finally(() => { this.initPromise = null; });
+
+    await this.initPromise;
     if (this._page) {
       await this.getAudioCaptureService();
     }
