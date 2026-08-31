@@ -3,6 +3,8 @@
  * Provides stub implementations for tests that don't need actual Strudel execution
  */
 
+import { declaredBpm } from '../../utils/Tempo.js';
+
 export interface TranspileResult {
   success: boolean;
   transpiledCode?: string;
@@ -182,10 +184,12 @@ export class StrudelEngine {
       complexity: 0,
     };
 
-    // Extract BPM from setcpm
-    const bpmMatch = code.match(/setcpm\s*\(\s*(\d+(?:\.\d+)?)\s*\)/);
-    if (bpmMatch) {
-      metadata.bpm = parseFloat(bpmMatch[1]);
+    // The real parser, not a copy of it. This mock carried its own
+    // bare-literal regex, so StrudelEngine's tests were asserting the
+    // mock's idea of a tempo call rather than the shipped one (#397).
+    const bpm = declaredBpm(code);
+    if (bpm !== undefined) {
+      metadata.bpm = bpm;
     }
 
     metadata.usesSound = /\bs\s*\(/.test(code) || /\bsound\s*\(/.test(code);

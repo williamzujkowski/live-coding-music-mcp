@@ -13,7 +13,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { empty, withStashField, withStashNotice } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
-import { BEATS_PER_CYCLE } from '../../services/PatternGenerator.js';
+import { BEATS_PER_CYCLE } from '../../utils/Tempo.js';
 import { lookup } from '../../utils/TableLookup.js';
 
 interface EnergyConfig {

@@ -33,7 +33,8 @@
  */
 
 import * as midiModule from '@tonejs/midi';
-import { BEATS_PER_BAR } from './MIDIExportService.js';
+import { BEATS_PER_BAR, BEATS_PER_CYCLE } from '../utils/Tempo.js';
+
 const Midi = (midiModule as any).Midi || (midiModule as any).default?.Midi;
 
 /** Options accepted by `convertBuffer`. */
@@ -266,8 +267,8 @@ export class MIDIImportService {
       );
     }
     const secondsPerBeat = 60 / bpm;
-    // Must match MIDIExportService.BEATS_PER_BAR, or a round trip
-    // rescales time (#336).
+    // Export reads the same constant, so a round trip cannot rescale
+    // time by disagreeing about the bar (#336, consolidated in #397).
     const secondsPerBar = secondsPerBeat * BEATS_PER_BAR;
     const stepSeconds = secondsPerBar / stepsPerCycle;
 
@@ -332,9 +333,13 @@ export class MIDIImportService {
       }
     }
 
+    // One cycle plays one bar (see `renderBars`), and every meter is laid
+    // onto 4/4 — so the bar is four beats and `setcpm(bpm)` would run the
+    // file four times too fast. Importing a 120 BPM file gave 480 (#397).
+    const tempoCall = `setcpm(${bpm}/${String(BEATS_PER_CYCLE)})`;
     const out = lanes.length === 0
-      ? `setcpm(${bpm})\n\n// (no playable notes after parse)\nsilence`
-      : `setcpm(${bpm})\n\nstack(\n${lanes.join(',\n')}\n)`;
+      ? `${tempoCall}\n\n// (no playable notes after parse)\nsilence`
+      : `${tempoCall}\n\nstack(\n${lanes.join(',\n')}\n)`;
 
     return {
       pattern: out,

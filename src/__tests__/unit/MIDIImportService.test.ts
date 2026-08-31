@@ -52,7 +52,10 @@ describe('MIDIImportService', () => {
         { channel: 0, notes: [{ midi: 60, time: 0 }, { midi: 62, time: 0.5 }] },
       ]);
       const { pattern, summary } = service.convertBuffer(buf);
-      expect(pattern).toContain('setcpm(140)');
+      // `setcpm(140)` would be 560 BPM: one cycle is one bar of four
+      // beats here (#397). Asserted as implied tempo rather than call
+      // text in `Tempo.test.ts`; this one just pins the spelling.
+      expect(pattern).toContain('setcpm(140/4)');
       expect(pattern).toContain('stack(');
       expect(summary.bpm).toBe(140);
       expect(summary.notes).toBe(2);

@@ -7,7 +7,8 @@
  * the documented quantization loss when they were a unit disagreement.
  */
 
-import { MIDIExportService, BEATS_PER_BAR } from '../../services/MIDIExportService';
+import { MIDIExportService } from '../../services/MIDIExportService';
+import { BEATS_PER_BAR } from '../../utils/Tempo';
 import { MIDIImportService } from '../../services/MIDIImportService';
 
 const exporter = () => new MIDIExportService();

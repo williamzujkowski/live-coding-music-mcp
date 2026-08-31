@@ -18,6 +18,8 @@ import type { CreativeFeedback, AudioFeedback } from '../../services/GeminiServi
 import type { AudioMeasurements } from '../../services/ai/AudioMeasurements.js';
 import { Logger } from '../../utils/Logger.js';
 import { lookup } from '../../utils/TableLookup.js';
+import { declaredBpm } from '../../utils/Tempo.js';
+
 
 const logger = new Logger();
 
@@ -420,17 +422,29 @@ async function jamWith(
   }
 }
 
+/**
+ * The tempo a pattern's author meant, for generating a layer to sit on
+ * top of it.
+ *
+ * Uses the canonical parser rather than a regex of its own. The regex it
+ * had required a bare `setcpm(<n>)`, so it matched nothing the generator
+ * writes — every generated pattern is `setcpm(130/4)` — and fell through
+ * to guessing from words in the text, which is how `jam_with` came to
+ * read a tempo off a comment (#397).
+ *
+ * `declaredBpm`, not `playedBpm`: this reads patterns written by someone
+ * else, and only the number they wrote is knowable. Working out what one
+ * will actually sound like takes an assumption about beats per cycle
+ * that holds for what this project generates and not for an arbitrary
+ * hand-written pattern.
+ */
 function detectTempoFromPattern(pattern: string): number {
-  const cpmMatch = pattern.match(/setcpm\s*\(\s*(\d+(?:\.\d+)?)\s*\)/i);
-  if (cpmMatch) return Math.round(parseFloat(cpmMatch[1]));
-  const bpmMatch = pattern.match(/setbpm\s*\(\s*(\d+(?:\.\d+)?)\s*\)/i);
-  if (bpmMatch) return Math.round(parseFloat(bpmMatch[1]));
-  const cpsMatch = pattern.match(/setcps\s*\(\s*(\d+(?:\.\d+)?)\s*(?:\/\s*60)?\s*\)/i);
-  if (cpsMatch) {
-    const cps = parseFloat(cpsMatch[1]);
-    if (pattern.includes(`setcps(${cpsMatch[1]}/60`)) return Math.round(cps);
-    return Math.round(cps * 60);
-  }
+  const declared = declaredBpm(pattern);
+  if (declared !== undefined) return Math.round(declared);
+
+  // No tempo call at all. Guessing from genre words is a poor answer,
+  // but it beats silently assuming 120 for a dnb pattern — and a real
+  // parse always wins over it now, which is the part that was broken.
   if (pattern.toLowerCase().includes('dnb')) return 174;
   if (pattern.toLowerCase().includes('techno')) return 130;
   if (pattern.toLowerCase().includes('house')) return 125;

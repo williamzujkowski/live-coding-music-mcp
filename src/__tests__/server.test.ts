@@ -2123,6 +2123,24 @@ describe('StrudelMCPServer', () => {
         expect(result.detected.tempo).toBe(140);
       });
 
+      test('jam_with reads the canonical divided form, not a comment', async () => {
+        await (server as any).executeTool('init', {});
+        // Every generated pattern looks like this. The old regex required
+        // a bare literal, missed, and fell through to a keyword guess —
+        // so the word "techno" in the comment set the tempo to 130 (#397).
+        mockController.getCurrentPattern.mockResolvedValue(
+          '// techno pattern in C at 174 BPM\nsetcpm(174/4)\ns("bd*4")'
+        );
+
+        const result = await (server as any).executeTool('ai_assist', {
+          task: 'jam',
+          layer: 'bass'
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.detected.tempo).toBe(174);
+      });
+
       test('jam_with should detect key from note patterns', async () => {
         await (server as any).executeTool('init', {});
         mockController.getCurrentPattern.mockResolvedValue('note("a3 c4 e4").s("sine")');
