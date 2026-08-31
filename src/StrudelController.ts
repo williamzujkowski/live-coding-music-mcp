@@ -240,6 +240,11 @@ export class StrudelController {
 
     // Invalidate cache before write to prevent stale reads
     this.invalidateCache();
+    // And forget the onsets collected from the PREVIOUS pattern. Without
+    // this the first tempo reading after a change describes the pattern
+    // before it: playing dnb at 174 and then house at 125, the first
+    // house reading came back 174 (#366).
+    this.analyzer.resetTempoHistory();
 
     // Retry logic for timing edge cases
     const maxRetries = 3;
@@ -479,6 +484,10 @@ export class StrudelController {
     // See play(): a stale cached analysis would report audio still playing
     // immediately after a successful stop (#211).
     this.analyzer.clearCache();
+    // Onsets from before a stop belong to a finished performance. Kept,
+    // they put a multi-second silence in the middle of the next tempo
+    // reading's intervals (#366).
+    this.analyzer.resetTempoHistory();
     return 'Stopped';
   }
 
