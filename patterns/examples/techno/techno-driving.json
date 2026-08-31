@@ -1,0 +1,21 @@
+{
+  "name": "Driving techno",
+  "genre": "techno",
+  "pattern": "stack(\n  s(\"bd*4\"),\n  s(\"~ ~ cp ~\").gain(0.8),\n  s(\"hh*8\").gain(0.4),\n  note(\"a1 a1 e2 a1\").s(\"sawtooth\").lpf(600).gain(0.7),\n  note(\"<Am F C G>\").s(\"sawtooth\").struct(\"1 ~ ~ ~\").lpf(1200).release(0.4).gain(0.35)\n)",
+  "bpm": 130,
+  "key": "A minor",
+  "progression": "Am - F - C - G (i - VI - III - VII)",
+  "description": "Four-on-the-floor kick, clap on 3, straight 8th hats. Bass and chords are both in A natural minor, so the harmony is unambiguous for key detection.",
+  "tags": [
+    "techno",
+    "four-on-the-floor",
+    "minor",
+    "hand-written"
+  ],
+  "source": {
+    "license": "AGPL-3.0-or-later",
+    "origin": "written for this repository",
+    "note": "No licensed source exists for this genre \u2014 Strudel's drum corpus has no techno, trap, ambient or jazz entries, and the community collections are unlicensed. Written by hand; the harmony is stated explicitly in `key` and `progression` so it can be checked against music theory rather than against this project's own analyzer."
+  },
+  "timestamp": "2026-08-31T00:00:00.000Z"
+}

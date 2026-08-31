@@ -1,0 +1,21 @@
+{
+  "name": "House (classic)",
+  "genre": "house",
+  "pattern": "stack(\n  \"[bd ~ ~ ~] [bd ~ ~ ~] [bd ~ ~ ~] [bd ~ ~ ~]\",\n  \"[~ ~ ~ ~] [sd ~ ~ ~] [~ ~ ~ ~] [sd ~ ~ ~]\",\n  \"[hh hh hh hh] [hh hh hh hh] [hh hh hh hh] [hh hh hh hh]\",\n  \"[cy ~ ~ ~] [~ ~ ~ ~] [~ ~ ~ ~] [~ ~ ~ ~]\",\n  \"[~ ~ oh ~] [~ ~ oh ~] [~ ~ oh ~] [~ ~ oh ~]\"\n).s().slow(2)",
+  "bpm": 125,
+  "key": "C",
+  "description": "Four-on-the-floor house grid: kick every beat, snare on 2 and 4, straight 16th hats, open hat on the off-beat.",
+  "tags": [
+    "house",
+    "four-on-the-floor",
+    "drums",
+    "sourced"
+  ],
+  "source": {
+    "license": "GPL-3.0",
+    "origin": "https://github.com/lvm/tidal-drum-patterns",
+    "via": "https://codeberg.org/uzu/strudel/raw/branch/main/website/src/repl/drum_patterns.mjs",
+    "note": "Drum grid taken verbatim from Strudel's drum_patterns.mjs, which credits lvm/tidal-drum-patterns under GPL-3.0. This repo is AGPL-3.0-or-later; GPLv3 to AGPLv3 is permitted under AGPLv3 section 13."
+  },
+  "timestamp": "2026-08-31T00:00:00.000Z"
+}

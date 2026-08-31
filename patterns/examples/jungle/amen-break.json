@@ -1,0 +1,22 @@
+{
+  "name": "Amen break",
+  "genre": "jungle",
+  "pattern": "stack(\n  \"[bd ~ bd ~] [~ ~ ~ ~] [~ ~ bd bd] [~ ~ ~ ~]\",\n  \"[~ ~ ~ ~] [sd ~ ~ sd] [~ sd ~ ~] [sd ~ ~ sd]\",\n  \"[hh ~ hh ~] [hh ~ hh ~] [hh ~ hh ~] [hh ~ hh ~]\",\n  \"[~ ~ ~ ~] [~ ~ ~ ~] [~ ~ oh ~] [~ ~ ~ ~]\"\n).s().slow(2)",
+  "bpm": 165,
+  "key": "C",
+  "description": "The Amen break, the foundational jungle rhythm: displaced kicks and ghosted snares against straight hats.",
+  "tags": [
+    "jungle",
+    "amen",
+    "breakbeat",
+    "drums",
+    "sourced"
+  ],
+  "source": {
+    "license": "GPL-3.0",
+    "origin": "https://github.com/lvm/tidal-drum-patterns",
+    "via": "https://codeberg.org/uzu/strudel/raw/branch/main/website/src/repl/drum_patterns.mjs",
+    "note": "Drum grid taken verbatim from Strudel's drum_patterns.mjs, which credits lvm/tidal-drum-patterns under GPL-3.0. This repo is AGPL-3.0-or-later; GPLv3 to AGPLv3 is permitted under AGPLv3 section 13."
+  },
+  "timestamp": "2026-08-31T00:00:00.000Z"
+}
