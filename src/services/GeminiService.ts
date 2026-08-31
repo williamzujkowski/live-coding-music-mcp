@@ -1,5 +1,5 @@
 import { Logger } from '../utils/Logger.js';
-import { AiRateLimitError } from './ai/AiTransport.js';
+import { AiAuthError, AiRateLimitError } from './ai/AiTransport.js';
 import { GoogleAuth } from 'google-auth-library';
 import type { AiTransportEntry } from './ai/AiTransport.js';
 import { cliTransports, hasCliTransport } from './ai/CliTransport.js';
@@ -14,6 +14,7 @@ import { buildMeasurementPrompt } from './ai/AudioMeasurements.js';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { ValidationError } from '../utils/CategorisedError.js';
 
 /**
  * Audio feedback from Gemini analysis
@@ -380,7 +381,11 @@ export class GeminiService {
     // machine where AI works perfectly well.
     if ((await this.resolveTransport()) !== null) return;
 
-    throw new Error(this.getAuthErrorMessage());
+    // Typed, not phrased. The message lists GEMINI_API_KEY and gcloud
+    // commands, and used to be categorised `permission` only because
+    // `gemini` was in the matcher's auth list — which also made every
+    // unrelated Gemini failure a credentials problem (#382).
+    throw new AiAuthError(this.getAuthErrorMessage());
   }
 
   /**
@@ -682,7 +687,7 @@ export class GeminiService {
 
     // Check for excessive length
     if (trimmed.length > this.maxPatternLength) {
-      throw new Error(
+      throw new ValidationError(
         `${methodName}: Pattern exceeds maximum length of ${this.maxPatternLength} characters ` +
         `(current: ${trimmed.length}). Truncate or simplify the pattern.`
       );
@@ -770,7 +775,11 @@ export class GeminiService {
   private async callGeminiAPIWithTimeout(prompt: string): Promise<string> {
     const transport = await this.resolveTransport();
     if (transport === null) {
-      throw new Error(this.getAuthErrorMessage());
+      // Typed, not phrased. The message lists GEMINI_API_KEY and gcloud
+    // commands, and used to be categorised `permission` only because
+    // `gemini` was in the matcher's auth list — which also made every
+    // unrelated Gemini failure a credentials problem (#382).
+    throw new AiAuthError(this.getAuthErrorMessage());
     }
 
     // A CLI transport enforces its own timeout and can kill the process

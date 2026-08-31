@@ -1785,12 +1785,16 @@ describe('StrudelMCPServer', () => {
       });
 
       test('create_session should handle errors', async () => {
+        // Asserts the ENVELOPE, not `{ success: false }`. session.ts now
+        // returns err(categorizeError(error), ...) so a typed error keeps
+        // its category on the way out; the dispatcher used to rebuild a
+        // plain Error from the message and drop it into `internal` (#382).
         mockSessionManager.createSession.mockRejectedValue(new Error('Session already exists'));
 
         const result = await (server as any).executeTool('session', { action: 'create', session_id: 'duplicate' });
 
-        expect(result.success).toBe(false);
-        expect(result.error).toContain('Session already exists');
+        expect(result.ok).toBe(false);
+        expect(result.message).toContain('Session already exists');
       });
 
       test('destroy_session should destroy a session', async () => {
@@ -1801,12 +1805,16 @@ describe('StrudelMCPServer', () => {
       });
 
       test('destroy_session should handle errors', async () => {
+        // Asserts the ENVELOPE, not `{ success: false }`. session.ts now
+        // returns err(categorizeError(error), ...) so a typed error keeps
+        // its category on the way out; the dispatcher used to rebuild a
+        // plain Error from the message and drop it into `internal` (#382).
         mockSessionManager.destroySession.mockRejectedValue(new Error('Session not found'));
 
         const result = await (server as any).executeTool('session', { action: 'destroy', session_id: 'nonexistent' });
 
-        expect(result.success).toBe(false);
-        expect(result.error).toContain('Session not found');
+        expect(result.ok).toBe(false);
+        expect(result.message).toContain('Session not found');
       });
 
       test('list_sessions should return session info', async () => {
@@ -1852,14 +1860,18 @@ describe('StrudelMCPServer', () => {
       });
 
       test('switch_session should handle errors', async () => {
+        // Asserts the ENVELOPE, not `{ success: false }`. session.ts now
+        // returns err(categorizeError(error), ...) so a typed error keeps
+        // its category on the way out; the dispatcher used to rebuild a
+        // plain Error from the message and drop it into `internal` (#382).
         mockSessionManager.setDefaultSession.mockImplementation(() => {
           throw new Error('Session not found');
         });
 
         const result = await (server as any).executeTool('session', { action: 'switch', session_id: 'nonexistent' });
 
-        expect(result.success).toBe(false);
-        expect(result.error).toContain('Session not found');
+        expect(result.ok).toBe(false);
+        expect(result.message).toContain('Session not found');
       });
     });
 

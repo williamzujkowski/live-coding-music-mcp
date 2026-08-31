@@ -9,6 +9,8 @@
  *
  * All methods throw descriptive errors for invalid inputs.
  */
+
+import { ValidationError } from './CategorisedError.js';
 export class InputValidator {
   // Valid scale names from MusicTheory service
   private static readonly VALID_SCALES = [
@@ -125,12 +127,12 @@ export class InputValidator {
     }
 
     if (steps > 256) {
-      throw new Error(`Steps cannot exceed 256, got ${steps}`);
+      throw new ValidationError(`Steps cannot exceed 256, got ${steps}`);
     }
 
     // Validate relationship
     if (hits > steps) {
-      throw new Error(`Hits (${hits}) cannot exceed steps (${steps})`);
+      throw new ValidationError(`Hits (${hits}) cannot exceed steps (${steps})`);
     }
   }
 

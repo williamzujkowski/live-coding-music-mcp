@@ -48,7 +48,15 @@ describe('transient errors are retryable', () => {
 describe('credential problems are permission, not internal', () => {
   it.each([
     'Claude CLI is not authenticated: run login first',
-    'No AI transport available. Options:\n1. Set GEMINI_API_KEY',
+    // The whole message, not the first two lines. Truncating it dropped
+    // the "Install and authenticate one of" that carries the auth
+    // signal, and the shortened form only passed because `gemini` was
+    // in the matcher — which also made every unrelated Gemini failure a
+    // credentials problem (#382). The comment above says these are the
+    // exact strings thrown in src/; this one now is.
+    'No AI transport available. Options:\n1. Set GEMINI_API_KEY environment variable\n' +
+      '2. Run "gcloud auth application-default login" for ADC\n' +
+      '3. Install and authenticate one of: claude, agy, codex',
     'Gemini API key not configured',
     'unauthorized',
     'permission denied writing to /tmp',

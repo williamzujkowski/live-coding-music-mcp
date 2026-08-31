@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { Logger } from './utils/Logger.js';
+import { ValidationError } from './utils/CategorisedError.js';
 
 interface PatternData {
   name: string;
@@ -191,13 +192,13 @@ export class PatternStore {
 
     // Validate length
     if (cleaned.length === 0 || cleaned.length > 255) {
-      throw new Error('Pattern name must be between 1 and 255 characters');
+      throw new ValidationError('Pattern name must be between 1 and 255 characters');
     }
 
     // Prevent reserved filenames on Windows
     const reserved = ['con', 'prn', 'aux', 'nul', 'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9', 'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9'];
     if (reserved.includes(cleaned.toLowerCase())) {
-      throw new Error('Pattern name uses a reserved filename');
+      throw new ValidationError('Pattern name uses a reserved filename');
     }
 
     return cleaned;
