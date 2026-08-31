@@ -764,13 +764,19 @@ export class AudioAnalyzer {
    * roughly one part in 255 of full scale, averaged over the 20-4000 Hz
    * bins — far below anything audible.
    *
-   * **A floor, not a calibration.** It is chosen to be obviously below
-   * real audio rather than measured against it: three attempts to sample
-   * a playing page for a real number failed on playback that had worked
-   * an hour earlier, and inventing a figure would be worse than saying
-   * so. Measuring it against live playback and tightening it is #412.
-   * Its job today is that the guard can fire at all, which it could not
-   * before.
+   * Measured against live playback (#412), mean in-range magnitude:
+   *
+   *     stopped                          0
+   *     note("<c3 e3 g3>").s("sine")    14.7   <- quietest content tried
+   *     s("bd*4")                       18.9
+   *     s("bd*4, ~ cp ~ cp, hh*8")     151.1
+   *
+   * Silence reads exactly 0 and the quietest musical content read 14.7,
+   * so 1 sits in an empty gap an order of magnitude wide on either side.
+   *
+   * Three patterns on one machine in one browser, which is not a survey
+   * — but the gap is wide enough that the exact figure does not matter,
+   * and the guard's job is to separate "nothing" from "something".
    */
   private static readonly CHROMA_NOISE_FLOOR = 1;
 
