@@ -8,6 +8,7 @@
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { AiRateLimitError } from '../../services/ai/AiTransport.js';
 import type { StrudelController } from '../../StrudelController.js';
 import type { PatternStore } from '../../PatternStore.js';
 import type { PatternGenerator } from '../../services/PatternGenerator.js';
@@ -334,6 +335,15 @@ export function withStashField<T extends Record<string, unknown>>(
 }
 
 export function categorizeError(error: unknown): ErrorCategory {
+  // A typed error first, so the categorisation does not depend on
+  // wording. The rate limiter used to throw a plain Error whose message
+  // happened to start "Rate limit exceeded", and everything downstream —
+  // three re-throw sites and the string match below — recognised it by
+  // that phrase. Rewording it would have quietly turned the single most
+  // retryable failure there is into `internal`, which is not retryable
+  // (#380).
+  if (error instanceof AiRateLimitError) return 'transient';
+
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
 

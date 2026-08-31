@@ -1,4 +1,5 @@
 import { Logger } from '../utils/Logger.js';
+import { AiRateLimitError } from './ai/AiTransport.js';
 import { GoogleAuth } from 'google-auth-library';
 import type { AiTransportEntry } from './ai/AiTransport.js';
 import { cliTransports, hasCliTransport } from './ai/CliTransport.js';
@@ -483,7 +484,7 @@ export class GeminiService {
       if (error.message?.includes('timed out')) {
         throw new Error('Audio analysis timed out. The audio sample may be too long. Try a shorter recording.');
       }
-      if (error.message?.includes('rate limit') || error.message?.includes('Rate limit')) {
+      if (error instanceof AiRateLimitError) {
         throw error; // Re-throw rate limit errors as-is
       }
 
@@ -518,7 +519,7 @@ export class GeminiService {
       if (error.message?.includes('timed out')) {
         throw new Error('Variation suggestion timed out. The pattern may be too complex. Try a simpler pattern.');
       }
-      if (error.message?.includes('rate limit') || error.message?.includes('Rate limit')) {
+      if (error instanceof AiRateLimitError) {
         throw error; // Re-throw rate limit errors as-is
       }
 
@@ -563,7 +564,7 @@ export class GeminiService {
       if (error.message?.includes('timed out')) {
         throw new Error('Creative feedback timed out. The pattern may be too complex. Try a simpler pattern.');
       }
-      if (error.message?.includes('rate limit') || error.message?.includes('Rate limit')) {
+      if (error instanceof AiRateLimitError) {
         throw error; // Re-throw rate limit errors as-is
       }
 
@@ -612,7 +613,12 @@ export class GeminiService {
       const waitTimeSec = Math.ceil(waitTimeMs / 1000);
       this.rateLimit.nextAvailableTime = now + waitTimeMs;
 
-      throw new Error(
+      // A typed error, not a phrase. Three call sites and
+      // `categorizeError` all used to recognise this by matching "rate
+      // limit" in the message, so rewording it would have silently
+      // recategorised a rate limit as an internal failure that is not
+      // worth retrying — which is the opposite of the truth (#380).
+      throw new AiRateLimitError(
         `Rate limit exceeded (${this.maxRequestsPerMinute} requests/minute). ` +
         `Wait ${waitTimeSec} seconds before retrying.`
       );
@@ -1046,7 +1052,7 @@ Consider:
       if (error.message?.includes('timed out')) {
         throw new Error('Pattern modification timed out. The pattern may be too complex. Try a simpler pattern.');
       }
-      if (error.message?.includes('rate limit') || error.message?.includes('Rate limit')) {
+      if (error instanceof AiRateLimitError) {
         throw error; // Re-throw rate limit errors as-is
       }
 
