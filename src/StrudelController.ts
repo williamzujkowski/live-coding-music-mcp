@@ -29,6 +29,15 @@ import {
  * @param timeoutMs - Maximum time to wait for the editor API
  * @throws {Error} When the editor does not become ready in time
  */
+/**
+ * What the page says about playback, including "it would not say".
+ *
+ * Two values were not enough: a read failure and a stopped scheduler both
+ * reported `false`, so a stop against a dead page looked like a
+ * successful stop (#278).
+ */
+type PlaybackState = 'playing' | 'stopped' | 'unreadable';
+
 export async function waitForStrudelReady(page: Page, timeoutMs = 5000): Promise<void> {
   await page.waitForSelector('.cm-content', { timeout: 8000 });
   try {
@@ -305,16 +314,22 @@ export class StrudelController {
    *
    * @returns True if Strudel's REPL scheduler is started
    */
-  private async readPlaybackState(): Promise<boolean> {
-    if (!this._page) return false;
+  private async readPlaybackState(): Promise<PlaybackState> {
+    if (!this._page) return 'unreadable';
     try {
-      return await this._page.evaluate(/* istanbul ignore next */ () => {
+      const started = await this._page.evaluate(/* istanbul ignore next */ () => {
         const sm = (window as any).strudelMirror;
         return Boolean(sm?.repl?.state?.started ?? sm?.repl?.scheduler?.started);
       });
+      return started ? 'playing' : 'stopped';
     } catch {
-      // Page closed or navigating — treat as not playing rather than throwing.
-      return false;
+      // Three values, not two. Returning `false` here meant "could not
+      // read" and "not playing" were the same answer — so
+      // waitForPlaybackState(false) succeeded instantly on a dead page and
+      // stop() reported "Stopped" for audio it never touched. That is the
+      // symptom #218 was filed for, reintroduced through the error path
+      // rather than through optimistic state (#278).
+      return 'unreadable';
     }
   }
 
@@ -325,9 +340,13 @@ export class StrudelController {
    * @returns True if the state was reached before the timeout
    */
   private async waitForPlaybackState(desired: boolean, timeoutMs: number): Promise<boolean> {
+    const target: PlaybackState = desired ? 'playing' : 'stopped';
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      if (await this.readPlaybackState() === desired) return true;
+      // 'unreadable' never satisfies the wait. It used to satisfy the
+      // stop case by coincidence, because it shared a value with
+      // 'stopped'.
+      if (await this.readPlaybackState() === target) return true;
       if (Date.now() >= deadline) return false;
       await this._page?.waitForTimeout(50);
     }
@@ -361,11 +380,20 @@ export class StrudelController {
     }
 
     if (!(await this.waitForPlaybackState(true, 3000))) {
-      this.isPlaying = await this.readPlaybackState();
+      const state = await this.readPlaybackState();
+      this.isPlaying = state === 'playing';
       this.analyzer.clearCache();
+
+      // Name the cause we actually observed. This used to blame a syntax
+      // error for every startup failure, including a page that had gone
+      // away and an AudioContext that never resumed — confident about one
+      // cause when three were possible.
       throw new Error(
-        'Playback did not start. The pattern may have a syntax error — ' +
-        'check diagnostics({ level: "errors" }).'
+        state === 'unreadable'
+          ? 'Playback did not start: the page could not be read. It may have ' +
+            'navigated or closed — run init to recover.'
+          : 'Playback did not start. The pattern may have a syntax error, or the ' +
+            'AudioContext may not have resumed — check diagnostics({ level: "errors" }).'
       );
     }
 
@@ -392,9 +420,15 @@ export class StrudelController {
     // playing (#218). Verified against live strudel.cc: after a keyboard
     // stop without focus, repl.state.started stayed true; after
     // strudelMirror.stop() it went false.
-    await this._page.evaluate(/* istanbul ignore next */ () => {
-      (window as any).strudelMirror?.stop?.();
-    });
+    try {
+      await this._page.evaluate(/* istanbul ignore next */ () => {
+        (window as any).strudelMirror?.stop?.();
+      });
+    } catch {
+      // Fall through rather than surfacing a raw Playwright error. The
+      // state check below establishes whether the page is readable at all
+      // and produces a message that says what to do about it (#278).
+    }
 
     if (!(await this.waitForPlaybackState(false, 2000))) {
       // Fall back to the transport button. Note the title flips to "stop"
@@ -407,9 +441,18 @@ export class StrudelController {
       }
 
       if (!(await this.waitForPlaybackState(false, 2000))) {
-        this.isPlaying = await this.readPlaybackState();
+        const state = await this.readPlaybackState();
+        this.isPlaying = state === 'playing';
         this.analyzer.clearCache();
-        throw new Error('Failed to stop playback: Strudel scheduler is still running.');
+
+        // An unreadable page is not a successful stop. Saying "Stopped"
+        // here is exactly what #218 was filed for.
+        throw new Error(
+          state === 'unreadable'
+            ? 'Failed to stop playback: the page could not be read, so whether ' +
+              'audio is still running is unknown. Run init to recover.'
+            : 'Failed to stop playback: Strudel scheduler is still running.'
+        );
       }
     }
 
