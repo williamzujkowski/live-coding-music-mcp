@@ -88,15 +88,20 @@ describe('tempo survives the sampling grid (#352)', () => {
     expect(new Set(readings).size).toBe(1);
   });
 
-  it('weights a kick above a hat rather than counting onsets', () => {
-    // With the hat as loud as the kick there is no beat to find, only a
-    // 16th-note grid — so this must NOT read 174. If it does, the
-    // weighting is not reaching the correlation.
-    const analyzer = new AudioAnalyzer();
-    const flat = kit(345, 4, 8000, 0.06, 0.06);
-    const bpm = analyzer.tempoFromOnsets(analyzer.onsetsFromFlux(flat)).bpm;
-    expect(Math.abs(bpm - 174) / 174).toBeGreaterThan(0.05);
-  });
+  // There was a test here asserting that a kit with hats as loud as its
+  // kicks must NOT read 174, on the theory that without weighting there
+  // is no beat to find. Octave-family scoring (#370) then found 174 from
+  // the flat grid too — correctly, since a flat 16th grid at 86ms IS
+  // 174 BPM — and the test failed while nothing was broken.
+  //
+  // Rewriting it to assert the mechanism directly did not work either:
+  // with family scoring in place, weighted and unweighted inputs reach
+  // the same answer on that fixture. Rather than keep a weaker test that
+  // proves nothing, it is gone. The cases above already carry the
+  // proof — disabling flux weighting fails "100 with triplets", "90 with
+  // 8th hats" and "85 with 16th hats". That is what makes it
+  // load-bearing, and a redundant restatement of it would only look
+  // like more coverage.
 
   it('carries the flux value through with each onset', () => {
     // The whole mechanism depends on this reaching beatPeriodFromOnsets.
