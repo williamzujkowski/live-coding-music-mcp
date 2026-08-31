@@ -113,6 +113,8 @@ export class AudioCaptureService {
     /* istanbul ignore next -- browser-injected IIFE, covered by integration tests */
     await page.evaluate(/* istanbul ignore next */ () => {
       (window as any).strudelAudioCapture = {
+        /** In-flight stop, so a second one waits rather than racing it. */
+        stopping: null as Promise<unknown> | null,
         mediaStreamDest: null as MediaStreamAudioDestinationNode | null,
         recorder: null as MediaRecorder | null,
         isConnected: false,
@@ -231,7 +233,20 @@ export class AudioCaptureService {
             return { success: false, error: 'No capture in progress.' };
           }
 
-          return new Promise((resolve) => {
+          // A stop already in flight is awaited, not started again.
+          //
+          // `isCapturing` is cleared inside `onstop`, which has not run
+          // yet when a second stop arrives — so both calls got past the
+          // check above, the second overwrote the first's `onstop` and
+          // called `stop()` on an inactive recorder. The second threw
+          // InvalidStateError; the FIRST call's resolver became
+          // unreachable, and `page.evaluate` has no timeout, so that MCP
+          // request never returned (#437).
+          if (capture.stopping) {
+            return await capture.stopping;
+          }
+
+          capture.stopping = new Promise((resolve) => {
             const recorder = capture.recorder;
             const startTime = capture.startTime;
 
@@ -255,8 +270,37 @@ export class AudioCaptureService {
               });
             };
 
+            // A stop that never completes must not hang the request.
+            //
+            // `page.evaluate` has no timeout, so if `onstop` never fires
+            // — a wedged recorder, a stream whose tracks died — the MCP
+            // call waits forever. Resolving with whatever was collected
+            // is a worse recording than the caller asked for and an
+            // infinitely better outcome than no answer (#437).
+            setTimeout(() => {
+              if (!capture.isCapturing && capture.chunks.length === 0) return;
+              capture.isCapturing = false;
+              const collected = capture.chunks;
+              capture.chunks = [];
+              resolve(collected.length === 0
+                ? { success: false, error: 'Recorder did not stop, and nothing was captured.' }
+                : {
+                    success: true,
+                    blob: new Blob(collected, { type: 'audio/webm;codecs=opus' }),
+                    duration: Date.now() - startTime,
+                    format: 'audio/webm;codecs=opus',
+                    warning: 'Recorder did not stop cleanly; returned what was captured.',
+                  });
+            }, 5000);
+
             recorder.stop();
           });
+
+          try {
+            return await capture.stopping;
+          } finally {
+            capture.stopping = null;
+          }
         },
 
         /**
