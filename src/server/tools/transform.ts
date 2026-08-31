@@ -366,7 +366,14 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
 
 async function shiftMood(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   const mood = args.target_mood?.toLowerCase()?.trim();
-  const profile = MOOD_PROFILES[mood];
+  // hasOwn, not a bare index: MOOD_PROFILES is a plain object literal,
+  // so MOOD_PROFILES['constructor'] returned Object — truthy, so the
+  // `if (!profile)` guard below never fired. The result was
+  // s("bd*4").slow(NaN).lpf(NaN).room(NaN).gain(NaN) written into the
+  // editor and reported as success:true (#308).
+  const profile = typeof mood === 'string' && Object.hasOwn(MOOD_PROFILES, mood)
+    ? MOOD_PROFILES[mood]
+    : undefined;
   if (!profile) {
     return {
       success: false,

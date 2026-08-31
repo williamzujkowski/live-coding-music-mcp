@@ -200,7 +200,15 @@ export class MIDIExportService {
     }
 
     // Get chord intervals, default to major triad
-    const intervals = CHORD_INTERVALS[chordType.toLowerCase()] || CHORD_INTERVALS[''];
+    // hasOwn, not `||`: CHORD_INTERVALS is a plain object literal, so
+    // CHORD_INTERVALS['constructor'] inherits Object — truthy — and the
+    // fallback never fired. `intervals.map` then threw a TypeError that
+    // failed the whole export, including any valid chords beside it
+    // (#308).
+    const key = chordType.toLowerCase();
+    const intervals = Object.hasOwn(CHORD_INTERVALS, key)
+      ? CHORD_INTERVALS[key]
+      : CHORD_INTERVALS[''];
 
     const rootMidi = (octave + 1) * 12 + rootSemitone;
 
