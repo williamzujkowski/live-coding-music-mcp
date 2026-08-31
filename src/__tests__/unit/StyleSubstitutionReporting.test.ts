@@ -97,10 +97,12 @@ describe('style substitution is reported, not hidden (#279)', () => {
       const { ctx } = makeCtx();
       const r: any = await composeExecute(
         'compose', { style: 'vaporwave', auto_play: false }, ctx);
-      expect(r.metadata.style).toBe('techno');
-      expect(r.metadata.requested_style).toBe('vaporwave');
-      expect(r.metadata.style_substituted).toBe(true);
-      expect(r.message).toContain('No drum pattern for style "vaporwave"');
+      // #294 replaced the collapsed style field with per-layer
+      // reporting: metadata.style is the request, layers say what plays.
+      expect(r.metadata.style).toBe('vaporwave');
+      expect(r.metadata.layers.drums).toBe('techno');
+      expect(r.metadata.substituted).toContain('drums');
+      expect(r.message).toContain('No drums or bass defined for style "vaporwave"');
     });
 
     it('adds no substitution fields for a real style', async () => {
@@ -108,17 +110,17 @@ describe('style substitution is reported, not hidden (#279)', () => {
       const r: any = await composeExecute(
         'compose', { style: 'techno', auto_play: false }, ctx);
       expect(r.metadata.style).toBe('techno');
-      expect(r.metadata.style_substituted).toBeUndefined();
-      expect(r.metadata.requested_style).toBeUndefined();
-      expect(r.message).not.toContain('No drum pattern');
+      expect(r.metadata.substituted).toEqual([]);
+      expect(r.message).not.toContain('No drums');
     });
 
     it('reports the canonical name when an alias was used', async () => {
       const { ctx } = makeCtx();
       const r: any = await composeExecute(
         'compose', { style: 'bukem', auto_play: false }, ctx);
-      expect(r.metadata.style).toBe('intelligent_dnb');
-      expect(r.metadata.style_substituted).toBeUndefined();
+      expect(r.metadata.style).toBe('bukem');
+      expect(r.metadata.layers.drums).toBe('intelligent_dnb');
+      expect(r.metadata.substituted).toEqual([]);
     });
   });
 

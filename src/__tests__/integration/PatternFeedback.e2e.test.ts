@@ -47,7 +47,7 @@ import { StrudelMCPServer } from '../../server/server';
 import { StrudelController } from '../../StrudelController';
 import { PatternStore } from '../../PatternStore';
 import { GeminiService, CreativeFeedback, AudioFeedback } from '../../services/GeminiService';
-import { resolveDrumStyle } from '../../services/StyleRegistry';
+import { resolveLayers } from '../../services/StyleRegistry';
 
 // Test timeouts
 const E2E_TIMEOUT = 30000;
@@ -226,9 +226,12 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
       expect(result.success).toBe(true);
       // jazz has a bassline but no drums, so compose substitutes techno
       // and now says so rather than echoing the request back (#279).
-      expect(result.metadata.style).toBe('techno');
-      expect(result.metadata.requested_style).toBe('jazz');
-      expect(result.metadata.style_substituted).toBe(true);
+      // jazz keeps its own bassline, Dorian scale and jazz chords —
+      // only the drums fall back, and #294 says so per layer.
+      expect(result.metadata.style).toBe('jazz');
+      expect(result.metadata.layers.bass).toBe('jazz');
+      expect(result.metadata.layers.drums).toBe('techno');
+      expect(result.metadata.substituted).toEqual(['drums']);
       expect(result.feedback.estimatedStyle).toBe('jazz');
       expect(result.feedback.complexity).toBe('complex');
     }, MOCKED_TEST_TIMEOUT);
@@ -246,7 +249,10 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
       expect(result.metadata).toEqual({
         style: 'house',
         bpm: 125,
-        key: 'A'
+        key: 'A',
+        // #294: what each layer actually plays, and what fell back.
+        layers: { drums: 'house', bass: 'house', chords: 'pop', scale: 'minor' },
+        substituted: [],
       });
     }, MOCKED_TEST_TIMEOUT);
   });
@@ -476,7 +482,9 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
         metadata: {
           style: 'techno',
           bpm: 130,
-          key: 'C'
+          key: 'C',
+          layers: { drums: 'techno', bass: 'techno', chords: 'edm', scale: 'minor' },
+          substituted: [],
         },
         status: expect.stringMatching(/playing|ready/),
         message: expect.any(String),
@@ -552,10 +560,10 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
         expect(result.success).toBe(true);
         // A style with no drums of its own reports the substitution
         // instead of echoing the request (#279).
-        const resolution = resolveDrumStyle(style);
-        expect(result.metadata.style).toBe(resolution.resolved);
-        expect(result.metadata.requested_style)
-          .toBe(resolution.supported ? undefined : style);
+        const resolution = resolveLayers(style);
+        expect(result.metadata.style).toBe(style);
+        expect(result.metadata.layers).toEqual(resolution.layers);
+        expect(result.metadata.substituted).toEqual(resolution.substituted);
         expect(result.feedback).toBeDefined();
       }, MOCKED_TEST_TIMEOUT);
     });
@@ -936,7 +944,9 @@ describe('Full MCP Flow Integration', () => {
     expect(composeResult.metadata).toEqual({
       style: 'techno',
       bpm: 128,
-      key: 'A'
+      key: 'A',
+      layers: { drums: 'techno', bass: 'techno', chords: 'edm', scale: 'minor' },
+      substituted: [],
     });
 
     // Step 3: Get additional feedback

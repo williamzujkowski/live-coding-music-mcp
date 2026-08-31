@@ -125,7 +125,14 @@ export class PatternGenerator {
     };
 
     // Handle aliases
-    const resolvedStyle = STYLE_ALIASES[style.toLowerCase()] ?? style.toLowerCase();
+    // hasOwn, not `??`: STYLE_ALIASES is a plain object literal, so
+    // STYLE_ALIASES['constructor'] returns Object and ['__proto__'] the
+    // prototype. Neither is nullish, so `??` never fired and the result
+    // was used as a string — TypeError, categorised `internal` (#295).
+    const lowerStyle = String(style ?? '').toLowerCase();
+    const resolvedStyle = Object.hasOwn(STYLE_ALIASES, lowerStyle)
+      ? STYLE_ALIASES[lowerStyle]
+      : lowerStyle;
     const stylePatterns = patterns[resolvedStyle] || patterns.techno;
     const index = Math.min(Math.floor(complexity * stylePatterns.length), stylePatterns.length - 1);
     return stylePatterns[index];
@@ -181,7 +188,14 @@ export class PatternGenerator {
     };
 
     // Handle aliases
-    const resolvedStyle = STYLE_ALIASES[style.toLowerCase()] ?? style.toLowerCase();
+    // hasOwn, not `??`: STYLE_ALIASES is a plain object literal, so
+    // STYLE_ALIASES['constructor'] returns Object and ['__proto__'] the
+    // prototype. Neither is nullish, so `??` never fired and the result
+    // was used as a string — TypeError, categorised `internal` (#295).
+    const lowerStyle = String(style ?? '').toLowerCase();
+    const resolvedStyle = Object.hasOwn(STYLE_ALIASES, lowerStyle)
+      ? STYLE_ALIASES[lowerStyle]
+      : lowerStyle;
     return patterns[resolvedStyle] || patterns.techno;
   }
 
@@ -247,7 +261,14 @@ export class PatternGenerator {
    */
   generateCompletePattern(style: string, key: string = 'C', bpm: number = 120): string {
     // Handle aliases and special genres
-    const resolvedStyle = STYLE_ALIASES[style.toLowerCase()] ?? style.toLowerCase();
+    // hasOwn, not `??`: STYLE_ALIASES is a plain object literal, so
+    // STYLE_ALIASES['constructor'] returns Object and ['__proto__'] the
+    // prototype. Neither is nullish, so `??` never fired and the result
+    // was used as a string — TypeError, categorised `internal` (#295).
+    const lowerStyle = String(style ?? '').toLowerCase();
+    const resolvedStyle = Object.hasOwn(STYLE_ALIASES, lowerStyle)
+      ? STYLE_ALIASES[lowerStyle]
+      : lowerStyle;
 
     // Use specialized generators for new genres
     switch (resolvedStyle) {
