@@ -133,76 +133,73 @@ async function getRhythm(controller: any): Promise<unknown> {
 }
 
 async function getTempo(controller: any): Promise<unknown> {
-  try {
-    const tempoAnalysis = await controller.detectTempo();
-    if (!tempoAnalysis || tempoAnalysis.bpm === 0) {
-      // The measurement ran and detected nothing. `bpm: 0` read as a
-      // measured value — zero beats per minute — so null plus an
-      // explicit flag (#288). No envelope here: getTempo is a
-      // sub-result composed into analyze's object, and an envelope
-      // nested inside a data payload is not the contract.
-      return {
-        bpm: null,
-        detected: false,
-        confidence: 0,
-        message: 'No tempo detected. Ensure audio is playing and has a clear rhythmic pattern.',
-      };
-    }
-    return {
-      bpm: tempoAnalysis.bpm,
-      confidence: Math.round(tempoAnalysis.confidence * 100) / 100,
-      method: tempoAnalysis.method,
-      message: `Detected ${tempoAnalysis.bpm} BPM with ${Math.round(tempoAnalysis.confidence * 100)}% confidence`,
-    };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    // Detection threw, so there is no measurement — same reason the
-    // no-detection branch above uses null rather than 0 (#288).
+  const tempoAnalysis = await controller.detectTempo();
+  if (!tempoAnalysis || tempoAnalysis.bpm === 0) {
+    // The measurement ran and detected nothing. `bpm: 0` read as a
+    // measured value — zero beats per minute — so null plus an
+    // explicit flag (#288). No envelope here: getTempo is a sub-result
+    // composed into analyze's object, and an envelope nested inside a
+    // data payload is not the contract.
     return {
       bpm: null,
       detected: false,
       confidence: 0,
-      error: message || 'Tempo detection failed',
+      message: 'No tempo detected. Ensure audio is playing and has a clear rhythmic pattern.',
     };
   }
+  return {
+    bpm: tempoAnalysis.bpm,
+    confidence: Math.round(tempoAnalysis.confidence * 100) / 100,
+    method: tempoAnalysis.method,
+    message: `Detected ${tempoAnalysis.bpm} BPM with ${Math.round(tempoAnalysis.confidence * 100)}% confidence`,
+  };
+  // No catch here on purpose.
+  //
+  // It used to return `{bpm: null, detected: false, error: message}`,
+  // which analyze nests under the `tempo` key — where `isFailureShaped`
+  // cannot see it, since that inspects only the top level. So a dead
+  // browser reached the client as:
+  //
+  //   include:['tempo'] -> {ok:true, data:{tempo:{bpm:null,
+  //                          error:'Target page ... has been closed'}}}
+  //   include:['all']   -> a failure envelope
+  //
+  // One tool, one fault, opposite verdicts (#453). Letting it propagate
+  // makes both agree, and keeps the ORIGINAL error so `categorizeError`
+  // reads its type rather than a rebuilt message (#382).
+  //
+  // The no-detection branch above is untouched: that is a measurement
+  // that ran and found nothing, which is data, not a failure (#288).
 }
 
 async function getKey(controller: any): Promise<unknown> {
-  try {
-    const keyAnalysis = await controller.detectKey();
-    if (!keyAnalysis || keyAnalysis.confidence < 0.1) {
-      return {
-        key: null,
-        scale: null,
-        detected: false,
-        confidence: 0,
-        message: 'No clear key detected. Ensure audio is playing and has tonal content.',
-      };
-    }
-    const result: any = {
-      key: keyAnalysis.key,
-      scale: keyAnalysis.scale,
-      confidence: Math.round(keyAnalysis.confidence * 100) / 100,
-      message: `Detected ${keyAnalysis.key} ${keyAnalysis.scale} with ${Math.round(keyAnalysis.confidence * 100)}% confidence`,
-    };
-    if (keyAnalysis.alternatives && keyAnalysis.alternatives.length > 0) {
-      result.alternatives = keyAnalysis.alternatives.map((alt: any) => ({
-        key: alt.key,
-        scale: alt.scale,
-        confidence: Math.round(alt.confidence * 100) / 100,
-      }));
-    }
-    return result;
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+  // No try/catch, for the reason given on getTempo: an error nested
+  // inside a data payload is invisible to `isFailureShaped` and reached
+  // the client as ok:true (#453).
+  const keyAnalysis = await controller.detectKey();
+  if (!keyAnalysis || keyAnalysis.confidence < 0.1) {
     return {
       key: null,
       scale: null,
       detected: false,
       confidence: 0,
-      error: message || 'Key detection failed',
+      message: 'No clear key detected. Ensure audio is playing and has tonal content.',
     };
   }
+  const result: any = {
+    key: keyAnalysis.key,
+    scale: keyAnalysis.scale,
+    confidence: Math.round(keyAnalysis.confidence * 100) / 100,
+    message: `Detected ${keyAnalysis.key} ${keyAnalysis.scale} with ${Math.round(keyAnalysis.confidence * 100)}% confidence`,
+  };
+  if (keyAnalysis.alternatives && keyAnalysis.alternatives.length > 0) {
+    result.alternatives = keyAnalysis.alternatives.map((alt: any) => ({
+      key: alt.key,
+      scale: alt.scale,
+      confidence: Math.round(alt.confidence * 100) / 100,
+    }));
+  }
+  return result;
 }
 
 async function doAnalyze(args: any, controller: any): Promise<unknown> {

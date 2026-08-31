@@ -223,10 +223,15 @@ describe('MCP Server Integration Tests', () => {
       // work (#262).
       expect(serverAny.pendingPattern).toBeNull();
 
+      // The stash is a slot the init path reads and then clears once the
+      // write lands. `takePendingPattern()` — a read-and-clear helper —
+      // is gone with the early clear it existed for (#453): clearing
+      // before the write meant a page that died in between destroyed
+      // the pattern unrecoverably.
       serverAny.pendingPattern = 'STASHED';
-      expect(serverAny.takePendingPattern()).toBe('STASHED');
+      expect(serverAny.pendingPattern).toBe('STASHED');
+      serverAny.pendingPattern = null;
       expect(serverAny.pendingPattern).toBeNull();
-      expect(serverAny.takePendingPattern()).toBeNull();
     });
   });
 

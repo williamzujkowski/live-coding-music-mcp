@@ -861,12 +861,13 @@ describe('StrudelMCPServer', () => {
       test('should handle detection error', async () => {
         mockController.detectTempo.mockRejectedValue(new Error('Detection failed'));
 
-        const result: any = await (server as any).executeTool('analyze', { include: ['tempo'] });
-
-        // Nothing detected: null, not a measured zero (#288).
-        expect(result.tempo.bpm).toBeNull();
-        expect(result.tempo.detected).toBe(false);
-        expect(result.tempo.error).toContain('Detection failed');
+        // A detection error is a failure, not an empty result. Folding
+        // it into the `{bpm: null}` shape nested it where
+        // `isFailureShaped` cannot see it, so a dead browser reached the
+        // client as ok:true (#453). Genuine no-detection still gives
+        // null — that is the test above (#288).
+        await expect((server as any).executeTool('analyze', { include: ['tempo'] }))
+          .rejects.toThrow(/Detection failed/);
       });
 
       test('should require initialization', async () => {
@@ -899,11 +900,10 @@ describe('StrudelMCPServer', () => {
       test('should handle detection error', async () => {
         mockController.detectKey.mockRejectedValue(new Error('Key detection failed'));
 
-        const result = await (server as any).executeTool('analyze', { include: ['key'] });
-
-        expect(result.key.key).toBeNull();
-        expect(result.key.detected).toBe(false);
-        expect(result.key.error).toContain('Key detection failed');
+        // See the tempo case: an error is a failure, not an empty
+        // result (#453). No-detection still gives null (#288).
+        await expect((server as any).executeTool('analyze', { include: ['key'] }))
+          .rejects.toThrow(/Key detection failed/);
       });
 
       test('should include alternatives when available', async () => {
