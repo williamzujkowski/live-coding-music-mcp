@@ -36,7 +36,7 @@ import { composeModule } from './tools/compose.js';
 import type { Envelope, ToolContext, HistoryEntry } from './tools/types.js';
 import { categorizeError, err, isEnvelope, ok, isFailureShaped, PATTERN_STASHED_PREFIX } from './tools/types.js';
 import { readResource, resources as mcpResources } from './resources.js';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { parseServerConfig } from '../utils/ServerConfig.js';
 import { BusinessError } from '../utils/CategorisedError.js';
 
@@ -49,8 +49,16 @@ const configPath = './config.json';
  * nothing reads, which is what stops the next `strudel_url` from being
  * silently ignored for two releases (#227).
  */
+let configFound = false;
+
 function loadConfig(): ReturnType<typeof parseServerConfig> {
-  if (!existsSync(configPath)) return parseServerConfig(undefined);
+  configFound = existsSync(configPath);
+  // No warning for an absent file — running without config.json is the
+  // normal case and warning about it every start would be crying wolf.
+  // The path checked is reported through `diagnostics` instead, so a
+  // user whose client launches the server from another cwd can SEE that
+  // their file was not the one read (#442).
+  if (!configFound) return parseServerConfig(undefined);
   try {
     return parseServerConfig(JSON.parse(readFileSync(configPath, 'utf-8')));
   } catch (error: unknown) {
@@ -214,7 +222,11 @@ export class StrudelMCPServer {
       try {
         const content = await readResource(uri, {
           store: this.store,
-          examplesDir: join(process.cwd(), 'patterns', 'examples'),
+          // Follows `patterns_dir`, like the store does. Hardcoding
+          // `process.cwd()` meant a server launched from anywhere but
+          // the repo root advertised `strudel://examples` and then
+          // failed to read it (#442).
+          examplesDir: join(config.patternsDir, 'examples'),
         });
         return { contents: [content] };
       } catch (error: unknown) {
@@ -499,6 +511,12 @@ export class StrudelMCPServer {
     // Part of the #104 file split — each module owns its own definitions
     // and handlers. server.ts keeps the protocol + state-tracking shell.
     const ctx: ToolContext = {
+      // Surfaced by `diagnostics level=status`; see ConfigReport (#442).
+      configReport: {
+        path: resolve(configPath),
+        found: configFound,
+        warnings: config.warnings,
+      },
       perfMonitor: this.perfMonitor,
       store: this.store,
       generator: this.generator,

@@ -27,7 +27,7 @@ export const tools: Tool[] = [
     name: 'diagnostics',
     description:
       'Inspect server and browser state. ' +
-      'level=status returns a quick state snapshot (cache read, <15ms SLA). ' +
+      'level=status returns a quick state snapshot (cache read, <15ms SLA), plus which config.json was read and any warnings from it. ' +
       'level=full returns detailed browser diagnostics including caches, errors, and performance. ' +
       'level=perf returns server-side timing metrics + top bottlenecks. ' +
       'level=memory returns process memory usage. ' +
@@ -63,7 +63,23 @@ function getMemoryUsage(ctx: ToolContext): string {
 }
 
 function getStatus(ctx: ToolContext, sid?: string): unknown {
-  return ctx.getController(sid).getStatus();
+  const status = ctx.getController(sid).getStatus();
+  const report = ctx.configReport;
+  if (!report) return status;
+
+  // Config problems reached `logger.warn` and nothing else — a client
+  // log file the user may never open. A `strudel_url` typo, or an
+  // `audio_analysis` block that parsed to nothing, was invisible from
+  // inside the session. The path is reported whether or not a file was
+  // found, so a cwd surprise is visible rather than guessed at (#442).
+  return {
+    ...(typeof status === 'object' && status !== null ? status : { status }),
+    config: {
+      path: report.path,
+      found: report.found,
+      ...(report.warnings.length > 0 ? { warnings: report.warnings } : {}),
+    },
+  };
 }
 
 async function getFullDiagnostics(ctx: ToolContext, sid?: string): Promise<unknown> {

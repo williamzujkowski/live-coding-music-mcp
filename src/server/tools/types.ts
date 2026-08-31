@@ -52,7 +52,29 @@ export interface HistoryState {
  * Helpers like getCurrentPatternSafe/writePatternSafe wrap server-side
  * state (e.g. the generated-pattern cache used before init).
  */
+/**
+ * What the server made of config.json, for the caller to inspect.
+ *
+ * Config warnings went to `logger.warn` and nowhere else. On a stdio MCP
+ * server that is a client log file the user may never open — so a
+ * `strudel_url` typo, or an `audio_analysis` block that parsed to
+ * nothing, was invisible from inside the session (#442).
+ *
+ * `ServerConfig.ts`'s own header says silently-ignored configuration is
+ * "worse than none"; this is what makes it not silent.
+ */
+export interface ConfigReport {
+  /** The path checked, so a cwd surprise is visible rather than guessed. */
+  path: string;
+  /** Whether a file was found there. Absent is normal — defaults apply. */
+  found: boolean;
+  /** Parse and validation warnings, in order. */
+  warnings: string[];
+}
+
 export interface ToolContext {
+  /** What the server made of config.json (#442). */
+  configReport?: ConfigReport;
   perfMonitor: PerformanceMonitor;
   store: PatternStore;
   generator: PatternGenerator;

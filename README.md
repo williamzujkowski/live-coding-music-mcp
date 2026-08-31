@@ -381,7 +381,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `diagnostics` | Inspect server and browser state. level=status returns a quick state snapshot (cache read, <15ms SLA). level=full returns detailed browser diagnostics including caches, errors, and performance. level=perf returns server-side timing metrics + top bottlenecks. level=memory returns process memory usage. level=errors returns captured console errors and warnings from Strudel. Default level=full preserves the pre-consolidation behaviour. Example: diagnostics({ level: "status" }) — millisecond-cheap. For screenshots use browser_window; for tool listings use the strudel://docs/tools resource. |
+| `diagnostics` | Inspect server and browser state. level=status returns a quick state snapshot (cache read, <15ms SLA), plus which config.json was read and any warnings from it. level=full returns detailed browser diagnostics including caches, errors, and performance. level=perf returns server-side timing metrics + top bottlenecks. level=memory returns process memory usage. level=errors returns captured console errors and warnings from Strudel. Default level=full preserves the pre-consolidation behaviour. Example: diagnostics({ level: "status" }) — millisecond-cheap. For screenshots use browser_window; for tool listings use the strudel://docs/tools resource. |
 
 </details>
 
