@@ -173,12 +173,19 @@ describe('analysis reports non-measurements as null, not zero (#288)', () => {
     expect(r.tempo.detected).toBe(false);
   });
 
-  it('a detection error also gives null', async () => {
-    const r: any = await execute('analyze', { include: ['tempo'] },
-      analysisCtx({ detectTempo: async () => { throw new Error('boom'); } }));
-    expect(r.tempo.bpm).toBeNull();
-    expect(r.tempo.detected).toBe(false);
-    expect(r.tempo.error).toContain('boom');
+  it('a detection error is a failure, not an empty result', async () => {
+    // This used to assert the opposite: an error folded into the same
+    // `{bpm: null, detected: false}` shape as a genuine no-detection.
+    //
+    // That conflates exactly what #288 separated. Nested under the
+    // `tempo` key it was also invisible to `isFailureShaped`, which
+    // inspects only the top level — so a dead browser reached the client
+    // as `{ok: true, data: {tempo: {error: 'Target page ... closed'}}}`
+    // through include:['tempo'] while include:['all'] gave a failure
+    // envelope. One tool, one fault, opposite verdicts (#453).
+    await expect(execute('analyze', { include: ['tempo'] },
+      analysisCtx({ detectTempo: async () => { throw new Error('boom'); } })))
+      .rejects.toThrow(/boom/);
   });
 
   it('a real detection is unchanged', async () => {

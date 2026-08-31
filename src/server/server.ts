@@ -377,19 +377,6 @@ export class StrudelMCPServer {
     return await this.controller.getCurrentPattern();
   }
 
-  /**
-   * Returns the stashed pre-init pattern and clears it.
-   *
-   * Consuming rather than peeking is what stops a later init replaying a
-   * stale pattern over live work (#262).
-   *
-   * @returns The pending pattern, or null when there is none
-   */
-  private takePendingPattern(): string | null {
-    const pending = this.pendingPattern;
-    this.pendingPattern = null;
-    return pending;
-  }
 
   private async writePatternSafe(pattern: string, rawSessionId?: string): Promise<string> {
     const sessionId = this.effectiveSessionId(rawSessionId);
@@ -603,9 +590,16 @@ export class StrudelMCPServer {
       // before the first init. Undo could not recover it either, because
       // this writes through the controller and only edit_pattern pushes
       // history (#262).
-      const pending = this.takePendingPattern();
+      // Read without clearing, and clear only once the write lands.
+      //
+      // `takePendingPattern()` cleared first, so a write that threw —
+      // a page that died between init and this line — destroyed the
+      // pattern unrecoverably. The comment above justifies CLEARING;
+      // it does not justify clearing early (#453).
+      const pending = this.pendingPattern;
       if (pending !== null) {
         await this.controller.writePattern(pending);
+        this.pendingPattern = null;
         return `${initResult}. Loaded generated pattern.`;
       }
       return initResult;
