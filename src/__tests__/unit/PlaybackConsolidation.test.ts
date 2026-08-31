@@ -6,7 +6,11 @@ import { execute } from '../../server/tools/playback';
 import type { ToolContext } from '../../server/tools/types';
 
 function makeCtx(initialized = true) {
-  const controller = { play: jest.fn(async () => undefined), stop: jest.fn(async () => undefined) };
+  const controller = {
+    play: jest.fn(async () => undefined),
+    pause: jest.fn(async () => undefined),
+    stop: jest.fn(async () => undefined),
+  };
   const ctx: ToolContext = {
     perfMonitor: {} as any, store: {} as any, generator: {} as any, theory: {} as any,
     sessionManager: {} as any, geminiService: {} as any, strudelEngine: {} as any,
@@ -30,10 +34,14 @@ describe('playback consolidation (#152)', () => {
     expect(controller.play).toHaveBeenCalledTimes(1);
   });
 
-  it('playback(action=pause) calls controller.stop (pause and stop share the same controller method)', async () => {
+  it('playback(action=pause) calls controller.pause, not stop (#406)', async () => {
+    // These were the same call for months while the tool description
+    // claimed pause preserved the clock. They are different now, and a
+    // test that accepts either would not notice them merging again.
     const { ctx, controller } = makeCtx();
     await execute('playback', { action: 'pause' }, ctx);
-    expect(controller.stop).toHaveBeenCalledTimes(1);
+    expect(controller.pause).toHaveBeenCalledTimes(1);
+    expect(controller.stop).not.toHaveBeenCalled();
   });
 
   it('playback(action=stop) calls controller.stop', async () => {
