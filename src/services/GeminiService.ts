@@ -377,7 +377,10 @@ export class GeminiService {
       });
 
       const response = await Promise.race([
-        this.callGeminiAPI(prompt, audioBase64, 'audio/webm'),
+        // Derive from the blob rather than hardcoding: the feedback path
+        // now sends WAV (decoded PCM), and telling Gemini it is WebM makes
+        // it decode the wrong container.
+        this.callGeminiAPI(prompt, audioBase64, audioData.type || 'audio/webm'),
         timeoutPromise
       ]);
 

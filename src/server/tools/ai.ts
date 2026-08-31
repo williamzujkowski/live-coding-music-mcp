@@ -92,12 +92,7 @@ async function getPatternFeedback(
   style: string | undefined,
   ctx: ToolContext,
   sid?: string,
-): Promise<{
-  pattern_analysis?: CreativeFeedback;
-  audio_analysis?: AudioFeedback;
-  error?: string;
-  gemini_available: boolean;
-}> {
+): Promise<FeedbackResult> {
   if (!ctx.geminiService.isAvailable()) {
     return {
       gemini_available: false,
@@ -110,12 +105,7 @@ async function getPatternFeedback(
     return { gemini_available: true, error: 'No pattern to analyze. Write a pattern first.' };
   }
 
-  const result: {
-    pattern_analysis?: CreativeFeedback;
-    audio_analysis?: AudioFeedback;
-    error?: string;
-    gemini_available: boolean;
-  } = { gemini_available: true };
+  const result: FeedbackResult = { gemini_available: true };
 
   try {
     result.pattern_analysis = await ctx.geminiService.getCreativeFeedback(pattern);
@@ -130,11 +120,26 @@ async function getPatternFeedback(
 
   if (includeAudio && (sid || ctx.isInitialized())) {
     try {
-      const audioBlob = await captureAudioSampleForFeedback(ctx, sid);
-      if (audioBlob) {
-        result.audio_analysis = await ctx.geminiService.analyzeAudio(audioBlob, { style, duration: 5 });
-      } else {
+      const sample = await captureAudioSampleForFeedback(ctx, sid);
+      if (sample === null) {
         logger.warn('Audio capture returned no data');
+        if (!result.error) result.error = 'Audio capture returned no data.';
+      } else if (sample.silent) {
+        // Sending silence to Gemini does not fail — it returns a confident
+        // mood/style/energy for audio that is not there. Feedback silently
+        // decoupled from the audio is worse than no feedback, so refuse.
+        result.audio_analysis_skipped =
+          'Captured audio was silent, so no feedback was requested. ' +
+          'Is a pattern playing? Call playback({ action: "play" }) first.';
+        logger.warn('Skipping Gemini audio analysis: capture was silent', {
+          peak: sample.peak,
+        });
+      } else {
+        result.audio_analysis = await ctx.geminiService.analyzeAudio(sample.blob, {
+          style,
+          duration: FEEDBACK_SAMPLE_MS / 1000,
+        });
+        result.audio_levels = { peak: sample.peak, rms: sample.rms };
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -150,65 +155,67 @@ async function getPatternFeedback(
   return result;
 }
 
+/** What `ai_assist({ task: "feedback" })` returns. */
+interface FeedbackResult {
+  pattern_analysis?: CreativeFeedback;
+  audio_analysis?: AudioFeedback;
+  /** Set when audio feedback was deliberately not requested (e.g. silence). */
+  audio_analysis_skipped?: string;
+  /** Measured level of the analysed sample, so the caller can judge it. */
+  audio_levels?: { peak?: number; rms?: number };
+  error?: string;
+  gemini_available: boolean;
+}
+
+/** Seconds of audio sent to Gemini for feedback. */
+const FEEDBACK_SAMPLE_MS = 5000;
+
+/** A captured sample plus the level measurements taken while decoding it. */
+interface AudioSample {
+  blob: Blob;
+  peak?: number;
+  rms?: number;
+  /** True when the capture recorded nothing audible. */
+  silent: boolean;
+}
+
 /**
  * Captures a brief audio sample for Gemini analysis. Different from the
  * `capture_audio_sample` tool — this one connects directly to the
  * analyzer's AudioContext and records 5 seconds without disturbing
  * the full AudioCaptureService lifecycle.
  */
-async function captureAudioSampleForFeedback(ctx: ToolContext, sid?: string): Promise<Blob | null> {
+async function captureAudioSampleForFeedback(
+  ctx: ToolContext,
+  sid?: string,
+): Promise<AudioSample | null> {
   const page = ctx.getController(sid).page;
   if (!page) {
     logger.warn('Cannot capture audio: controller page not available');
     return null;
   }
 
-  try {
-    const audioData = await page.evaluate(/* istanbul ignore next */ async () => {
-      return new Promise<string | null>((resolve) => {
-        const analyzer = (window as any).strudelAudioAnalyzer;
-        if (!analyzer || !analyzer.analyser) {
-          resolve(null);
-          return;
-        }
-        try {
-          const audioCtx = analyzer.analyser.context as AudioContext;
-          const destination = audioCtx.createMediaStreamDestination();
-          analyzer.analyser.connect(destination);
-          const mediaRecorder = new MediaRecorder(destination.stream, { mimeType: 'audio/webm;codecs=opus' });
-          const chunks: Blob[] = [];
-          mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-          mediaRecorder.onstop = async () => {
-            try { analyzer.analyser.disconnect(destination); } catch { /* already disconnected */ }
-            if (chunks.length === 0) { resolve(null); return; }
-            const blob = new Blob(chunks, { type: 'audio/webm' });
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              const base64 = reader.result as string;
-              resolve(base64.split(',')[1] || null);
-            };
-            reader.onerror = () => resolve(null);
-            reader.readAsDataURL(blob);
-          };
-          mediaRecorder.start();
-          setTimeout(() => { if (mediaRecorder.state === 'recording') mediaRecorder.stop(); }, 5000);
-        } catch {
-          resolve(null);
-        }
-      });
-    });
+  // Ensures the recorder is injected for this session before exporting.
+  await ctx.getAudioCaptureService(sid);
 
-    if (!audioData) return null;
+  const result = await ctx.audioExportService.exportAudio(page, {
+    duration: FEEDBACK_SAMPLE_MS,
+    format: 'wav',
+    output: 'base64',
+  });
 
-    const binaryString = atob(audioData);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-    return new Blob([bytes], { type: 'audio/webm' });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error('Audio capture failed', { error: message });
+  if (!result.success || result.audio === undefined) {
+    logger.warn('Audio capture returned no data', { error: result.error });
     return null;
   }
+
+  const bytes = Buffer.from(result.audio, 'base64');
+  return {
+    blob: new Blob([bytes], { type: 'audio/wav' }),
+    peak: result.peak,
+    rms: result.rms,
+    silent: result.silent === true,
+  };
 }
 
 // ---------------------------------------------------------------------------
