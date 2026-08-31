@@ -32,6 +32,19 @@ interface Session {
  */
 export class SessionManager {
   private browser: Browser | null = null;
+  /**
+   * In-flight browser launch, so concurrent creates share one.
+   *
+   * `if (!this.browser) { this.browser = await chromium.launch(...) }`
+   * has an await between the check and the assignment, and the MCP SDK
+   * does not serialize tool calls. Three concurrent
+   * session({action:'create'}) calls launched three Chromium processes
+   * and kept only the last assignment — the other two leaked with no
+   * handle left to close them (#317). Same class as #263, one level up:
+   * that one leaked contexts, this one leaks whole browsers.
+   */
+  private browserLaunch: Promise<Browser> | null = null;
+
   private sessions: Map<string, Session> = new Map();
 
   /**
@@ -83,22 +96,33 @@ export class SessionManager {
    * Ensures the shared browser instance is running
    */
   private async ensureBrowser(): Promise<Browser> {
-    if (!this.browser) {
-      this.browser = await chromium.launch({
-        headless: this.isHeadless,
-        args: [
-          '--use-fake-ui-for-media-stream',
-          '--disable-dev-shm-usage',
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-gpu',
-          '--disable-software-rasterizer'
-        ],
-      });
-
-      // Start cleanup timer when browser is created
-      this.startCleanupTimer();
+    if (this.browser) return this.browser;
+    // Single-flight: whoever gets here first starts the launch, everyone
+    // else awaits the same promise.
+    this.browserLaunch ??= this.launchBrowser();
+    try {
+      return await this.browserLaunch;
+    } finally {
+      this.browserLaunch = null;
     }
+  }
+
+  /** Launches Chromium and starts the idle sweep. Call via ensureBrowser. */
+  private async launchBrowser(): Promise<Browser> {
+    this.browser = await chromium.launch({
+      headless: this.isHeadless,
+      args: [
+        '--use-fake-ui-for-media-stream',
+        '--disable-dev-shm-usage',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--disable-software-rasterizer'
+      ],
+    });
+
+    // Start cleanup timer when browser is created
+    this.startCleanupTimer();
     return this.browser;
   }
 
@@ -288,8 +312,12 @@ export class SessionManager {
       totalSessions: this.sessions.size,
     });
 
-    // If no more sessions, close browser
-    if (this.sessions.size === 0) {
+    // If no more sessions, close browser — unless a create is in
+    // flight. `reservedIds` holds ids between the limit check and the
+    // session landing (#263), which is exactly the window in which a
+    // concurrent destroy would close the browser the create is about to
+    // call newContext on (#317).
+    if (this.sessions.size === 0 && this.reservedIds.size === 0) {
       await this.closeBrowser();
     }
   }
