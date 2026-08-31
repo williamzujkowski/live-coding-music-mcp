@@ -20,7 +20,7 @@ export const tools: Tool[] = [
     description:
       'Control transport on the current session. ' +
       'action=play starts the editor pattern. ' +
-      'action=pause stops without resetting clock. ' +
+      'action=pause halts the clock where it is, so play resumes mid-cycle. ' +
       'action=stop ends playback. ' +
       'Example: playback({ action: "play" }). ' +
       'For pattern editing use edit_pattern; for tempo use set_tempo.',
@@ -56,6 +56,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
     case 'play':
       return await controller.play();
     case 'pause':
+      return await controller.pause();
     case 'stop':
       return await controller.stop();
     default:

@@ -281,7 +281,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `playback` | Control transport on the current session. action=play starts the editor pattern. action=pause stops without resetting clock. action=stop ends playback. Example: playback({ action: "play" }). For pattern editing use edit_pattern; for tempo use set_tempo. |
+| `playback` | Control transport on the current session. action=play starts the editor pattern. action=pause halts the clock where it is, so play resumes mid-cycle. action=stop ends playback. Example: playback({ action: "play" }). For pattern editing use edit_pattern; for tempo use set_tempo. |
 | `set_tempo` | Set BPM. Writes setcpm(bpm/4), assuming one bar of 4/4 per cycle. |
 
 </details>

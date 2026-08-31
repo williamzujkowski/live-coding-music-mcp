@@ -43,6 +43,7 @@ describe('StrudelMCPServer', () => {
       getCurrentPattern: jest.fn().mockResolvedValue('s("bd*4")'),
       writePattern: jest.fn().mockResolvedValue('Pattern written: 7 chars'),
       play: jest.fn().mockResolvedValue('Playing'),
+      pause: jest.fn().mockResolvedValue('Paused'),
       stop: jest.fn().mockResolvedValue('Stopped'),
       analyzeAudio: jest.fn().mockResolvedValue({
         connected: true,
@@ -354,11 +355,12 @@ describe('StrudelMCPServer', () => {
         expect(result).toBe('Stopped');
       });
 
-      test('should stop playback with pause', async () => {
+      test('should pause playback, which is not stopping it (#406)', async () => {
         const result = await (server as any).executeTool('playback', { action: 'pause' });
 
-        expect(mockController.stop).toHaveBeenCalled();
-        expect(result).toBe('Stopped');
+        expect(mockController.pause).toHaveBeenCalled();
+        expect(mockController.stop).not.toHaveBeenCalled();
+        expect(result).toBe('Paused');
       });
     });
 

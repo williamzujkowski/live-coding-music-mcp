@@ -239,6 +239,61 @@ describe('Browser Validation: Example Patterns', () => {
     });
   });
 
+  describe('pause keeps its place, stop does not (#406)', () => {
+    /**
+     * The only tier that can see this. `pause` and `stop` were the same
+     * call for months while the tool description claimed pause "stops
+     * without resetting clock" — a distinction no unit test could have
+     * caught, because it exists only in the page's scheduler.
+     */
+    const readScheduler = async (): Promise<{ started: boolean; lastEnd: number }> => {
+      const page = (controller as unknown as { _page: import('playwright').Page })._page;
+      return await page.evaluate(/* istanbul ignore next */ () => {
+        const sched = (window as any).strudelMirror?.repl?.scheduler;
+        return { started: Boolean(sched?.started), lastEnd: Number(sched?.lastEnd ?? -1) };
+      });
+    };
+
+    it('pause halts the transport without zeroing the cycle', async () => {
+      await controller.writePattern('setcpm(120/4)\ns("bd*4")');
+      await controller.play();
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const playing = await readScheduler();
+      expect(playing.started).toBe(true);
+      // It has to have got somewhere, or "kept its place" means nothing.
+      expect(playing.lastEnd).toBeGreaterThan(0);
+
+      await controller.pause();
+      const paused = await readScheduler();
+      expect(paused.started).toBe(false);
+      expect(paused.lastEnd).toBe(playing.lastEnd);
+
+      await controller.stop();
+      const stopped = await readScheduler();
+      expect(stopped.started).toBe(false);
+      expect(stopped.lastEnd).toBe(0);
+    });
+
+    it('play after a pause resumes rather than restarting', async () => {
+      await controller.writePattern('setcpm(120/4)\ns("bd*4")');
+      await controller.play();
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await controller.pause();
+      const paused = await readScheduler();
+
+      await controller.play();
+      await new Promise(resolve => setTimeout(resolve, 800));
+      const resumed = await readScheduler();
+
+      expect(resumed.started).toBe(true);
+      // Forward from where it stopped, not back to the top.
+      expect(resumed.lastEnd).toBeGreaterThanOrEqual(paused.lastEnd);
+
+      await controller.stop();
+    });
+  });
+
   describe('Pattern Integrity', () => {
     it.each(realExamples().map(e => [`${e.genre}/${e.name}`, e] as const))(
       '%s has the metadata the resource promises', (_label, example) => {

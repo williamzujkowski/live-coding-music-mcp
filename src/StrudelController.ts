@@ -430,6 +430,63 @@ export class StrudelController {
   }
 
   /**
+   * Halts playback without resetting the cycle position.
+   *
+   * `playback({ action: "pause" })` claimed this for months and did not
+   * do it — `pause` fell through to `stop` (#406). Strudel's scheduler
+   * distinguishes them: `stop()` zeroes the phase counters, `pause()`
+   * only halts the clock. Measured against live strudel.cc:
+   *
+   *   playing              started:true  lastEnd:1.35 phase:5.302
+   *   paused               started:false lastEnd:1.35 phase:5.302
+   *   play() after pause   started:true  lastEnd:2.50 phase:7.602
+   *   stopped              started:false lastEnd:0    phase:0
+   *
+   * So `play()` resumes rather than restarting, and needs no change.
+   *
+   * Tempo history is deliberately NOT cleared here, unlike `stop()`. A
+   * pause is a gap in one performance, and the onsets either side of it
+   * belong to the same pattern — but the gap itself would read as a
+   * silence, so the analyzer drops history across one longer than a bar
+   * on its own (#366). Clearing on top of that would throw away a
+   * reading that is about to be valid again.
+   *
+   * @returns Success message
+   * @throws {Error} When not initialized, or when playback fails to pause
+   */
+  async pause(): Promise<string> {
+    if (!this._page) throw new Error('Browser not initialized. Run init tool first.');
+
+    try {
+      await this._page.evaluate(/* istanbul ignore next */ () => {
+        (window as any).strudelMirror?.repl?.pause?.();
+      });
+    } catch {
+      // Same reasoning as stop(): the state check below is what decides
+      // whether this worked, and it produces a better message (#278).
+    }
+
+    if (!(await this.waitForPlaybackState(false, 2000))) {
+      const state = await this.readPlaybackState();
+      this.isPlaying = state === 'playing';
+      this.analyzer.clearCache();
+      throw new Error(
+        state === 'unreadable'
+          ? 'Failed to pause playback: the page could not be read, so whether ' +
+            'audio is still running is unknown. Run init to recover.'
+          : 'Failed to pause playback: Strudel scheduler is still running. ' +
+            'Use playback({ action: "stop" }) to end playback outright.'
+      );
+    }
+
+    this.isPlaying = false;
+    // See play(): a stale cached analysis would report audio still
+    // playing immediately after a successful pause (#211).
+    this.analyzer.clearCache();
+    return 'Paused';
+  }
+
+  /**
    * Stops the currently playing pattern
    * @returns Success message
    * @throws {Error} When not initialized, or when playback fails to stop
