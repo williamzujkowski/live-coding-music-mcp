@@ -34,6 +34,8 @@ export class PatternStore {
   private listCache: { patterns: PatternData[], timestamp: number, skipped: number } | null = null;
   /** Set by the read `listDetailed` wraps; never read except through it. */
   private skippedInLastRead = 0;
+  /** Distinguishes concurrent temp files; see the write in `save`. */
+  private static tempCounter = 0;
   private readonly LIST_CACHE_TTL = 5000; // 5 seconds
   private readonly MAX_CACHE_SIZE = 100; // LRU cache limit
   private directoryEnsured: boolean = false;
@@ -157,7 +159,27 @@ export class PatternStore {
     // passes InputValidator's 255 limit and `sanitizeFilename` measures
     // the stem without `.json` — and then fails ENAMETOOLONG on the
     // 260-byte component (#428).
-    await fs.writeFile(filepath, JSON.stringify(data, null, 2));
+    // Write to a temp file, then rename.
+    //
+    // `rename` is atomic within a filesystem, so a reader sees either
+    // the old pattern or the new one and never a half-written file. The
+    // direct write left truncated JSON behind on a crash or a full disk
+    // — which is exactly the input that used to take the entire listing
+    // down (#426). That fix made the listing survive such a file; this
+    // one stops producing them.
+    //
+    // The temp name carries the pid and a counter so two saves cannot
+    // collide on it, and it sits in the same directory so the rename
+    // stays within one filesystem.
+    const tempPath = `${filepath}.${String(process.pid)}.${String(++PatternStore.tempCounter)}.tmp`;
+    try {
+      await fs.writeFile(tempPath, JSON.stringify(data, null, 2));
+      await fs.rename(tempPath, filepath);
+    } catch (error) {
+      // Leaving a stray .tmp would make it the next listing's problem.
+      await fs.unlink(tempPath).catch(() => undefined);
+      throw error;
+    }
 
     // Keyed by the FILE's name, not the caller's.
     //

@@ -78,3 +78,47 @@ describe('the cache and the disk agree (#428)', () => {
     expect((await store.load('plain-name'))?.content).toBe('s("bd*4")');
   });
 });
+
+/**
+ * A save is atomic (#428 item 6).
+ *
+ * The write went straight to the final path, so a crash or a full disk
+ * left truncated JSON behind — exactly the input that used to take the
+ * entire listing down (#426). That fix made the listing survive such a
+ * file; this one stops producing them.
+ */
+describe('a save leaves no half-written file (#428)', () => {
+  let dir: string;
+
+  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'pattern-atomic-')); });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it('leaves no temp file behind after concurrent saves', async () => {
+    const { readdirSync } = await import('fs');
+    const store = new PatternStore(dir);
+
+    await Promise.all([
+      store.save('a', 'A', ['t']),
+      store.save('b', 'B', ['t']),
+      store.save('c', 'C', ['t']),
+    ]);
+
+    const files = readdirSync(dir).sort();
+    expect(files).toEqual(['a.json', 'b.json', 'c.json']);
+    // A stray .tmp would become the next listing's problem.
+    expect(files.every(f => f.endsWith('.json'))).toBe(true);
+  });
+
+  it('cleans up the temp file when the rename fails', async () => {
+    const { readdirSync } = await import('fs');
+    const store = new PatternStore(dir);
+    // A name that sanitizes to something writable but whose final path
+    // is a directory — rename onto it fails.
+    const { mkdirSync } = await import('fs');
+    mkdirSync(join(dir, 'blocked.json'));
+
+    await expect(store.save('blocked', 'content', ['t'])).rejects.toThrow();
+
+    expect(readdirSync(dir).filter(f => f.includes('.tmp'))).toEqual([]);
+  });
+});
