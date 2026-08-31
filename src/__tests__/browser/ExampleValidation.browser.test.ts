@@ -239,6 +239,49 @@ describe('Browser Validation: Example Patterns', () => {
     });
   });
 
+  describe('a generated pattern PLAYS at the tempo it declares (#395)', () => {
+    /**
+     * The check that did not exist when every generated pattern was
+     * playing at four times its requested tempo for months.
+     *
+     * `GeneratedTempo.test.ts` asserts the arithmetic of the tempo call.
+     * It cannot see what the scheduler does with it, and #395 was
+     * invisible precisely because the only end-to-end check anyone ran
+     * was `detectTempo` — which folds anything outside 40-200 BPM back
+     * into range, so 520 folded by four to 130 and agreed with itself.
+     *
+     * So this reads the SCHEDULER's own cycles-per-second and converts,
+     * rather than asking the detector. Measured across the generator's
+     * styles at 130 BPM, every one reported cps 0.5417 — 130 BPM at four
+     * beats to a cycle.
+     */
+    const TEMPO = 130;
+
+    const scheduledBpm = async (): Promise<number> => {
+      const page = (controller as unknown as { _page: import('playwright').Page })._page;
+      const cps = await page.evaluate(/* istanbul ignore next */ () => {
+        const sched = (window as any).strudelMirror?.repl?.scheduler;
+        return Number(sched?.cps ?? 0);
+      });
+      // cycles/sec -> cycles/min -> beats/min, at one 4/4 bar per cycle.
+      return cps * 60 * 4;
+    };
+
+    it.each(DRUM_STYLES)('%s schedules 130 BPM, not 520', async style => {
+      const generator = new PatternGenerator();
+      await controller.writePattern(generator.generateCompletePattern(style, 'C', TEMPO));
+      await controller.play();
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      const bpm = await scheduledBpm();
+      await controller.stop();
+
+      // Exact, not approximate: this is arithmetic the page performed on
+      // a number the generator wrote, with no audio in the path.
+      expect(bpm).toBeCloseTo(TEMPO, 6);
+    });
+  });
+
   describe('pause keeps its place, stop does not (#406)', () => {
     /**
      * The only tier that can see this. `pause` and `stop` were the same
