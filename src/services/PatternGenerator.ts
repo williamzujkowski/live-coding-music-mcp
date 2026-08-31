@@ -1,5 +1,6 @@
 import { MusicTheory } from './MusicTheory.js';
 import { STYLE_ALIASES, resolveDrumStyle } from './StyleRegistry.js';
+import { lookup } from '../utils/TableLookup.js';
 
 export class PatternGenerator {
   private theory = new MusicTheory();
@@ -11,14 +12,25 @@ export class PatternGenerator {
    * Get a note at a specific interval from the root
    */
   private getInterval(root: string, semitones: number): string {
-    const normalizedRoot = root.toLowerCase().replace('#', 'b');
+    // The `.replace('#','b')` used to run BEFORE this lookup, so its
+    // keys could never match — dead code. 'c#' became 'cb', which is not
+    // in `notes`, so the root came back unchanged; 'd#' became 'db',
+    // which IS in `notes` but is the wrong note, a semitone flat. So
+    // getFifth('D#') returned 'ab' and getFifth('F#') returned 'F#',
+    // while MusicTheory.getNote got the same intervals right (#318).
+    const lower = root.toLowerCase();
     const sharpToFlat: Record<string, string> = {
-      'c#': 'db', 'd#': 'eb', 'f#': 'gb', 'g#': 'ab', 'a#': 'bb'
+      'c#': 'db', 'd#': 'eb', 'f#': 'gb', 'g#': 'ab', 'a#': 'bb',
+      // Enharmonics that are not in `notes` but are legal input.
+      'e#': 'f', 'b#': 'c', 'cb': 'b', 'fb': 'e',
     };
-    const searchRoot = sharpToFlat[normalizedRoot] || normalizedRoot;
+    const searchRoot = Object.hasOwn(sharpToFlat, lower) ? sharpToFlat[lower] : lower;
     const idx = this.notes.indexOf(searchRoot);
     if (idx === -1) return root;
-    return this.notes[(idx + semitones) % 12];
+    // Modulo alone goes negative for a negative interval; none are used
+    // today, but the guard costs nothing and the bug it prevents is the
+    // same shape as the one above.
+    return this.notes[(((idx + semitones) % 12) + 12) % 12];
   }
 
   private getFourth(root: string): string { return this.getInterval(root, 5); }
@@ -133,7 +145,7 @@ export class PatternGenerator {
     const resolvedStyle = Object.hasOwn(STYLE_ALIASES, lowerStyle)
       ? STYLE_ALIASES[lowerStyle]
       : lowerStyle;
-    const stylePatterns = patterns[resolvedStyle] || patterns.techno;
+    const stylePatterns = lookup(patterns, resolvedStyle, patterns.techno);
     const index = Math.min(Math.floor(complexity * stylePatterns.length), stylePatterns.length - 1);
     return stylePatterns[index];
   }
@@ -196,7 +208,7 @@ export class PatternGenerator {
     const resolvedStyle = Object.hasOwn(STYLE_ALIASES, lowerStyle)
       ? STYLE_ALIASES[lowerStyle]
       : lowerStyle;
-    return patterns[resolvedStyle] || patterns.techno;
+    return lookup(patterns, resolvedStyle, patterns.techno);
   }
 
   /**
@@ -249,7 +261,7 @@ export class PatternGenerator {
       pad: '.attack(2).release(4).room(0.8)'
     };
     
-    return `note("<${progression}>").s("sawtooth")${voicings[voicing] || voicings.triad}`;
+    return `note("<${progression}>").s("sawtooth")${lookup(voicings, voicing, voicings.triad)}`;
   }
 
   /**
@@ -588,7 +600,7 @@ stack(
       evolving: '.slow(4).every(8, x => x.fast(2)).every(16, x => x.palindrome)'
     };
     
-    return pattern + (variations[variationType] || variations.subtle);
+    return pattern + lookup(variations, variationType, variations.subtle);
   }
 
   /**
@@ -609,7 +621,7 @@ stack(
       boom_bap: `s("bd sd bd sd, hh*8").swing(0.1).fast(${bars})`
     };
     
-    return fills[style] || fills.techno;
+    return lookup(fills, style, fills.techno);
   }
 
   /**

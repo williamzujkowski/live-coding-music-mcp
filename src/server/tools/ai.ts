@@ -15,6 +15,7 @@ import { empty, withStashField } from './types.js';
 import type { CreativeFeedback, AudioFeedback } from '../../services/GeminiService.js';
 import type { AudioMeasurements } from '../../services/ai/AudioMeasurements.js';
 import { Logger } from '../../utils/Logger.js';
+import { lookup } from '../../utils/TableLookup.js';
 
 const logger = new Logger();
 
@@ -270,7 +271,7 @@ async function suggestPatternFromAudio(
     melody: 'a melodic line that harmonizes with the key',
     percussion: 'a percussion layer that adds rhythmic interest',
   };
-  const roleText = roleDesc[role] || roleDesc['complement'];
+  const roleText = lookup(roleDesc, role, roleDesc['complement']);
   const styleText = style ? ` in a ${style} style` : '';
   const tempoText = bpm > 0 ? `Detected tempo: ${bpm} BPM. ` : '';
   const keyText = `Detected key: ${key} ${scale}. `;
@@ -448,10 +449,13 @@ function detectKeyFromPattern(pattern: string): string {
 
   if (allNotes.length === 0) return 'C';
 
-  const noteCounts: Record<string, number> = {};
+  // Object.create(null): the keys come from pattern text, and both
+    // reading and writing 'constructor'/'__proto__' on a plain literal
+    // misbehave (#318).
+    const noteCounts: Record<string, number> = Object.create(null) as Record<string, number>;
   for (const note of allNotes) {
     const normalizedNote = note.charAt(0).toUpperCase() + note.slice(1);
-    noteCounts[normalizedNote] = (noteCounts[normalizedNote] || 0) + 1;
+    noteCounts[normalizedNote] = lookup(noteCounts, normalizedNote, 0) + 1;
   }
 
   let mostCommonNote = 'C';
@@ -515,7 +519,7 @@ function generateComplementaryLayer(
           'jungle': 's("hh*32").gain(perlin.range(0.2, 0.4)).hpf(4000)',
           'jazz': 's("~ ride ~ ride, ~ ~ ~ hh").gain(0.3).room(0.3)',
         };
-        return percOptions[style] || percOptions['techno'];
+        return lookup(percOptions, style, percOptions['techno']);
       }
       return ctx.generator.generateDrumPattern(style, 0.6);
 
@@ -535,7 +539,7 @@ function generateComplementaryLayer(
         'trap': '.gain(0.5).room(0.15)', 'jungle': '.delay(0.125).room(0.25).gain(0.55)',
         'jazz': '.room(0.4).gain(0.5)',
       };
-      return ctx.generator.generateMelody(scale, 8, octaveRange) + (effects[style] || '.room(0.3).gain(0.5)');
+      return ctx.generator.generateMelody(scale, 8, octaveRange) + lookup(effects, style, '.room(0.3).gain(0.5)');
     }
 
     case 'pad': {
@@ -551,7 +555,7 @@ function generateComplementaryLayer(
         'jungle': `chord("<${safeKey}m9 ${fourth}m9>/8").dict('ireal').voicing().s("gm_epiano1").gain(0.25).room(0.4).delay(0.25)`,
         'jazz': `chord("<${safeKey}m9 ${fourth}m9 ${fifth}7>/4").dict('ireal').voicing().s("gm_epiano1").gain(0.3).room(0.5)`,
       };
-      return padPatterns[style] || padPatterns['techno'];
+      return lookup(padPatterns, style, padPatterns['techno']);
     }
 
     case 'texture': {
@@ -564,7 +568,7 @@ function generateComplementaryLayer(
         'jungle': `s("breaks125:8").fit().chop(32).gain(0.05).hpf(5000).room(0.4).pan(perlin.range(0.2, 0.8))`,
         'jazz': `s("brush:1").struct("~ 1 ~ 1 ~ 1 ~ ~").gain(0.1).room(0.5)`,
       };
-      return texturePatterns[style] || texturePatterns['techno'];
+      return lookup(texturePatterns, style, texturePatterns['techno']);
     }
 
     default:

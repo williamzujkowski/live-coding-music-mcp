@@ -617,7 +617,13 @@ export class AudioAnalyzer {
 
     for (const scale of Object.keys(this.SCALE_PROFILES)) {
       // Normalize profile to sum to 1
-      const rawProfile = this.SCALE_PROFILES[scale];
+      // Key comes from Object.keys(this.SCALE_PROFILES) directly above,
+      // so it is always an own property; hasOwn keeps it that way if the
+      // loop is ever rewritten (#318).
+      const rawProfile = Object.hasOwn(this.SCALE_PROFILES, scale)
+        ? this.SCALE_PROFILES[scale]
+        : undefined;
+      if (!rawProfile) continue;
       const profileSum = rawProfile.reduce((a, b) => a + b, 0);
       const profile = rawProfile.map(v => v / profileSum);
 
