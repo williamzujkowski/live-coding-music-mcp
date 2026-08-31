@@ -99,6 +99,9 @@ export class GeminiService {
   /** Resolved transport; undefined = not yet resolved, null = none available. */
   private transport: AiTransportEntry | null | undefined = undefined;
 
+  /** In-flight transport resolution, so concurrent callers share one probe. */
+  private transportPromise: Promise<AiTransportEntry | null> | null = null;
+
   private adcAvailable: boolean | null = null; // null = not checked yet
   private adcCheckPromise: Promise<boolean> | null = null;
   private cliCredentialsChecked: boolean = false;
@@ -698,6 +701,19 @@ export class GeminiService {
    * @returns The active transport, or null when nothing can serve
    */
   private async resolveTransport(): Promise<AiTransportEntry | null> {
+    if (this.transport !== undefined) return this.transport;
+
+    // Single-flight, matching checkADC() above. Without it two concurrent
+    // ai_assist calls each ran the full PATH scan and each SPAWNED A
+    // PROBE SUBPROCESS per candidate CLI — real quota, burned twice —
+    // before the last writer won the assignment anyway (#265).
+    this.transportPromise ??= this.doResolveTransport()
+      .finally(() => { this.transportPromise = null; });
+
+    return this.transportPromise;
+  }
+
+  private async doResolveTransport(): Promise<AiTransportEntry | null> {
     if (this.transport !== undefined) return this.transport;
 
     if (await this.isAvailableAsync()) {

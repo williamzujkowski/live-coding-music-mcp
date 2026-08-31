@@ -98,6 +98,36 @@ describe('transport selection', () => {
     expect(await service.getTransportId()).toBe('cli:agy');
   });
 
+  /**
+   * Without single-flight, two concurrent ai_assist calls each ran the
+   * full PATH scan and each SPAWNED a probe subprocess per candidate CLI
+   * — real provider quota, burned twice — before the last writer won the
+   * assignment anyway (#265).
+   */
+  it('probes once for concurrent callers, not once each', async () => {
+    const only = transport('cli:agy');
+    (cliTransports as jest.Mock).mockReturnValue([only]);
+    const service = new GeminiService();
+
+    await Promise.all([
+      service.getTransportId(), service.getTransportId(),
+      service.getTransportId(), service.getTransportId(),
+    ]);
+
+    expect(only.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the in-flight slot so a later call can re-probe', async () => {
+    (cliTransports as jest.Mock).mockReturnValue([transport('cli:agy', { authed: false })]);
+    const service = new GeminiService();
+
+    await Promise.all([service.getTransportId(), service.getTransportId()]);
+    service.resetTransport();
+    (cliTransports as jest.Mock).mockReturnValue([transport('cli:agy')]);
+
+    expect(await service.getTransportId()).toBe('cli:agy');
+  });
+
   it('honours enableCliTransport: false', async () => {
     const working = transport('cli:agy');
     (cliTransports as jest.Mock).mockReturnValue([working]);
