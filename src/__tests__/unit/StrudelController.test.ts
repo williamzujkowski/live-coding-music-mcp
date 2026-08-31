@@ -288,6 +288,62 @@ describe('StrudelController', () => {
     });
 
     /**
+     * #278: readPlaybackState returned `false` for BOTH "not playing" and
+     * "could not read the page". So waitForPlaybackState(false) succeeded
+     * instantly on a dead page and stop() reported "Stopped" for audio it
+     * never touched — the exact symptom #218 was filed for, reintroduced
+     * through the error path rather than through optimistic state.
+     *
+     * I wrote that catch as part of the #218 fix. It looked defensive.
+     */
+    describe('an unreadable page is not a successful stop', () => {
+      const breakThePage = (): void => {
+        jest.spyOn(mockPage, 'evaluate').mockRejectedValue(
+          new Error('Target page, context or browser has been closed'),
+        );
+      };
+
+      it('refuses to claim Stopped when the page cannot be read', async () => {
+        await controller.play();
+        breakThePage();
+
+        await expect(controller.stop()).rejects.toThrow(/could not be read/i);
+      });
+
+      it('says the audio state is unknown rather than asserting it stopped', async () => {
+        await controller.play();
+        breakThePage();
+
+        await expect(controller.stop()).rejects.toThrow(/unknown/i);
+      });
+
+      it('points at recovery', async () => {
+        await controller.play();
+        breakThePage();
+
+        await expect(controller.stop()).rejects.toThrow(/init/);
+      });
+
+      /**
+       * play() was never affected — it waits for `true`, so a swallowed
+       * error kept returning false and the wait timed out correctly. Only
+       * the stop direction collapsed, because `false` doubled as both
+       * "not playing" and "could not tell".
+       */
+      it('play still fails on an unreadable page, and names that cause', async () => {
+        breakThePage();
+
+        await expect(controller.play()).rejects.toThrow(/could not be read/i);
+      }, 15000);
+
+      it('does not blame a syntax error when the page is the problem', async () => {
+        breakThePage();
+
+        await expect(controller.play()).rejects.not.toThrow(/syntax/i);
+      }, 15000);
+    });
+
+    /**
      * The bug in #218 was not that stopping failed — it was that failing
      * to stop was reported as success. If the scheduler stays started,
      * stop() must surface that instead of claiming "Stopped".
