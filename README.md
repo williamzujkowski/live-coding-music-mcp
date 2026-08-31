@@ -18,7 +18,7 @@
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
 
-**Current State: Beta.** The core workflow (init → compose → playback → analyze) works reliably with real audio output. `npm test` reports ~2360 passing tests, <!-- COVERAGE:START -->88.77% statement coverage / 78.82% branch coverage<!-- COVERAGE:END -->. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
+**Current State: Beta.** The core workflow (init → compose → playback → analyze) works reliably with real audio output. `npm test` reports ~2570 passing tests, <!-- COVERAGE:START -->88.84% statement coverage / 78.97% branch coverage<!-- COVERAGE:END -->. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
 
 **What "Beta" means here:**
 - Tool schemas are stable within minor versions; breaking changes require a major bump
@@ -56,9 +56,9 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 - **Result envelope** on every `tools/call`: clients branch on `{ ok, errorCategory, isRetryable }` instead of parsing free-text.
 
 ### Testing & CI status
-- **~2360 passing tests**: `npm test` runs ~2330 unit/integration/example tests in parallel, then 31 browser-validation tests serially against real Chromium. The coverage figure below is from the first tier, which is the one CI also runs — the browser tier adds ~0.2 points and CI does not execute it, so counting it would document coverage nothing verifies.
+- **~2570 passing tests**: `npm test` runs ~2540 unit/integration/example tests in parallel, then 31 browser-validation tests serially against real Chromium. The coverage figure below is from the first tier, which is the one CI also runs — the browser tier adds ~0.2 points and CI does not execute it, so counting it would document coverage nothing verifies.
 <!-- COVERAGE:START -->
-- **88.77% statement coverage / 78.82% branch coverage** (92.98% functions, 89.29% lines), checked against `coverage/coverage-summary.json` by a drift guard.
+- **88.84% statement coverage / 78.97% branch coverage** (93.07% functions, 89.40% lines), checked against `coverage/coverage-summary.json` by a drift guard.
 <!-- COVERAGE:END -->
 - **Lint blocking in CI**: 0 errors, ~195 warnings (mostly `any` in test mocks).
 - **OIDC trusted publishing** to npm with SLSA build provenance attestation on every release.
@@ -222,7 +222,7 @@ In Claude, ask:
 
 **What you'll see:** A Chromium window opens (visibly — this is the live editor, not a hidden process) and lands on strudel.cc. Claude calls `init`, then `compose({ style: "techno" })`. A 4-on-the-floor pattern appears in the CodeMirror editor and starts playing through your speakers.
 
-Prefer headless mode (no browser window)? Set `"headless": true` in `config.json` before the first `init` call — see [Configuration](#configuration). Note that audio analysis (tempo / key detection) is more reliable in headed mode; headless audio sampling is best-effort.
+Prefer headless mode (no browser window)? Set `"headless": true` in `config.json` before the first `init` call — see [Configuration](#configuration). Note that tempo detection currently reflects how often the agent polls rather than the audio itself (#322), in headed or headless mode alike.
 
 ### 5. Where to go next
 
@@ -716,8 +716,8 @@ Measured against the current `StrudelController` cache + Strudel.cc on a develop
 | Pattern read (cached) | 10–15 ms |
 | Play / pause / stop | 100–150 ms |
 | Audio analysis (single FFT) | 10–15 ms |
-| Tempo detection | <100 ms (onset-based; degraded under headless audio) |
-| Key detection | <100 ms (Krumhansl-Schmuckler) |
+| Tempo detection | <100 ms (onset-based; reports poll cadence, not tempo — #322) |
+| Key detection | <100 ms (Krumhansl-Schmuckler, Pearson; bass-register accuracy depends on `fft_size`) |
 | Pattern generation | <100 ms (template-based) |
 | Process resident memory | ~120–150 MB |
 

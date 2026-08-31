@@ -155,7 +155,7 @@ Adding context guidelines to CLAUDE.md after line 70.
 ## Project Purpose
 This is an **open source, actively developed** MCP server enabling AI agents to generate music via Strudel.cc using browser automation.
 
-**Current State:** Beta. `npm test` runs two tiers: ~2330 unit/integration tests in parallel, then 31 browser tests serially — they contend for Chromium and the live site, which made the combined parallel run flaky (#267). 20 skipped, 0 failing. <!-- COVERAGE:START -->88.77% statement / 78.82% branch coverage<!-- COVERAGE:END -->. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
+**Current State:** Beta. `npm test` runs two tiers: ~2540 unit/integration tests in parallel, then 31 browser tests serially — they contend for Chromium and the live site, which made the combined parallel run flaky (#267). 20 skipped, 0 failing. <!-- COVERAGE:START -->88.84% statement / 78.97% branch coverage<!-- COVERAGE:END -->. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
 
 ## GitHub Issues Workflow
 
@@ -263,7 +263,7 @@ Integration: Playwright → Strudel.cc
 - **Features**:
   - Frequency analysis (bands, spectral centroid, brightness)
   - Tempo detection (onset-based, 40-200 BPM range)
-  - Key detection (Krumhansl-Schmuckler algorithm, 7 scale types)
+  - Key detection (Krumhansl-Schmuckler with Pearson correlation, 7 scale types)
   - Rhythm analysis (complexity, density, syncopation, regularity)
 - **Caching**: 50ms TTL, dual-layer (browser + server)
 - **Algorithms**: Autocorrelation, spectral flux, chroma extraction
@@ -302,8 +302,8 @@ estimates — treat them as rough, not as guarantees.
 | Pattern Read (cached) | 10-15ms | measured | 100ms TTL |
 | Play/Stop | 100-150ms | measured | Via `strudelMirror.evaluate()`/`.stop()`, then state confirmed |
 | Audio Analysis | 10-15ms | measured | FFT with typed arrays; `targetP95Ms: 15` |
-| Tempo Detection | <100ms | measured | Onset-based; `targetP95Ms: 100`. Accuracy degrades under headless audio |
-| Key Detection | <100ms | measured | Krumhansl-Schmuckler; `targetP95Ms: 100`. Best-effort |
+| Tempo Detection | <100ms | measured | `targetP95Ms: 100`. Fast, but see Known Issues — it measures poll cadence, not audio (#322) |
+| Key Detection | <100ms | measured | Krumhansl-Schmuckler with Pearson; `targetP95Ms: 100`. Accurate on all 24 canonical profiles; resolution-limited in the bass |
 | Rhythm Analysis | <100ms | estimate | Complexity, density, syncopation |
 
 ## Development Workflow
@@ -458,7 +458,23 @@ if (!validation.isValid) {
 
 ### Current Limitations
 - Multi-session is supported (#108, v3.0.0): each `session_id` gets its own browser page, undo/redo/history, and audio capture. Max 5 concurrent sessions, 30-min idle eviction. Browser process is still shared across sessions (one Chromium, multiple contexts).
-- Tempo detection accuracy degrades under headless audio — onset sampling is flakier than in a real browser. Key detection (Krumhansl-Schmuckler) is best-effort.
+- **Tempo detection does not measure the music.** Each `detectTempo` call
+  samples the spectrum once and records at most one onset, and four are
+  needed before a BPM is reported — so the inter-onset intervals are the
+  gaps between *tool calls*, and the answer is a function of how often
+  the agent polls. Compounding it, `ONSET_THRESHOLD = 0.3` against a flux
+  normalized by bin count and by 255 demands an average jump of +76/255
+  across every bin; a realistic kick transient measures 0.057, five times
+  under, so only a silence-to-full-scale transition fires it. The interval
+  maths is sound (median IOI, octave folding — #322/#330); the collection
+  is not. Tracked in #322. This previously read "accuracy degrades under
+  headless audio", which undersold it considerably.
+- Key detection uses Krumhansl-Schmuckler with Pearson correlation and no
+  mode boosts (#320). It recovers all 24 canonical profiles exactly, but
+  it depends on chroma resolution: at the shipped `fft_size: 2048`
+  (21.5 Hz/bin) pitch classes below ~170 Hz are unreliable, and at 1024
+  (43 Hz/bin) anything below ~500 Hz is. Raise `fft_size` to 4096 for
+  bass-register work (#321).
 - History bounded to 100 entries per session (`MAX_HISTORY` constant).
 - Browser tests require Playwright and are skipped in CI.
 - The deprecated tool aliases left by #120 were removed in v4.0.0 (#178). Tool calls using the old verb names (e.g. `write`, `play`, `detect_tempo`) now return an error.
