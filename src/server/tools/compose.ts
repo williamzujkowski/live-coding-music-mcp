@@ -8,7 +8,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { CreativeFeedback } from '../../services/GeminiService.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
-import { DRUM_STYLES, resolveDrumStyle } from '../../services/StyleRegistry.js';
+import { resolveLayers } from '../../services/StyleRegistry.js';
 
 const SESSION_ID_PROP = {
   session_id: {
@@ -121,11 +121,14 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       }
       const controller = ctx.getController(sid);
 
-      // What the caller asked for is not always what they get: an
-      // unknown genre falls back to techno drums. It used to do that
-      // silently while metadata.style echoed the request, so an agent
-      // asking for vaporwave was told it received vaporwave (#279).
-      const resolution = resolveDrumStyle(args.style);
+      // compose assembles four independently-resolved layers, each
+      // falling back on its own. One `style` field cannot describe that
+      // — reporting only the drum resolution called
+      // compose({style:'jazz'}) "techno" while its bassline, Dorian
+      // scale and jazz chords were all genuinely jazz, and let
+      // `breakbeat` claim itself supported over a techno bassline
+      // (#294, correcting #279).
+      const resolution = resolveLayers(args.style);
       const tempo = args.tempo || defaultTempo(args.style);
       const key = args.key || 'C';
       const pattern = ctx.generator.generateCompletePattern(args.style, key, tempo);
@@ -141,12 +144,14 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
         success: boolean;
         pattern: string;
         metadata: {
+          /** Exactly what the caller asked for. */
           style: string;
           bpm: number;
           key: string;
-          /** Present only when the requested style had no drums of its own. */
-          requested_style?: string;
-          style_substituted?: boolean;
+          /** The style whose material each layer actually uses. */
+          layers: { drums: string; bass: string; chords: string; scale: string };
+          /** Layers that fell back rather than matching the request. */
+          substituted: string[];
         };
         status: string;
         message: string;
@@ -154,19 +159,22 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       } = {
         success: true,
         pattern: pattern.substring(0, 200) + (pattern.length > 200 ? '...' : ''),
-        metadata: { style: resolution.resolved, bpm: tempo, key },
+        metadata: {
+          style: args.style,
+          bpm: tempo,
+          key,
+          layers: resolution.layers,
+          substituted: resolution.substituted,
+        },
         status: shouldPlay ? 'playing' : 'ready',
-        message: resolution.supported
-          ? `Created ${resolution.resolved} pattern in ${key}${shouldPlay ? ' - now playing' : ''}`
-          : `No drum pattern for style "${args.style}" — used ${resolution.resolved} instead. ` +
-            `Created pattern in ${key}${shouldPlay ? ' - now playing' : ''}. ` +
-            `Styles with their own drums: ${DRUM_STYLES.join(', ')}.`,
+        message: resolution.substituted.length === 0
+          ? `Created ${args.style} pattern in ${key}${shouldPlay ? ' - now playing' : ''}`
+          : `Created pattern in ${key}${shouldPlay ? ' - now playing' : ''}. ` +
+            `No ${resolution.substituted.join(' or ')} defined for style "${args.style}" — ` +
+            resolution.substituted
+              .map(l => `${l}: ${resolution.layers[l as 'drums' | 'bass']}`)
+              .join(', ') + '.',
       };
-
-      if (!resolution.supported) {
-        response.metadata.requested_style = args.style;
-        response.metadata.style_substituted = true;
-      }
 
       if (args.get_feedback) {
         if (ctx.geminiService.isAvailable()) {

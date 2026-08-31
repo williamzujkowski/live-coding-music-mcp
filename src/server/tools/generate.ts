@@ -14,7 +14,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { withStashNotice } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
-import { DRUM_STYLES, resolveDrumStyle } from '../../services/StyleRegistry.js';
+import { BASS_STYLES, DRUM_STYLES, resolveBassStyle, resolveDrumStyle } from '../../services/StyleRegistry.js';
 
 const SESSION_ID_PROP = {
   session_id: {
@@ -159,9 +159,20 @@ async function doDrums(args: any, ctx: ToolContext, sid?: string): Promise<strin
 async function doBassline(args: any, ctx: ToolContext, sid?: string): Promise<string> {
   InputValidator.validateRootNote(args.key);
   InputValidator.validateStringLength(args.style, 'style', 100, false);
+  // role=bass echoed args.style back while the generator had silently
+  // fallen back to techno — #279 in the same file, eight lines below
+  // the sibling it fixed (#294).
+  const resolution = resolveBassStyle(args.style);
   const bass = ctx.generator.generateBassline(args.key, args.style);
   const written = await appendOrSet(bass, ctx, sid);
-  return withStashNotice(`Generated ${args.style} bassline in ${args.key}`, written);
+  return withStashNotice(
+    resolution.supported
+      ? `Generated ${resolution.resolved} bassline in ${args.key}`
+      : `No bassline for style "${args.style}" — generated ${resolution.resolved} ` +
+        `bassline in ${args.key} instead. ` +
+        `Styles with their own bassline: ${BASS_STYLES.join(', ')}.`,
+    written,
+  );
 }
 
 async function doMelody(args: any, ctx: ToolContext, sid?: string): Promise<string> {
