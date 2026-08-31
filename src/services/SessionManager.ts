@@ -514,6 +514,17 @@ export class SessionManager {
     }
 
     for (const id of sessionsToDestroy) {
+      // Rechecked, because the list is a snapshot and each destroy
+      // awaits. A session used while an earlier one was being torn down
+      // had its `lastActivity` refreshed and was killed anyway — mid-use
+      // (#423).
+      const session = this.sessions.get(id);
+      if (!session) continue;
+      if (Date.now() - session.lastActivity.getTime() <= this.INACTIVITY_TIMEOUT) {
+        this.logger.info(`Session '${id}' became active during the sweep; keeping it`);
+        continue;
+      }
+
       this.logger.info(`Auto-destroying inactive session '${id}'`);
       try {
         await this.destroySession(id);
