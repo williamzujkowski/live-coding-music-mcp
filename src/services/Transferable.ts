@@ -67,7 +67,25 @@ export function toTransferable(value: unknown, depth = 0, budget = { nodes: 0 })
   }
 
   if (Array.isArray(value)) {
-    return value.map(item => toTransferable(item, depth + 1, budget));
+    // Index loop, not `.map`. `map` is looked up on the value, and an
+    // array's own `map` property is writable: `const a = []; a.map = ...`
+    // is an ordinary assignment, so calling it would run pattern-supplied
+    // code in the child — the same class of hole as `toJSON`, one method
+    // over. Descriptors for the same reason as below.
+    const out: unknown[] = [];
+    for (let i = 0; i < value.length; i++) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, i);
+      if (descriptor === undefined) {
+        out.push(null);
+        continue;
+      }
+      if (descriptor.get !== undefined) {
+        out.push(null);
+        continue;
+      }
+      out.push(toTransferable(descriptor.value, depth + 1, budget));
+    }
+    return out;
   }
 
   // Own enumerable properties only. Inherited accessors are pattern-

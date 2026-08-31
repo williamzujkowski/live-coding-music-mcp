@@ -56,6 +56,26 @@ describe('toTransferable', () => {
     expect(toTransferable(value)).toEqual({ own: 'yes' });
   });
 
+  it('does not call an array\'s own map', () => {
+    // `map` is looked up on the value, and an array's own `map` is
+    // writable — plain assignment, no exotic syntax. Calling it would
+    // run pattern code in the child, which is the same hole as toJSON.
+    const calls: string[] = [];
+    const arr = [1, 2] as unknown[] & { map?: unknown };
+    arr.map = () => { calls.push('map'); return ['hijacked']; };
+    expect(toTransferable(arr)).toEqual([1, 2]);
+    expect(calls).toEqual([]);
+  });
+
+  it('does not call an array index getter', () => {
+    const calls: string[] = [];
+    const arr: unknown[] = [];
+    Object.defineProperty(arr, 0, { enumerable: true, get: () => { calls.push('get'); return 1; } });
+    arr.length = 1;
+    expect(toTransferable(arr)).toEqual([null]);
+    expect(calls).toEqual([]);
+  });
+
   it('refuses a circular structure instead of recursing forever', () => {
     const a: Record<string, unknown> = {};
     a.self = a;
