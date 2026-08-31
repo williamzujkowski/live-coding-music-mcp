@@ -93,7 +93,16 @@ function doList(ctx: ToolContext): unknown {
   return wrap({
     count: info.length,
     max_sessions: sm.getMaxSessions(),
-    default_session: sm.getDefaultSessionId(),
+    // Only when it exists. After a destroy, SessionManager resets this
+    // to the literal 'default', and reporting that named a session no
+    // caller could switch to or find in the list below (#421).
+    //
+    // Checked against `info` rather than by looking the session up:
+    // `getSession` stamps `lastActivity`, and listing sessions is not
+    // using one.
+    default_session: info.some(s => s.id === sm.getDefaultSessionId())
+      ? sm.getDefaultSessionId()
+      : null,
     sessions: info.map(s => ({
       id: s.id,
       created: s.created.toISOString(),

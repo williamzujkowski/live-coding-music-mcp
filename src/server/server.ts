@@ -310,7 +310,35 @@ export class StrudelMCPServer {
   // tool-name lists had drifted and were silently wrong for explicit
   // session_id.
 
-  private async getCurrentPatternSafe(sessionId?: string): Promise<string> {
+  /**
+   * The session a call belongs to when it names none.
+   *
+   * Returns the default session's id when SessionManager actually holds
+   * that session, and `undefined` when it does not — which means the
+   * legacy single controller, the only thing a server that has run
+   * nothing but `init` has.
+   *
+   * There used to be two answers to this question.
+   * `getControllerForSession` resolved through
+   * `sessionManager.getDefaultSession()`, while `getCurrentPatternSafe`,
+   * `writePatternSafe` and `getAudioCaptureService` went straight to the
+   * legacy controller. So after `session({action:'switch'})`, `playback`
+   * followed the switch and `edit_pattern` did not — reproduced end to
+   * end in #421: a write with no `session_id` landed in the legacy
+   * browser while the session switched to still held strudel.cc's
+   * boilerplate.
+   *
+   * `getSession` stamps `lastActivity`, which is correct here: resolving
+   * a session is the first step of using it.
+   */
+  private effectiveSessionId(sessionId?: string): string | undefined {
+    if (sessionId !== undefined) return sessionId;
+    const defaultId = this.sessionManager.getDefaultSessionId();
+    return this.sessionManager.getSession(defaultId) !== undefined ? defaultId : undefined;
+  }
+
+  private async getCurrentPatternSafe(rawSessionId?: string): Promise<string> {
+    const sessionId = this.effectiveSessionId(rawSessionId);
     if (sessionId) {
       // Explicit session — strict lookup, no pre-init stash. Named sessions
       // must be created via `session({ action: "create" })` before they're useful.
@@ -349,7 +377,8 @@ export class StrudelMCPServer {
     return pending;
   }
 
-  private async writePatternSafe(pattern: string, sessionId?: string): Promise<string> {
+  private async writePatternSafe(pattern: string, rawSessionId?: string): Promise<string> {
+    const sessionId = this.effectiveSessionId(rawSessionId);
     if (sessionId) {
       const sessionController = this.sessionManager.getSession(sessionId);
       if (!sessionController) {
@@ -419,7 +448,15 @@ export class StrudelMCPServer {
     // (#179): route to the session-specific bundle. Default session is
     // 'default'; named sessions get their own isolated stacks.
     if (name === 'edit_pattern') {
-      const sid: string | undefined = args?.session_id;
+      // The session this edit belongs to, resolved the same way the
+      // read and write below resolve it. `sid ?? 'default'` sent every
+      // unnamed edit's undo snapshot to a bundle keyed 'default', which
+      // then survived destroying the session it actually belonged to —
+      // so the next default session inherited the previous one's undo
+      // stack (#421).
+      const sid: string | undefined = this.effectiveSessionId(args?.session_id);
+      // A default session is enough to snapshot against; `init` is not
+      // required when SessionManager is the one holding the page.
       const canRead = sid !== undefined || this.isInitialized;
       if (canRead) {
         // Two different failures used to share this catch. A missing
@@ -627,9 +664,16 @@ export class StrudelMCPServer {
   // the class. Post-#180: per-session — each session's recorder injects
   // into its own page; concurrent captures across sessions no longer
   // share a singleton stream.
-  private async getAudioCaptureService(sessionId?: string): Promise<AudioCaptureService> {
-    // Resolve the right page: explicit session via SessionManager, or
-    // legacy/default via this.controller.
+  private async getAudioCaptureService(rawSessionId?: string): Promise<AudioCaptureService> {
+    // Resolve the right page: the named or default session via
+    // SessionManager, or the legacy controller when neither exists.
+    //
+    // This used to treat "no session_id" as "legacy, always", so a
+    // recorder was injected into the legacy page while `startCapture`
+    // ran against the default session's page — two different browser
+    // contexts (#421). It also refused with "Browser not initialized"
+    // when a live default session was sitting right there.
+    const sessionId = this.effectiveSessionId(rawSessionId);
     let page;
     let key: string;
     if (sessionId) {
