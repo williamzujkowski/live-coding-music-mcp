@@ -24,7 +24,12 @@ describe('StrudelController', () => {
 
     (chromium.launch as jest.Mock).mockResolvedValue(mockBrowser);
 
-    controller = new StrudelController(true);
+    // A budget short enough that a test asserting a start FAILURE does
+    // not sit through one sized for a real cold start (#416).
+    controller = new StrudelController(true, undefined, undefined, {
+      firstPlayMs: 300,
+      subsequentPlayMs: 300,
+    });
   });
 
   afterEach(async () => {
