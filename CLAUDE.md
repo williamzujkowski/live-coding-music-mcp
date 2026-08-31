@@ -478,6 +478,55 @@ allocates its way out through those is caught by the deadline, which is
 a weaker guarantee. Say this plainly rather than implying the problem is
 solved.
 
+### Query density guard (#360)
+
+`queryEvents` will not materialize a query it has not sampled first. The
+old guard sampled the **head** of the range and extrapolated, which left
+two measured holes:
+
+```
+s("bd*200000")   -> refused correctly
+s("~ bd*200000") -> OUT OF HEAP.  One leading rest, and the probe saw
+                    nothing, projected nothing, refused nothing.
+```
+
+`EventDensityProbe` samples 8 windows spread across the range at 4 span
+scales, growing until a window holds a real sample. Four rules matter,
+and each one was a bug first:
+
+- **A projection needs a sample.** `s("bd").slow(64)` returns one hap at
+  any span, because events legitimately begin at t=0; extrapolating from
+  it projects 10^12 events and refuses an ordinary pattern. So a window
+  must hold 16 *distinct onset times* before its density is believed —
+  distinct, because a stack of N layers starting together is one moment
+  observed N times.
+- **Windows must not align with the cycle.** Evenly spaced windows over a
+  16-cycle range all start on whole cycles — the same phase, eight times
+  — so `s("~ bd*200000")` was refused over `0..1` and exhausted the heap
+  over `0..4`. Each window is slid within its slice by an irrational
+  fraction of it.
+- **The near-cap verdict is an average, not a maximum.** A window at t=0
+  of `s("bd*40000")` sees twice the cycle's average density and projects
+  80,000 against a 50,000 cap — a false refusal. Only the
+  wildly-over-the-cap shortcut acts on a single window.
+- **Refusing at the cap is wrong.** The caller counts materialized haps
+  and enforces the cap exactly, for free. The probe only refuses what is
+  too big to *materialize*.
+
+**Resolution, not a guarantee.** A dense region narrower than 1/8 of the
+range and sitting between two windows is not seen; nor is one so dense
+that growing a window into it from an adjacent rest is itself fatal.
+Since #307 both degrade to an error envelope and a respawned child rather
+than a dead server. `verify-sandbox.ts` deliberately uses such a pattern
+to prove the containment still holds.
+
+Cost: `query_pattern_events` went from ~1ms to ~28ms warm (up to 32
+`queryArc` calls where there was one). Gated in `latency.benchmark.ts`.
+
+Note `verify-sandbox.ts` runs the engine **in-process with no heap cap**,
+so it cannot see a probe that OOMs only under the child's limit. Check
+new density cases through `IsolatedStrudelEngine` too.
+
 ### Current Limitations
 - Multi-session is supported (#108, v3.0.0): each `session_id` gets its own browser page, undo/redo/history, and audio capture. Max 5 concurrent sessions, 30-min idle eviction. Browser process is still shared across sessions (one Chromium, multiple contexts).
 - **Tempo detection does not measure the music.** Each `detectTempo` call
@@ -535,6 +584,7 @@ src/
 │   ├── MIDIImportService.ts    # MIDI -> Strudel import (#203)
 │   ├── AudioExportService.ts   # Record live audio to WAV/WebM (#223)
 │   ├── PatternSandbox.ts       # AST allowlist + vm for local execution (#229)
+│   ├── EventDensityProbe.ts    # Refuses a query before it allocates (#360)
 │   ├── LocalPatternEngine.ts   # The contract the local tools depend on (#307)
 │   ├── IsolatedStrudelEngine.ts # LocalPatternEngine over a forked child (#307)
 │   ├── IsolatedEngineRunner.ts # Persistent fork: heap cap + deadline (#307)
