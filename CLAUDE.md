@@ -155,7 +155,7 @@ Adding context guidelines to CLAUDE.md after line 70.
 ## Project Purpose
 This is an **open source, actively developed** MCP server enabling AI agents to generate music via Strudel.cc using browser automation.
 
-**Current State:** Beta. `npm test` runs two tiers: ~3020 unit/integration tests in parallel, then 36 browser tests serially — they contend for Chromium and the live site, which made the combined parallel run flaky (#267). 20 skipped, 0 failing. <!-- COVERAGE:START -->88.99% statement / 79.99% branch coverage<!-- COVERAGE:END -->. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
+**Current State:** Beta. `npm test` runs two tiers: ~3140 unit/integration tests in parallel, then 36 browser tests serially — they contend for Chromium and the live site, which made the combined parallel run flaky (#267). 20 skipped, 0 failing. <!-- COVERAGE:START -->88.99% statement / 79.99% branch coverage<!-- COVERAGE:END -->. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
 
 ## GitHub Issues Workflow
 
@@ -448,6 +448,46 @@ breaker and the network-retry helper, are never invoked outside tests.
 Note also that `ErrorRecovery.withRetry` — which this snippet claimed for
 several releases — has never existed at all.
 
+### Tempo units
+
+`setcpm(n)` sets **cycles** per minute. `setcps(y)` sets cycles per
+second. Neither is BPM. Everything this project generates or imports
+puts one bar of 4/4 in a cycle, so:
+
+    bpm = cyclesPerMinute * 4
+
+Never write a tempo call by hand. `src/utils/Tempo.ts` owns the units:
+
+```typescript
+import { BEATS_PER_CYCLE, declaredBpm, impliedBpm } from '../utils/Tempo.js';
+
+`setcpm(${bpm}/${String(BEATS_PER_CYCLE)})`  // writing a tempo
+declaredBpm(pattern)                          // the number the author wrote
+impliedBpm(pattern)                           // what that call works out to
+```
+
+`BEATS_PER_BAR` (the meter) and `BARS_PER_CYCLE` (this project's
+convention) are separate constants that happen to multiply to four. They
+are separate claims, and treating them as one is how the bug below got
+in three different ways.
+
+**Why this file says all that.** Every generated pattern played at four
+times its requested tempo, in production, for months (#395). Three
+writers had three different divisors: `setcpm(bpm)`, `setcps(bpm/60)`,
+`setcps(bpm/60/2)`. MIDI import had a fourth (#397), and `export_midi`
+ignored the pattern's tempo entirely (#399).
+
+It survived a day of deliberate tempo work because **two bugs cancelled
+in the only measurement being made**: the audio ran at 4x, and
+`detectTempo` folds anything outside 40-200 BPM back into range, so 520
+folded by four to 130 and reported exactly the number requested. Every
+check agreed with itself.
+
+So: **verify a tempo change against the scheduler's `cps`, never against
+`detectTempo`.** The detector is what hid it. And assert implied BPM
+rather than call text — three call sites had three spellings of one
+error, and a text match catches only the one it was written against.
+
 ### Pattern Validation
 ```typescript
 import { PatternValidator } from './utils/PatternValidator';
@@ -683,7 +723,8 @@ src/
 │   ├── PerformanceMonitor.ts   # Monitoring (156 lines)
 │   ├── InputValidator.ts       # Input validation (349 lines)
 │   ├── SafePath.ts             # Filename confinement for exports (#224)
-│   └── ServerConfig.ts         # config.json parsing + validation (#227)
+│   ├── ServerConfig.ts         # config.json parsing + validation (#227)
+│   └── Tempo.ts                # Beats/bars/cycles + the tempo parser (#395/#397)
 └── __tests__/                  # Jest tests
 ```
 
