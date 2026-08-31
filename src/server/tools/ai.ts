@@ -301,7 +301,7 @@ Example patterns:
       });
     }
     const suggestedPattern = geminiResponse[0].code;
-    const validation = ctx.strudelEngine.validate(suggestedPattern);
+    const validation = await ctx.strudelEngine.validate(suggestedPattern);
     return {
       suggested_pattern: suggestedPattern,
       analysis: { bpm, key, scale },

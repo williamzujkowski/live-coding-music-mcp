@@ -21,6 +21,8 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { StrudelEngine, EVALUATOR_EXPORTS } from '../src/services/StrudelEngine.js';
+import { IsolatedStrudelEngine } from '../src/services/IsolatedStrudelEngine.js';
+import { IsolatedRunnerError } from '../src/services/IsolatedEngineRunner.js';
 import { MusicTheory } from '../src/services/MusicTheory.js';
 
 // A pattern that escaped the sandbox would create this file.
@@ -323,6 +325,62 @@ async function main(): Promise<void> {
         console.log(`  ok    ${String(compared)} (k,n) pairs up to n=32, zero differences`);
       }
     }
+  }
+
+  // ---------------------------------------------------------------
+  // Memory containment (#307)
+  //
+  // The allowlist stops a pattern doing anything interesting. It does not
+  // stop one doing something LARGE, and until this ran out of process a
+  // large one took the whole MCP server down — every session's browser
+  // state with it.
+  //
+  // The payload below is not the one the issue named. `new Array(5e7)` is
+  // refused before execution: NewExpression is not in the allowlist at
+  // all, so the issue's stated PoC was already unreachable. This one is
+  // reachable today, through a documented tool, with no exotic syntax:
+  // `analyze_pattern_local` evaluates and queries a cycle with no event
+  // cap (unlike `query_pattern_events`, which probes first), so a mini
+  // pattern of ~10^10 events allocates until V8 aborts. Confirmed
+  // in-process: node dies with FatalProcessOutOfMemory and never reaches
+  // the next line.
+  // ---------------------------------------------------------------
+  console.log('\nMemory containment (#307):');
+  {
+    const OOM_PATTERN = 's("[bd*99999]*99999")';
+    const isolated = new IsolatedStrudelEngine({ maxOldSpaceMb: 128, timeoutMs: 15000 });
+    const pid = process.pid;
+    try {
+      await isolated.analyzePattern(OOM_PATTERN);
+      failures++;
+      console.error(`  FAIL  ${OOM_PATTERN} was expected to exhaust the cap and did not`);
+    } catch (error: unknown) {
+      if (error instanceof IsolatedRunnerError && error.kind === 'oom') {
+        console.log('  ok    heap-exhausting pattern killed the child, not the server');
+      } else {
+        failures++;
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(`  FAIL  expected an out-of-heap failure, got: ${detail}`);
+      }
+    }
+
+    // This line running at all is the assertion. Before the fix the
+    // process was already gone by here.
+    if (process.pid === pid) {
+      console.log('  ok    parent survived');
+    } else {
+      failures++;
+      console.error('  FAIL  parent did not survive');
+    }
+
+    const after = await isolated.validate('s("bd sd")');
+    if (after.valid) {
+      console.log('  ok    engine respawned and the next call succeeded');
+    } else {
+      failures++;
+      console.error(`  FAIL  engine did not recover: ${after.errors.join('; ')}`);
+    }
+    isolated.dispose();
   }
 
   if (failures > 0) {

@@ -237,6 +237,8 @@ Services: MusicTheory, PatternGenerator, SessionManager,
     ↓
 Controllers: StrudelController, AudioAnalyzer
     ↓
+Isolation: IsolatedStrudelEngine → forked engineChild (heap cap + deadline)
+    ↓
 Storage: PatternStore (on-disk JSON)
     ↓
 Integration: Playwright → Strudel.cc
@@ -456,6 +458,26 @@ if (!validation.isValid) {
 
 ## Known Issues & Limitations
 
+### Local engine isolation (#307)
+
+`validate_pattern_local`, `analyze_pattern_local`, `query_pattern_events`
+and `transpile_pattern` evaluate user code in a **forked child**, not in
+the server process. One persistent child, forked on first use, reused,
+respawned when it dies. Cold start ~200ms under `tsx`; warm round-trip
+p95 ~1ms, both gated in `latency.benchmark.ts`.
+
+Why a child and not a worker: measured. A `worker_threads` worker that
+blows `resourceLimits.maxOldGenerationSizeMb` inside an allocating
+builtin **takes the parent down with it** — the parent dumped core. A
+fork with `--max-old-space-size` dies alone and the parent keeps working.
+
+**What this does not bound.** `--max-old-space-size` bounds V8's old
+space. It bounds neither external nor native memory (typed-array backing
+stores, Buffers), so it is not a total memory bound. A pattern that
+allocates its way out through those is caught by the deadline, which is
+a weaker guarantee. Say this plainly rather than implying the problem is
+solved.
+
 ### Current Limitations
 - Multi-session is supported (#108, v3.0.0): each `session_id` gets its own browser page, undo/redo/history, and audio capture. Max 5 concurrent sessions, 30-min idle eviction. Browser process is still shared across sessions (one Chromium, multiple contexts).
 - **Tempo detection does not measure the music.** Each `detectTempo` call
@@ -513,6 +535,11 @@ src/
 │   ├── MIDIImportService.ts    # MIDI -> Strudel import (#203)
 │   ├── AudioExportService.ts   # Record live audio to WAV/WebM (#223)
 │   ├── PatternSandbox.ts       # AST allowlist + vm for local execution (#229)
+│   ├── LocalPatternEngine.ts   # The contract the local tools depend on (#307)
+│   ├── IsolatedStrudelEngine.ts # LocalPatternEngine over a forked child (#307)
+│   ├── IsolatedEngineRunner.ts # Persistent fork: heap cap + deadline (#307)
+│   ├── engineChild.ts          # Child entrypoint; the only isolated importer
+│   ├── engineChildPath.ts      # Child path (import.meta — see the file)
 │   ├── BrowserOnlyFunctions.ts # Functions the local engine can't provide (#232)
 │   └── ai/                     # Provider-agnostic AI transport (#252)
 │       ├── AiTransport.ts      # The seam: (prompt) => Promise<string>

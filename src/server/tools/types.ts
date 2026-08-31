@@ -18,7 +18,7 @@ import type { AudioExportService } from '../../services/AudioExportService.js';
 import type { MIDIImportService } from '../../services/MIDIImportService.js';
 import type { AudioCaptureService } from '../../services/AudioCaptureService.js';
 import type { GeminiService } from '../../services/GeminiService.js';
-import type { StrudelEngine } from '../../services/StrudelEngine.js';
+import type { LocalPatternEngine } from '../../services/LocalPatternEngine.js';
 import type { Logger } from '../../utils/Logger.js';
 import type { PerformanceMonitor } from '../../utils/PerformanceMonitor.js';
 
@@ -57,7 +57,7 @@ export interface ToolContext {
   theory: MusicTheory;
   sessionManager: SessionManager;
   geminiService: GeminiService;
-  strudelEngine: StrudelEngine;
+  strudelEngine: LocalPatternEngine;
   midiExportService: MIDIExportService;
   midiImportService: MIDIImportService;
   audioExportService: AudioExportService;
