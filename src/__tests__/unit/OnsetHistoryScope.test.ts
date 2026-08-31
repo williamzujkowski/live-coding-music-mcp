@@ -61,10 +61,10 @@ describe('onset history scope (#366)', () => {
     expect(historyOf(analyzer).length).toBeLessThanOrEqual(100);
   });
 
-  it('resetTempoHistory forgets everything', () => {
+  it('resetTempoHistory forgets everything', async () => {
     const analyzer = new AudioAnalyzer();
     merge(analyzer, [beat(1000), beat(1345)]);
-    analyzer.resetTempoHistory();
+    await analyzer.resetTempoHistory();
     expect(historyOf(analyzer)).toEqual([]);
   });
 
@@ -74,10 +74,14 @@ describe('onset history scope (#366)', () => {
     // gap that made #307's isolation tests pass against an unplugged
     // fix.
     const source = readFileSyncSafe('src/StrudelController.ts');
-    expect(source).toMatch(/resetTempoHistory\(\)/);
+    expect(source).toMatch(/resetTempoHistory\(this\._page\)/);
     const writeAt = source.indexOf('async writePattern(');
     const stopAt = source.indexOf('async stop()');
-    const resets = [...source.matchAll(/resetTempoHistory\(\)/g)].map(m => m.index ?? -1);
+    // Matches the call with or without the page argument: the page is
+    // passed so the BROWSER-side flux buffer is cleared too, which the
+    // Node-only reset left holding ten seconds of the previous pattern
+    // (#374).
+    const resets = [...source.matchAll(/resetTempoHistory\([^)]*\)/g)].map(m => m.index ?? -1);
     expect(resets.some(at => at > writeAt && at < stopAt)).toBe(true);
     expect(resets.some(at => at > stopAt)).toBe(true);
   });
@@ -93,5 +97,40 @@ function readFileSyncSafe(relative: string): string {
 describe('StrudelController is constructible for the wiring check', () => {
   it('exists', () => {
     expect(typeof StrudelController).toBe('function');
+  });
+});
+
+describe('the page-side flux buffer is cleared too (#374)', () => {
+  it('drains the browser buffer when given a page', async () => {
+    // Clearing only the Node side left up to ten seconds of the
+    // previous pattern's flux waiting in the PAGE, to be drained into
+    // the fresh history on the next reading. The reset looked complete
+    // because everything it could see was cleared, and the
+    // contamination lived one process away.
+    const analyzer = new AudioAnalyzer();
+    const evaluated: string[] = [];
+    const page = {
+      evaluate: (fn: () => void) => {
+        evaluated.push(String(fn));
+        return Promise.resolve();
+      },
+    } as never;
+
+    await analyzer.resetTempoHistory(page);
+    expect(evaluated).toHaveLength(1);
+    expect(evaluated[0]).toContain('takeFluxSamples');
+  });
+
+  it('survives a page that has gone away', async () => {
+    const analyzer = new AudioAnalyzer();
+    const page = { evaluate: () => Promise.reject(new Error('Target closed')) } as never;
+    await expect(analyzer.resetTempoHistory(page)).resolves.toBeUndefined();
+  });
+
+  it('still clears the node side with no page at all', async () => {
+    const analyzer = new AudioAnalyzer();
+    merge(analyzer, [beat(1000), beat(1345)]);
+    await analyzer.resetTempoHistory();
+    expect(historyOf(analyzer)).toEqual([]);
   });
 });
