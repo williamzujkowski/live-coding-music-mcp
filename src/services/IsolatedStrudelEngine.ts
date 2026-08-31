@@ -46,6 +46,14 @@ export interface IsolatedStrudelEngineOptions {
 export class IsolatedStrudelEngine implements LocalPatternEngine {
   private runner: IsolatedEngineRunner | null = null;
   private starting: Promise<IsolatedEngineRunner> | null = null;
+  /**
+   * Permanent, not a flag that a later start can clear. Resolving the
+   * child entrypoint is asynchronous, so `dispose()` can land while a
+   * start is in flight — and without this the start finished afterwards,
+   * assigned a fresh runner and forked a child AFTER shutdown. A process
+   * spawned by a disposed engine has nobody left to kill it.
+   */
+  private disposed = false;
 
   constructor(private readonly options: IsolatedStrudelEngineOptions = {}) {}
 
@@ -70,8 +78,12 @@ export class IsolatedStrudelEngine implements LocalPatternEngine {
     return this.call<PatternEvent[]>('queryEvents', [code, start, end]);
   }
 
-  /** Stops the child. Safe to call when none was ever started. */
+  /**
+   * Stops the child permanently. Safe to call when none was ever started,
+   * and safe to call while one is starting.
+   */
   dispose(): void {
+    this.disposed = true;
     this.runner?.dispose();
     this.runner = null;
     this.starting = null;
@@ -83,12 +95,23 @@ export class IsolatedStrudelEngine implements LocalPatternEngine {
   }
 
   private async getRunner(): Promise<IsolatedEngineRunner> {
+    if (this.disposed) {
+      throw new IsolatedRunnerError('Isolated pattern engine has been disposed.', 'crash');
+    }
     if (this.runner !== null) return this.runner;
     // Single-flight: four concurrent tool calls on a cold engine must
     // resolve the entrypoint once, not four times.
     this.starting ??= this.startRunner();
     try {
-      return await this.starting;
+      const runner = await this.starting;
+      // Re-checked AFTER the await, not just before it. dispose() may
+      // have run during the entrypoint resolution, and a runner handed
+      // back at that point would fork a child nobody owns.
+      if (this.disposed) {
+        runner.dispose();
+        throw new IsolatedRunnerError('Isolated pattern engine has been disposed.', 'crash');
+      }
+      return runner;
     } finally {
       this.starting = null;
     }
@@ -116,13 +139,20 @@ export class IsolatedStrudelEngine implements LocalPatternEngine {
       }
     }
 
-    this.runner = new IsolatedEngineRunner({
+    const runner = new IsolatedEngineRunner({
       childPath,
       extraExecArgv,
       maxOldSpaceMb: this.options.maxOldSpaceMb ?? DEFAULT_ENGINE_HEAP_MB,
       timeoutMs: this.options.timeoutMs ?? DEFAULT_ENGINE_TIMEOUT_MS,
       onSpawn: this.options.onSpawn,
     });
-    return this.runner;
+    // Assigned only if we are still alive. Storing it first would leave
+    // dispose() with nothing to find and this method with a live handle.
+    if (this.disposed) {
+      runner.dispose();
+      throw new IsolatedRunnerError('Isolated pattern engine has been disposed.', 'crash');
+    }
+    this.runner = runner;
+    return runner;
   }
 }

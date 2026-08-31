@@ -152,6 +152,27 @@ describe('IsolatedEngineRunner — containment (#307)', () => {
     await expect(runner.call('echo', ['after'])).resolves.toBe('after');
   });
 
+  it('calls a native abort a crash, not an out-of-heap', async () => {
+    // Every SIGABRT was filed as an OOM, which then reported a native
+    // assertion to the caller as "your pattern allocated too much" —
+    // wrong, and it sends them to fix the wrong thing.
+    const aborting = path.join(dir, 'aborts.cjs');
+    writeFileSync(
+      aborting,
+      `process.on('message', (m) => {
+         if (m.method === 'abort') { console.error('assertion failed: not a memory problem'); return process.abort(); }
+         process.send({ id: m.id, ok: true, result: 'ok' });
+       });`,
+      'utf8'
+    );
+    const runner2 = new IsolatedEngineRunner({ childPath: aborting, maxOldSpaceMb: 64, timeoutMs: 4000 });
+    await runner2.call('warm', []); // answer once, so this is not a start failure
+    const error = await runner2.call('abort', []).catch((e: unknown) => e);
+    expect((error as IsolatedRunnerError).kind).toBe('crash');
+    expect((error as IsolatedRunnerError).message).toContain('assertion failed');
+    runner2.dispose();
+  }, 15000);
+
   it('refuses calls once disposed', async () => {
     await runner.call('echo', ['warm']);
     runner.dispose();

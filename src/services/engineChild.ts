@@ -12,6 +12,7 @@
 
 import { StrudelEngine } from './StrudelEngine.js';
 import { ISOLATED_METHODS } from './LocalPatternEngine.js';
+import { toTransferable } from './Transferable.js';
 
 const engine = new StrudelEngine();
 
@@ -40,17 +41,6 @@ interface Request {
   id: number;
   method: string;
   args: unknown[];
-}
-
-/**
- * Node's IPC serializes with JSON. A result carrying a circular reference
- * would throw inside `process.send` — after the reply was supposed to
- * leave — and the parent would see a hang, then a deadline kill, for what
- * is really a serialization problem. Round-tripping here turns that into
- * an ordinary error with an accurate message.
- */
-function toTransferable(value: unknown): unknown {
-  return JSON.parse(JSON.stringify(value ?? null));
 }
 
 process.on('message', (raw: unknown) => {

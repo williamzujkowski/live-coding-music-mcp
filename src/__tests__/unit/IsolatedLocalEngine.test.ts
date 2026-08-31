@@ -92,6 +92,31 @@ describe('IsolatedStrudelEngine', () => {
     expect(a.pid).toBe(b.pid);
   });
 
+  it('does not fork a child after dispose, even mid-start', async () => {
+    // Resolving the child entrypoint is asynchronous, so shutdown can
+    // land while a start is in flight. Without a permanent disposed
+    // flag the start completed afterwards and forked a process nobody
+    // was left to kill.
+    const spawns: string[] = [];
+    const racing = new IsolatedStrudelEngine({
+      childPath,
+      onSpawn: (reason) => spawns.push(reason),
+    });
+    const pending = racing.validate('s("bd")');
+    racing.dispose();
+    await expect(pending).rejects.toThrow(/disposed/);
+    expect(spawns).toEqual([]);
+    expect(racing.isStarted).toBe(false);
+  });
+
+  it('stays disposed — a later call does not quietly start a new child', async () => {
+    const engine2 = new IsolatedStrudelEngine({ childPath });
+    await engine2.validate('s("bd")');
+    engine2.dispose();
+    await expect(engine2.validate('s("bd")')).rejects.toThrow(/disposed/);
+    expect(engine2.isStarted).toBe(false);
+  });
+
   it('is safe to dispose without ever having started', () => {
     const unused = new IsolatedStrudelEngine({ childPath });
     expect(() => { unused.dispose(); }).not.toThrow();

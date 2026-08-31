@@ -670,14 +670,29 @@ export class StrudelMCPServer {
     await this.server.connect(transport);
     this.logger.info('Enhanced Strudel MCP server v2.0.1 running (fixed)');
 
-    process.on('SIGINT', async () => {
-      this.logger.info('Shutting down...');
+    // SIGTERM as well as SIGINT. The isolated engine child is a real
+    // process, and `docker stop`, systemd and most supervisors send
+    // SIGTERM — handling only SIGINT left the child orphaned in exactly
+    // the deployments where nobody is watching a terminal (#307).
+    let shuttingDown = false;
+    const shutdown = async (signal: string): Promise<void> => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      this.logger.info(`Shutting down (${signal})...`);
+      // Disposed FIRST and synchronously. The two awaits below can hang
+      // on a wedged browser, and the child must not outlive us because
+      // cleanup took too long.
+      this.strudelEngine.dispose();
       await this.controller.cleanup();
       await this.sessionManager.destroyAll();
-      // The isolated engine child is a real process. Left behind, it
-      // outlives the server that forked it (#307).
-      this.strudelEngine.dispose();
       process.exit(0);
-    });
+    };
+
+    process.on('SIGINT', () => void shutdown('SIGINT'));
+    process.on('SIGTERM', () => void shutdown('SIGTERM'));
+    // Last resort: a path that reaches exit without a signal — an
+    // uncaught throw, or the transport closing — still must not leak a
+    // process. Synchronous only; this handler cannot await.
+    process.on('exit', () => { this.strudelEngine.dispose(); });
   }
 }
