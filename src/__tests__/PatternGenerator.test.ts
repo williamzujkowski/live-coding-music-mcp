@@ -181,7 +181,7 @@ describe('PatternGenerator', () => {
     test('should generate complete techno pattern', () => {
       const pattern = generator.generateCompletePattern('techno', 'C', 130);
       expect(pattern).toContain('// techno');
-      expect(pattern).toContain('setcpm(130)');
+      expect(pattern).toContain('setcpm(130/4)');
       expect(pattern).toContain('stack(');
       expect(pattern).toContain('// Drums');
       expect(pattern).toContain('// Bass');
@@ -215,8 +215,8 @@ describe('PatternGenerator', () => {
     test('should set correct BPM', () => {
       const pattern140 = generator.generateCompletePattern('dnb', 'C', 140);
       const pattern90 = generator.generateCompletePattern('ambient', 'C', 90);
-      expect(pattern140).toContain('setcpm(140)');
-      expect(pattern90).toContain('setcpm(90)');
+      expect(pattern140).toContain('setcpm(140/4)'); // cycles per minute, four beats to a cycle (#395)
+      expect(pattern90).toContain('setcpm(90/4)');
     });
 
     test('should use appropriate scale for style', () => {

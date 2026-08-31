@@ -3,6 +3,24 @@ import { STYLE_ALIASES, resolveDrumStyle } from './StyleRegistry.js';
 import { lookup } from '../utils/TableLookup.js';
 import { ValidationError } from '../utils/CategorisedError.js';
 
+/**
+ * Beats in one cycle of a generated pattern.
+ *
+ * `setcpm(n)` sets CYCLES per minute, and everything this class builds is
+ * one bar per cycle — the drum line is `s("bd*4, ...")`, four beats. So
+ * the tempo call must be `setcpm(bpm / 4)`; `setcpm(bpm)` is four times
+ * too fast.
+ *
+ * It was `setcpm(bpm)`, and nobody caught it because two bugs cancelled
+ * in the only measurement being made: generated audio ran at 4x, and
+ * tempo detection folds anything outside 40-200 BPM back into range, so
+ * 520 folded by four to 130 and reported exactly the number requested
+ * (#395). `GeneratedTempo.test.ts` asserts the drums really are four
+ * beats per cycle, so changing that structure fails loudly rather than
+ * silently quartering every tempo.
+ */
+export const BEATS_PER_CYCLE = 4;
+
 export class PatternGenerator {
   private theory = new MusicTheory();
 
@@ -345,7 +363,7 @@ export class PatternGenerator {
         ` (no drums defined for "${resolvedStyle}")`;
 
     return `${header}
-setcpm(${bpm})
+setcpm(${bpm}/${String(BEATS_PER_CYCLE)})
 
 stack(
   // Drums
@@ -374,7 +392,7 @@ stack(
     
     return `// Intelligent DnB in ${key} at ${tempo} BPM
 // Style: LTJ Bukem / Good Looking Records
-setcps(${tempo}/60)
+setcps(${tempo}/60/${String(BEATS_PER_CYCLE)})
 samples('github:tidalcycles/dirt-samples')
 
 let chords = chord("<${safeKey}m9 ${fourth}m9 ${seventh}m9 ${third}maj7>/4").dict('ireal')
@@ -455,7 +473,7 @@ stack(
     
     return `// Trip Hop in ${key} at ${tempo} BPM
 // Style: Portishead / Massive Attack
-setcps(${tempo}/60/2)
+setcps(${tempo}/60/${String(BEATS_PER_CYCLE)})
 
 stack(
   // === DRUMS - Slow, heavy, dusty ===
@@ -544,7 +562,7 @@ stack(
     
     return `// Boom Bap in ${key} at ${tempo} BPM
 // Style: DJ Premier / Alchemist / Daringer
-setcps(${tempo}/60/2)
+setcps(${tempo}/60/${String(BEATS_PER_CYCLE)})
 
 stack(
   // === DRUMS - Hard hitting, swing ===

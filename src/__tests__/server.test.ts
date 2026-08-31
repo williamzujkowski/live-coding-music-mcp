@@ -762,7 +762,7 @@ describe('StrudelMCPServer', () => {
 
         const result = await (server as any).executeTool('set_tempo', { bpm: 140 });
 
-        expect(mockController.writePattern).toHaveBeenCalledWith('setcpm(140)\ns("bd*4")');
+        expect(mockController.writePattern).toHaveBeenCalledWith('setcpm(140/4)\ns("bd*4")');
         expect(result).toContain('Set tempo to 140 BPM');
       });
 
