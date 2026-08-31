@@ -310,11 +310,13 @@ export class StrudelMCPServer {
       if (!sessionController) {
         throw new Error(`Session '${sessionId}' not found. Create it first with session({ action: "create" }).`);
       }
-      try {
-        return await sessionController.getCurrentPattern();
-      } catch {
-        return '';
-      }
+      // Do NOT collapse a read failure into ''. An empty string already
+      // means "the editor is empty", and every read-modify-write caller
+      // treats it as a blank canvas — so a transient CDP failure made
+      // edit_pattern append OVERWRITE the live pattern with just the
+      // appended line, and report success (#277). Let it propagate; the
+      // dispatcher turns it into a failure envelope.
+      return await sessionController.getCurrentPattern();
     }
 
     if (!this.isInitialized) {
@@ -322,11 +324,7 @@ export class StrudelMCPServer {
       return this.pendingPattern ?? '';
     }
 
-    try {
-      return await this.controller.getCurrentPattern();
-    } catch {
-      return '';
-    }
+    return await this.controller.getCurrentPattern();
   }
 
   /**
@@ -416,8 +414,21 @@ export class StrudelMCPServer {
       const sid: string | undefined = args?.session_id;
       const canRead = sid !== undefined || this.isInitialized;
       if (canRead) {
+        // Two different failures used to share this catch. A missing
+        // controller or destroyed session legitimately means there is
+        // nothing to save — but a READ failure means we are about to
+        // overwrite a pattern we could not capture, leaving nothing for
+        // undo to restore. The fault that destroys the work also disabled
+        // the recovery (#277), so they are separated here.
+        let controller: StrudelController | undefined;
         try {
-          const controller = this.getControllerForSession(sid);
+          controller = this.getControllerForSession(sid);
+        } catch {
+          // No session to snapshot; the edit itself will report that.
+          controller = undefined;
+        }
+
+        if (controller !== undefined) {
           const current = await controller.getCurrentPattern();
           const bundle = this.getHistoryBundle(sid ?? 'default');
           bundle.undoStack.push(current);
@@ -433,8 +444,6 @@ export class StrudelMCPServer {
           if (bundle.undoStack.length > this.MAX_HISTORY) bundle.undoStack.shift();
           if (bundle.historyStack.length > this.MAX_HISTORY) bundle.historyStack.shift();
           bundle.redoStack.length = 0;
-        } catch {
-          // Controller might not be initialized yet, or session is gone
         }
       }
     }
