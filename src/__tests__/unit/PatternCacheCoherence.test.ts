@@ -117,7 +117,7 @@ describe('a save leaves no half-written file (#428)', () => {
     // exclusive — `wx` refuses an existing path rather than following
     // it. This asserts the flag, since the randomness cannot be tested
     // by guessing.
-    const { writeFileSync, readdirSync } = await import('fs');
+    const { readdirSync } = await import('fs');
     const store = new PatternStore(dir);
     await store.save('victim', 'ORIGINAL', ['t']);
 
