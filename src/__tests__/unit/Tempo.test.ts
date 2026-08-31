@@ -20,10 +20,13 @@ import { PatternGenerator } from '../../services/PatternGenerator';
 import { DRUM_STYLES } from '../../services/StyleRegistry';
 
 describe('the conversion factor', () => {
-  it('is the meter times the convention, not a bare 4', () => {
+  it('is four beats, from a 4/4 bar and one bar to a cycle', () => {
+    // The product is how BEATS_PER_CYCLE is defined, so asserting it
+    // would be checking the language. These are the two claims that
+    // could actually be wrong.
     expect(BEATS_PER_BAR).toBe(4);
     expect(BARS_PER_CYCLE).toBe(1);
-    expect(BEATS_PER_CYCLE).toBe(BEATS_PER_BAR * BARS_PER_CYCLE);
+    expect(BEATS_PER_CYCLE).toBe(4);
   });
 });
 
@@ -74,6 +77,54 @@ describe('impliedBpm — what the scheduler will actually do', () => {
       expect(impliedBpm(pattern)).toBeCloseTo(174, 6);
       expect(declaredBpm(pattern)).toBe(174);
     }
+  });
+});
+
+describe('the parser reads the right call, in the right unit', () => {
+  // Every case here came out of cross-model review of the parser this
+  // file introduced. None were caught by the tests written alongside it.
+
+  it('does not read a commented-out tempo', () => {
+    // "tempo taken from the wrong place" is the whole subject of #395
+    // and #397. A parser that takes the first textual match repeats it.
+    const code = '// was setcpm(120/4), too slow\nsetcpm(174/4)\ns("bd*4")';
+    expect(declaredBpm(code)).toBe(174);
+    expect(declaredBpm('/* setcpm(90/4) */\nsetcpm(130/4)')).toBe(130);
+  });
+
+  it('reports no tempo when the only call is commented out', () => {
+    expect(declaredBpm('// setcpm(120/4)\ns("bd*4")')).toBeUndefined();
+  });
+
+  it('does not match an identifier that merely ends in a tempo call', () => {
+    expect(declaredBpm('resetcpm(120)')).toBeUndefined();
+    expect(declaredBpm('x.setcps(2)')).toBeUndefined();
+  });
+
+  it('does not read setbpm, which Strudel does not bind', () => {
+    // The old `ai.ts` parser accepted it and a reviewer called dropping
+    // it a regression. But `@strudel/core` binds setcps/setcpm and
+    // nothing else — `setbpm` is a keyword token in `@strudel/mini`'s
+    // grammar, not a function — so a pattern calling it does not run,
+    // and reading a tempo out of it would be inventing one.
+    // `StrudelEngineHelpers` excluded it on purpose; this agrees.
+    expect(declaredBpm('setbpm(174)')).toBeUndefined();
+  });
+
+  it('reads a bare setcps in its own unit, not as a BPM', () => {
+    // `setcps(2)` is two cycles a second. Returning 2 as a tempo — which
+    // the numerator convention would do — is nonsense.
+    expect(declaredBpm('setcps(2)')).toBe(480);
+    expect(declaredBpm('setcps(0.5)')).toBe(120);
+    // A bare setcpm keeps the #341 convention, and the asymmetry is a
+    // choice rather than an oversight: this is what the two answers are.
+    expect(declaredBpm('setcpm(130)')).toBe(130);
+    expect(impliedBpm('setcpm(130)')).toBe(520);
+  });
+
+  it('rejects a zero rather than passing it downstream', () => {
+    expect(declaredBpm('setcpm(130/0)')).toBeUndefined();
+    expect(declaredBpm('setcpm(0)')).toBeUndefined();
   });
 });
 

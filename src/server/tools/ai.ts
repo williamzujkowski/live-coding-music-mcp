@@ -381,7 +381,7 @@ async function jamWith(
 
   let newLayer: string;
   try {
-    newLayer = generateComplementaryLayer(layer, key, tempo, detectedStyle, existingLayers, ctx);
+    newLayer = generateComplementaryLayer(layer, key, detectedStyle, existingLayers, ctx);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return {
@@ -528,8 +528,15 @@ function detectStyleFromPattern(pattern: string, styleHint?: string): string {
 }
 
 function generateComplementaryLayer(
-  layer: string, key: string, tempo: number, style: string, existingLayers: string[], ctx: ToolContext,
+  layer: string, key: string, style: string, existingLayers: string[], ctx: ToolContext,
 ): string {
+  // No `tempo` parameter: it was declared, passed, and never read. The
+  // merged layer goes inside the host pattern's own stack and inherits
+  // its tempo call (see `mergeLayerIntoPattern`), so there is nothing
+  // here for a tempo to change. A cross-model reviewer read the dead
+  // parameter as evidence that this function retimes the layer, and
+  // concluded jam_with would desync by 4x; it cannot. Dead arguments
+  // are not free.
   switch (layer) {
     case 'drums':
       if (existingLayers.includes('drums')) {
