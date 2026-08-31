@@ -468,7 +468,11 @@ export class StrudelEngine {
       // failure, which it is not.
       const browserOnly = findBrowserOnlyCall(code);
       if (browserOnly !== null) {
-        throw new Error(explainBrowserOnly(browserOnly) ?? error.message);
+        // The caller used a function the local engine cannot run. That
+        // is their pattern to change — the message even says which tool
+        // to use instead — and it was landing in `internal`, which tells
+        // an agent the server is broken and not to retry (#382).
+        throw new ValidationError(explainBrowserOnly(browserOnly) ?? error.message);
       }
       // Already categorised: the density caps above throw
       // ValidationError, and flattening them here into a generic
@@ -513,7 +517,11 @@ export class StrudelEngine {
       // failure, which it is not.
       const browserOnly = findBrowserOnlyCall(code);
       if (browserOnly !== null) {
-        throw new Error(explainBrowserOnly(browserOnly) ?? error.message);
+        // The caller used a function the local engine cannot run. That
+        // is their pattern to change — the message even says which tool
+        // to use instead — and it was landing in `internal`, which tells
+        // an agent the server is broken and not to retry (#382).
+        throw new ValidationError(explainBrowserOnly(browserOnly) ?? error.message);
       }
       // Already categorised: the density caps above throw
       // ValidationError, and flattening them here into a generic

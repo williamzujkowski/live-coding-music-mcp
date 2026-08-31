@@ -57,6 +57,18 @@ const CASES: Expectation[] = [
     says: 'not initialized',
   },
   {
+    // Not `validate_pattern_local`: that reports invalidity as DATA
+    // (`ok: true, valid: false`), which is the right envelope for a
+    // validator. `query_pattern_events` genuinely cannot answer, so it
+    // throws, and that is the path whose category matters.
+    name: 'a browser-only function used locally',
+    tool: 'query_pattern_events',
+    args: { pattern: 'setcpm(120)\ns("bd*4")', start: 0, end: 1 },
+    category: 'validation',
+    retryable: false,
+    says: 'controls playback',
+  },
+  {
     name: 'a pattern too dense to materialize',
     tool: 'query_pattern_events',
     args: { pattern: 's("[bd*99999]*99999")', start: 0, end: 1 },
