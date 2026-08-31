@@ -165,6 +165,11 @@ export class StrudelMCPServer {
       this.historyBundles.delete(id);
       this.audioCaptureServices.delete(id);
     };
+    // The sweep cannot see a capture in progress: `audio_capture start`
+    // returns immediately and the recording runs on in the page, so the
+    // session looks idle while it is very much working (#423).
+    this.sessionManager.isSessionBusy = (id: string): boolean =>
+      this.audioCaptureServices.get(id)?.isCapturing() === true;
     this.logger = new Logger();
 
     // A config problem the user never sees is how #227 survived: two

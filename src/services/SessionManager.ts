@@ -84,6 +84,15 @@ export class SessionManager {
    */
   onSessionDestroyed?: (id: string) => void;
 
+  /**
+   * Whether a session has work the sweep must not interrupt.
+   *
+   * The manager cannot see the server's per-session state — an audio
+   * capture in progress, say — so the owner answers. Set alongside
+   * `onSessionDestroyed`; absent means "nothing extra to check" (#423).
+   */
+  isSessionBusy?: (id: string) => boolean;
+
   constructor(
     headless: boolean = false,
     audioAnalysisConfig?: AudioAnalysisConfig,
@@ -522,6 +531,26 @@ export class SessionManager {
       if (!session) continue;
       if (Date.now() - session.lastActivity.getTime() <= this.INACTIVITY_TIMEOUT) {
         this.logger.info(`Session '${id}' became active during the sweep; keeping it`);
+        continue;
+      }
+
+      // "Idle" meant "no tool call recently", which is not the same as
+      // "doing nothing". `lastActivity` moves only in `getSession`, so a
+      // session left playing — or recording, since `audio_capture start`
+      // returns immediately and the capture runs on in the page for up
+      // to ten minutes — looked idle and was torn down underneath its
+      // own audio (#423).
+      //
+      // `getPlaybackState()` is a cached flag, not a page read (#456),
+      // so it can say "playing" for a session the user stopped by hand.
+      // That errs toward keeping a session too long, which is the safe
+      // direction for a destructive sweep.
+      if (session.controller.getPlaybackState()) {
+        this.logger.info(`Session '${id}' is still playing; keeping it`);
+        continue;
+      }
+      if (this.isSessionBusy?.(id) === true) {
+        this.logger.info(`Session '${id}' has work in flight; keeping it`);
         continue;
       }
 
