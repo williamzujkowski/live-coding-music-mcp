@@ -51,7 +51,6 @@ export interface HistoryState {
  * state (e.g. the generated-pattern cache used before init).
  */
 export interface ToolContext {
-  controller: StrudelController;
   perfMonitor: PerformanceMonitor;
   store: PatternStore;
   generator: PatternGenerator;
@@ -76,14 +75,8 @@ export interface ToolContext {
    * returns the default-session bundle; named sessions get their own
    * isolated undo/redo/history stacks. Auto-creates the bundle on first
    * access so callers never have to check existence.
-   *
-   * The `historyEntryId()` counter is intentionally server-wide so a
-   * single ID is unique across the whole timeline (e.g. compare_patterns
-   * picking up an id from list_history can reference it unambiguously).
    */
   getHistory(sessionId?: string): HistoryState;
-  /** Mint a fresh history entry id (server-wide counter). */
-  historyEntryId(): number;
   /** Drop a session's history bundle (called by session destroy). */
   dropHistory(sessionId: string): void;
   logger: Logger;
@@ -104,8 +97,9 @@ export interface ToolContext {
    *     session doesn't exist. Named sessions must be created via the
    *     `session({ action: 'create' })` before use.
    *
-   * Tools should call this instead of touching `controller` directly when
-   * they're stateful-on-the-browser. The dispatcher wraps the throw into
+   * The only way to reach a controller: the raw handle was removed
+   * because it always returned the default session, so any tool using it
+   * would silently ignore `session_id` (#242). The dispatcher wraps the throw into
    * `err('business', 'Session 'X' not found...')` for MCP clients.
    */
   getController(sessionId?: string): StrudelController;

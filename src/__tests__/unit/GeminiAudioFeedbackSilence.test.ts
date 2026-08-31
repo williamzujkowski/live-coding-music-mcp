@@ -25,7 +25,6 @@ function makeCtx(exportResult: Record<string, unknown>) {
   // audio, so the feedback path sends numbers rather than a waveform.
   const analyzeAudio = jest.fn(async () => GEMINI_FEEDBACK);
   const ctx = {
-    controller: {} as any,
     perfMonitor: {} as any, store: {} as any, generator: {} as any, theory: {} as any,
     sessionManager: {} as any,
     geminiService: {
@@ -39,7 +38,7 @@ function makeCtx(exportResult: Record<string, unknown>) {
     getAudioCaptureService: async () => ({}) as any,
     dropAudioCaptureService: jest.fn(),
     getHistory: () => ({ undoStack: [], redoStack: [], historyStack: [], maxHistory: 100 }),
-    historyEntryId: () => 1, dropHistory: jest.fn(),
+    dropHistory: jest.fn(),
     logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() } as any,
     isInitialized: () => true,
     ensureInitialized: async () => {},
