@@ -45,6 +45,8 @@ export class SessionManager {
    * that one leaked contexts, this one leaks whole browsers.
    */
   private browserLaunch: Promise<Browser> | null = null;
+  /** In-flight close, so a create waits for it rather than racing it. */
+  private browserClose: Promise<void> | null = null;
 
   private sessions: Map<string, Session> = new Map();
 
@@ -97,6 +99,19 @@ export class SessionManager {
    * Ensures the shared browser instance is running
    */
   private async ensureBrowser(): Promise<Browser> {
+    // A close in progress finishes before a launch starts, or the two
+    // race and the launch wins a browser that is then torn down (#423).
+    if (this.browserClose) await this.browserClose;
+
+    // A browser that is still a live object but whose process is gone —
+    // a crashed Chromium — is not usable. Without this check every
+    // future create failed permanently, while `ensureInitialized` on the
+    // legacy path has had exactly this self-heal since #206.
+    if (this.browser && !this.browser.isConnected()) {
+      this.logger.warn('Shared browser is disconnected; relaunching.');
+      this.browser = null;
+    }
+
     if (this.browser) return this.browser;
     // Single-flight: whoever gets here first starts the launch, everyone
     // else awaits the same promise.
@@ -429,13 +444,35 @@ export class SessionManager {
   private async closeBrowser(): Promise<void> {
     this.stopCleanupTimer();
 
-    if (this.browser) {
+    const browser = this.browser;
+    if (!browser) return;
+
+    // Cleared BEFORE the await, not after.
+    //
+    // `ensureBrowser` returns `this.browser` when it is non-null, and it
+    // stayed non-null for the whole of `await browser.close()` — so a
+    // create landing in that window got a browser that was already going
+    // away and `newContext()` threw `Target page, context or browser has
+    // been closed`. `reservedIds` guards the window before closeBrowser
+    // is entered, not during it (#423).
+    this.browser = null;
+    // Held so a concurrent `ensureBrowser` waits for the close to finish
+    // rather than launching a second Chromium beside it.
+    this.browserClose = (async () => {
       try {
-        await this.browser.close();
+        await browser.close();
       } catch (error: any) {
+        // Logged, not rethrown: the field is already cleared, and a
+        // browser that will not close is not a reason to keep handing it
+        // out. This does drop the last handle to it — noted in #423.
         this.logger.warn(`Error closing browser: ${error.message}`);
       }
-      this.browser = null;
+    })();
+
+    try {
+      await this.browserClose;
+    } finally {
+      this.browserClose = null;
     }
   }
 

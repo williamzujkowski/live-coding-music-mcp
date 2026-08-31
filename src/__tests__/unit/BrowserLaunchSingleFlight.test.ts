@@ -31,6 +31,8 @@ jest.mock('playwright', () => ({
           close: jest.fn(async () => undefined),
         })),
         close: jest.fn(async () => undefined),
+        // ensureBrowser checks liveness before reusing (#423).
+        isConnected: jest.fn(() => true),
       };
     }),
   },
