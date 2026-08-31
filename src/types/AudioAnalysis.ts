@@ -70,7 +70,21 @@ export interface AudioAnalysisConfig {
    * FFT bin count. Must be a power of 2 in [32, 32768] per the Web Audio
    * spec (https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode/fftSize).
    * Larger = better frequency resolution, more CPU per analysis call.
-   * Default: 1024 (~21 Hz/bin at 44.1 kHz, ~12 ms per analyse call).
+   * Default: 1024, which is 512 bins at 43 Hz/bin for 44.1 kHz. (This
+   * comment previously said ~21 Hz/bin; that is fftSize 2048, which is
+   * what config.json actually ships.)
+   *
+   * Resolution matters for key detection specifically, because 12
+   * logarithmic pitch classes get narrower the lower you go. Measured
+   * against pure tones:
+   *
+   *   fftSize 1024 (43.1 Hz/bin)  C3 ok, D3 -> C, E3 -> F, E4 -> F
+   *   fftSize 2048 (21.5 Hz/bin)  only E3 (164.8 Hz) misplaced
+   *   fftSize 4096 (10.8 Hz/bin)  all correct from C3 up
+   *
+   * So key detection is unreliable below roughly 500 Hz at 1024, and
+   * below roughly 170 Hz at the shipped 2048. Raise it to 4096 if you
+   * care about bass-register key detection (#321).
    */
   fftSize?: number;
   /**
