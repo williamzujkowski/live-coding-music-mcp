@@ -116,6 +116,58 @@ function evaluateCallArguments(code: string): string[] {
   return calls;
 }
 
+/**
+ * Second instrumentation hazard, same shape as the first (#256).
+ *
+ * Istanbul instruments every function in `src/` matched by
+ * `collectCoverageFrom`, including the ones handed to `page.evaluate`.
+ * `cov_1abc2def` does not exist in the browser, so the evaluate throws —
+ * and `waitForFunction` swallows it and polls to timeout, which makes it
+ * look like the page is slow rather than broken.
+ *
+ * That cost 31 browser tests, skipped wholesale under `npm test`. The
+ * targeted fix is `/* istanbul ignore next *\/` on each evaluated
+ * function; this enforces it so the workaround cannot creep back.
+ */
+describe('page.evaluate functions survive istanbul (#256)', () => {
+  const files = sourceFiles(SRC);
+
+  it('every evaluated function carries an istanbul pragma', () => {
+    const offenders: string[] = [];
+
+    for (const file of files) {
+      const source = readFileSync(file, 'utf-8');
+      let cursor = 0;
+
+      for (;;) {
+        const match = /\.(?:evaluate|waitForFunction)\(/.exec(source.slice(cursor));
+        if (match === null) break;
+        const callAt = cursor + match.index;
+        cursor = callAt + match[0].length;
+
+        // What follows the paren, ignoring whitespace and newlines.
+        const after = source.slice(cursor, cursor + 400);
+        if (/^\s*\/\* istanbul ignore next/.test(after)) continue;
+
+        // A function passed by reference is guarded at its definition.
+        const referenced = /^\s*([A-Za-z_$][\w$.]*)\s*[,)]/.exec(after);
+        if (referenced !== null) {
+          const symbol = referenced[1].split('.').pop() ?? '';
+          const defAt = source.indexOf(`${symbol} =`);
+          if (defAt !== -1 && source.slice(Math.max(0, defAt - 200), defAt).includes('istanbul ignore next')) {
+            continue;
+          }
+        }
+
+        const line = source.slice(0, callAt).split('\n').length;
+        offenders.push(`${file.replace(SRC, 'src')}:${String(line)}`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('page.evaluate functions survive esbuild (#248)', () => {
   const files = sourceFiles(SRC);
 

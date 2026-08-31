@@ -68,7 +68,7 @@ export class AudioCaptureService {
    */
   async injectRecorder(page: Page): Promise<void> {
     /* istanbul ignore next -- browser-injected IIFE, covered by integration tests */
-    await page.evaluate(() => {
+    await page.evaluate(/* istanbul ignore next */ () => {
       (window as any).strudelAudioCapture = {
         mediaStreamDest: null as MediaStreamAudioDestinationNode | null,
         recorder: null as MediaRecorder | null,

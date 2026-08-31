@@ -112,7 +112,7 @@ export class AudioAnalyzer {
   async inject(page: Page) {
     const cfg = { fftSize: this.fftSize, smoothing: this.smoothing };
     /* istanbul ignore next -- browser-injected IIFE, covered by integration tests */
-    await page.evaluate((cfg: { fftSize: number; smoothing: number }) => {
+    await page.evaluate(/* istanbul ignore next */ (cfg: { fftSize: number; smoothing: number }) => {
       (window as any).strudelAudioAnalyzer = {
         analyser: null as AnalyserNode | null,
         dataArray: null as Uint8Array | null,
