@@ -229,7 +229,8 @@ export class PatternGenerator {
       
       let noteIndex: number;
       if (useStep) {
-        // Move by step (1 or 2 scale degrees)
+        // One scale degree, up or down. The comment used to claim "1 or
+        // 2" while the code only ever moved by 1 (#324).
         const step = Math.random() < 0.5 ? 1 : -1;
         noteIndex = (lastNoteIndex + step + scale.length) % scale.length;
       } else {
@@ -255,6 +256,14 @@ export class PatternGenerator {
   generateChords(progression: string, voicing: string = 'triad'): string {
     const voicings: Record<string, string> = {
       triad: '.struct("1 ~ ~ ~")',
+      // `.add(note("7"))` transposes every note of the chord up 7
+      // semitones — a perfect FIFTH, not a seventh. Strudel spells a
+      // seventh chord in the chord symbol itself, so the honest fix is
+      // to stop pretending this voicing adds one: it is a fifth-doubled
+      // stab, and is now named for what it does. `seventh` is kept as
+      // an alias so existing callers do not break, but it maps to the
+      // same thing rather than to a lie (#324).
+      fifths: '.struct("1 ~ ~ ~").add(note("7"))',
       seventh: '.struct("1 ~ ~ ~").add(note("7"))',
       sustained: '.attack(0.5).release(2)',
       stab: '.struct("1 ~ 1 ~").release(0.1)',
@@ -295,12 +304,33 @@ export class PatternGenerator {
     // Default generation for other styles
     const drums = this.generateDrumPattern(resolvedStyle, 0.7);
     const bass = this.generateBassline(key, resolvedStyle);
-    const scale = this.theory.generateScale(key, resolvedStyle === 'jazz' ? 'dorian' : 'minor');
-    const melody = this.generateMelody(scale);
-    
-    const chordStyle = resolvedStyle === 'jazz' ? 'jazz' : 
-                      resolvedStyle === 'house' ? 'pop' : 
+    // Melody scale and chord progression must agree on mode.
+    //
+    // The scale was hardcoded to `minor` for everything except jazz,
+    // while house / ambient / default got the `pop` progression — a
+    // major I-V-vi-IV. So house in C produced <C G Am F> under a melody
+    // of g#3 d#4 f4 c5 …, sounding Ab and Eb over C major and F major
+    // triads (#324). Pick the progression first, then take the scale
+    // that belongs to it.
+    const chordStyle = resolvedStyle === 'jazz' ? 'jazz' :
+                      resolvedStyle === 'house' ? 'pop' :
                       resolvedStyle === 'techno' ? 'edm' : 'pop';
+
+    // `edm` and `modal` are minor progressions; `pop` is major; `jazz`
+    // is dorian by convention here.
+    type ScaleName = Parameters<MusicTheory['generateScale']>[1];
+    const scaleForChords: Record<string, ScaleName> = {
+      jazz: 'dorian',
+      pop: 'major',
+      edm: 'minor',
+      modal: 'minor',
+    };
+    const scale = this.theory.generateScale(
+      key,
+      lookup<ScaleName>(scaleForChords, chordStyle, 'minor'),
+    );
+    const melody = this.generateMelody(scale);
+
     const progression = this.theory.generateChordProgression(key, chordStyle as any);
     const chords = this.generateChords(progression, resolvedStyle === 'ambient' ? 'pad' : 'stab');
     
