@@ -16,6 +16,11 @@
  * voice information for two-voice melodies on one channel collapses
  * into chord tokens. Phase 2-4 issues track each of those.
  *
+ * Two further losses, reported in `summary.discarded` rather than left
+ * silent (#336): only the FIRST tempo is read, so a file with tempo
+ * changes imports at its opening tempo; and the grid is fixed at 4/4,
+ * so any other meter is laid onto 4/4 bars that will not line up.
+ *
  * @example
  * const svc = new MIDIImportService();
  * const result = svc.convertBuffer(buffer);
@@ -55,6 +60,17 @@ export interface MIDIImportSummary {
   unmapped_drums: number[];
   /** Grid resolution actually used. */
   steps_per_cycle: number;
+  /**
+   * Things the import silently discarded.
+   *
+   * The file header lists quantized timing, dropped velocity and
+   * collapsed voices as known Phase 1 losses. These two were not
+   * listed and not reported: a 3/4 file was laid onto a 4/4 grid, and
+   * a file with a 120->200 tempo change imported as 120 with no
+   * warning. A loss nobody is told about is indistinguishable from
+   * correct output (#336).
+   */
+  discarded?: string[];
 }
 
 /** Successful conversion result. */
@@ -226,7 +242,29 @@ export class MIDIImportService {
       }
     }
 
+    const discarded: string[] = [];
+
     const bpm = Math.round(midi.header.tempos[0]?.bpm ?? 120);
+    if (midi.header.tempos.length > 1) {
+      const others = midi.header.tempos
+        .slice(1, 4)
+        .map((t: any) => Math.round(t.bpm))
+        .join(', ');
+      discarded.push(
+        `${String(midi.header.tempos.length - 1)} tempo change(s) — imported at the ` +
+        `first tempo (${String(bpm)} BPM); later tempos (${others}) were dropped`
+      );
+    }
+
+    // secondsPerBar below is hardcoded to BEATS_PER_BAR, so any other
+    // meter is laid onto a 4/4 grid.
+    const signature = midi.header.timeSignatures?.[0]?.timeSignature;
+    if (Array.isArray(signature) && (signature[0] !== 4 || signature[1] !== 4)) {
+      discarded.push(
+        `time signature ${String(signature[0])}/${String(signature[1])} — ` +
+        'the grid is 4/4, so bar lines will not line up'
+      );
+    }
     const secondsPerBeat = 60 / bpm;
     // Must match MIDIExportService.BEATS_PER_BAR, or a round trip
     // rescales time (#336).
@@ -307,6 +345,7 @@ export class MIDIImportService {
         notes: totalNotes,
         unmapped_drums: Array.from(unmappedSet).sort((a, b) => a - b),
         steps_per_cycle: stepsPerCycle,
+        ...(discarded.length > 0 ? { discarded } : {}),
       },
     };
   }
