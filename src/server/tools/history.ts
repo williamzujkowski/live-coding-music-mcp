@@ -12,7 +12,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
-import { empty } from './types.js';
+import { empty, err } from './types.js';
 
 const SESSION_ID_PROP = {
   session_id: {
@@ -167,7 +167,13 @@ async function doRestore(args: any, ctx: ToolContext, sid?: string): Promise<unk
 
   const entry = historyStack.find(e => e.id === args.id);
   if (!entry) {
-    return `History entry #${args.id} not found. Use history({ action: "list" }) to see available entries.`;
+    // Same bare-string false success as storage's load (#293): nothing
+    // was restored, but `ok: true` said otherwise.
+    return err(
+      'business',
+      `History entry #${args.id} not found. ` +
+      'Use history({ action: "list" }) to see available entries.',
+    );
   }
 
   const current = await controller.getCurrentPattern();

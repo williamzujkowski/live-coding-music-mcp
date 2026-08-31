@@ -99,7 +99,10 @@ export const toolNames = new Set(tools.map(t => t.name));
 async function doSave(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   InputValidator.validateStringLength(args.name, 'name', 255, false);
   const toSave = await ctx.getCurrentPatternSafe(sid);
-  if (!toSave) {
+  // Whitespace counts as nothing. `!toSave` covered '' only, so a
+  // pattern of "  \n\t " was written to disk and reported as a real
+  // save (#293).
+  if (!toSave || toSave.trim().length === 0) {
     // Nothing was written to disk, so this is a failure — but as a bare
     // string it was none of the three things the dispatcher recognises
     // (envelope, failure-shaped object, legacy 'Error: ' prefix), so it
@@ -119,7 +122,16 @@ async function doLoad(args: any, ctx: ToolContext, sid?: string): Promise<unknow
     const written = await ctx.writePatternSafe(saved.content, sid);
     return withStashNotice(`Loaded pattern "${args.name}"`, written);
   }
-  return `Pattern "${args.name}" not found`;
+  // Bare prose, so the dispatcher's legacy normalisation — which only
+  // recognises 'Error: ' and 'Browser not initialized' prefixes — let
+  // this through as { ok: true, data: 'Pattern "x" not found' }. Same
+  // false success as #287, twenty lines below the code that fixed it
+  // (#293).
+  return err(
+    'business',
+    `Pattern "${args.name}" not found. ` +
+    'Use pattern_store({ action: "list" }) to see what is saved.',
+  );
 }
 
 async function doList(args: any, ctx: ToolContext): Promise<unknown> {

@@ -93,8 +93,10 @@ describe('pattern_store consolidation (#143)', () => {
 
     it('returns a friendly message when name not found', async () => {
       const { ctx } = makeCtx();
-      const result = await execute('pattern_store', { action: 'load', name: 'nope' }, ctx);
-      expect(result).toBe('Pattern "nope" not found');
+      const result: any = await execute('pattern_store', { action: 'load', name: 'nope' }, ctx);
+      expect(result.ok).toBe(false);
+      expect(result.errorCategory).toBe('business');
+      expect(result.message).toContain('Pattern "nope" not found');
     });
   });
 
