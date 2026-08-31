@@ -38,7 +38,33 @@ export class AudioAnalyzer {
   private _spectralFluxHistory: number[] = [];
   private _previousMagnitudes: number[] | null = null;
   private _chromaHistory: number[][] = [];
+  /**
+   * Fixed onset threshold. Retained only as a floor — see
+   * `isOnset`, which decides adaptively.
+   *
+   * As an absolute threshold this was unreachable. Flux is normalized
+   * by bin count AND by 255, so 0.3 demands an average jump of +76/255
+   * across EVERY bin. A realistic kick transient (low bins 30->240,
+   * mids 90->120) measures 0.057 — five times under. Only a
+   * silence-to-full-scale transition fired it (#322).
+   */
   private readonly ONSET_THRESHOLD = 0.3;
+  /**
+   * Recent flux values, for the adaptive threshold.
+   *
+   * Picking a smaller constant would just be a different guess: what
+   * counts as a transient depends on the material, and a dense mix has
+   * a higher flux floor than a sparse one. So an onset is a local
+   * OUTLIER — median plus a multiple of the deviation — which is how
+   * onset detection is normally done and which needs no magic number
+   * tuned to one corpus.
+   */
+  private _fluxHistory: number[] = [];
+  private readonly FLUX_WINDOW = 32;
+  /** Deviations above the median that count as an onset. */
+  private readonly ONSET_SENSITIVITY = 2.5;
+  /** Flux below this is silence, whatever the local statistics say. */
+  private readonly FLUX_NOISE_FLOOR = 0.004;
   private readonly MAX_HISTORY_LENGTH = 100;
 
   // Per-instance analyser config (wired through from config.audio_analysis
@@ -343,6 +369,50 @@ export class AudioAnalyzer {
   /**
    * Calculate spectral flux (rate of change in frequency spectrum)
    */
+  /**
+   * Whether a flux value is an onset, judged against recent history.
+   *
+   * @param flux - Current spectral flux, 0-1
+   * @returns True if this is a local outlier and above the noise floor
+   * @example
+   * // A steady 0.05 background with a 0.2 spike: only the spike fires.
+   */
+  isOnset(flux: number): boolean {
+    const history = this._fluxHistory;
+    history.push(flux);
+    if (history.length > this.FLUX_WINDOW) history.shift();
+
+    // Below the noise floor is silence regardless of what the window
+    // says — otherwise a completely quiet passage generates onsets from
+    // its own rounding.
+    if (flux < this.FLUX_NOISE_FLOOR) return false;
+
+    // Not enough history yet: fall back to the fixed threshold rather
+    // than firing on the first sample of anything.
+    if (history.length < 8) return flux > this.ONSET_THRESHOLD;
+
+    const sorted = [...history].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    // Median absolute deviation — robust to the very spikes we are
+    // looking for, unlike a standard deviation.
+    const deviations = sorted.map(v => Math.abs(v - median)).sort((a, b) => a - b);
+    const mad = deviations[Math.floor(deviations.length / 2)];
+
+    // A perfectly steady signal has mad 0; require a real rise over the
+    // median rather than dividing by zero.
+    const threshold = mad > 0
+      ? median + this.ONSET_SENSITIVITY * mad
+      : median * 1.5 + this.FLUX_NOISE_FLOOR;
+
+    return flux > threshold;
+  }
+
+  /** Clears the flux window, so a new capture does not inherit one. */
+  resetOnsetDetection(): void {
+    this._fluxHistory = [];
+    this._previousMagnitudes = null;
+  }
+
   private calculateSpectralFlux(currentMagnitudes: Uint8Array): number {
     if (!this._previousMagnitudes) {
       this._previousMagnitudes = Array.from(currentMagnitudes);
@@ -545,7 +615,7 @@ export class AudioAnalyzer {
         const fftData = new Uint8Array(analyzer.dataArray);
         const flux = this.calculateSpectralFlux(fftData);
 
-        if (flux > this.ONSET_THRESHOLD) {
+        if (this.isOnset(flux)) {
           this._onsetHistory.push(Date.now());
           if (this._onsetHistory.length > this.MAX_HISTORY_LENGTH) {
             this._onsetHistory.shift();
@@ -562,7 +632,7 @@ export class AudioAnalyzer {
       const fftData = new Uint8Array(analyzer.dataArray);
       const flux = this.calculateSpectralFlux(fftData);
 
-      if (flux > this.ONSET_THRESHOLD) {
+      if (this.isOnset(flux)) {
         this._onsetHistory.push(Date.now());
         if (this._onsetHistory.length > this.MAX_HISTORY_LENGTH) {
           this._onsetHistory.shift();
@@ -880,7 +950,7 @@ export class AudioAnalyzer {
         const fftData = new Uint8Array(analyzer.dataArray);
         const flux = this.calculateSpectralFlux(fftData);
 
-        if (flux > this.ONSET_THRESHOLD) {
+        if (this.isOnset(flux)) {
           this._onsetHistory.push(Date.now());
           if (this._onsetHistory.length > this.MAX_HISTORY_LENGTH) {
             this._onsetHistory.shift();
@@ -894,7 +964,7 @@ export class AudioAnalyzer {
       const fftData = new Uint8Array(analyzer.dataArray);
       const flux = this.calculateSpectralFlux(fftData);
 
-      if (flux > this.ONSET_THRESHOLD) {
+      if (this.isOnset(flux)) {
         this._onsetHistory.push(Date.now());
         if (this._onsetHistory.length > this.MAX_HISTORY_LENGTH) {
           this._onsetHistory.shift();
