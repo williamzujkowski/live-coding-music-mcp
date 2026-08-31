@@ -49,7 +49,7 @@ jobs:
       attestations: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -60,7 +60,7 @@ jobs:
       # CI (ci.yml) still runs on 22 — this job builds + tests before
       # publishing, so a 24-only regression would be caught here too.
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
@@ -136,7 +136,7 @@ jobs:
       # don't pollute the repo's attestation log with un-published tarballs.
       - name: Generate build provenance attestation
         if: env.IS_DRY_RUN != 'true'
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373  # v4.1.1
         with:
           subject-path: ${{ steps.pack.outputs.tarball }}
 
