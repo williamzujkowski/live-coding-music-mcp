@@ -117,7 +117,9 @@ function collectDeclaredNames(ast: any): Set<string> {
     if (!node || typeof node.type !== 'string') return;
     switch (node.type) {
       case 'Identifier':
-        declared.add(node.name);
+        // A binding named after a banned property would otherwise make
+        // later bare references to it legal.
+        if (!BANNED_PROPERTIES.has(node.name)) declared.add(node.name);
         break;
       case 'ObjectPattern':
         for (const prop of node.properties ?? []) {
@@ -182,6 +184,46 @@ export function assertPatternIsSafe(code: string, allowedGlobals: Iterable<strin
         `Pattern contains disallowed syntax (${node.type}). ` +
         'Patterns may only build and combine Strudel values.'
       );
+    }
+
+    // Destructuring reads a property with no MemberExpression node at
+    // all — `const { constructor: C } = note` binds the same function
+    // that `note.constructor` would, and the check below never sees it.
+    // collectDeclaredNames then added `C` to the allowed set, so the
+    // identifier check passed too. Two holes lining up into a sandbox
+    // escape (#SANDBOX).
+    if (node.type === 'ObjectPattern') {
+      for (const prop of node.properties ?? []) {
+        if (prop.type !== 'Property') continue;
+        const key = prop.key;
+        const name = prop.computed
+          ? (key?.type === 'Literal' ? String(key.value) : null)
+          : (key?.name ?? (key?.type === 'Literal' ? String(key.value) : null));
+        if (name === null) {
+          throw new PatternSafetyError(
+            'Pattern destructures a computed property name, which is not allowed. ' +
+            'Use a literal property name.'
+          );
+        }
+        if (BANNED_PROPERTIES.has(name)) {
+          throw new PatternSafetyError(
+            `Pattern destructures the disallowed property '${name}'.`
+          );
+        }
+      }
+    }
+
+    // An object literal with a computed key was never inspected, so
+    // `{ ["constructor"]: … }` passed. Nothing here needs computed keys.
+    if (node.type === 'Property' && node.computed && parent?.type !== 'ObjectPattern') {
+      const key = node.key;
+      const name = key?.type === 'Literal' ? String(key.value) : null;
+      if (name === null || BANNED_PROPERTIES.has(name)) {
+        throw new PatternSafetyError(
+          'Pattern uses a computed object key, which is not allowed. ' +
+          'Use a literal property name.'
+        );
+      }
     }
 
     if (node.type === 'MemberExpression') {

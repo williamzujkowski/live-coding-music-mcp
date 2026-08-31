@@ -20,7 +20,7 @@
 import { existsSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { StrudelEngine } from '../src/services/StrudelEngine.js';
+import { StrudelEngine, EVALUATOR_EXPORTS } from '../src/services/StrudelEngine.js';
 
 // A pattern that escaped the sandbox would create this file.
 const MARKER = join(tmpdir(), 'strudel-sandbox-escape-marker');
@@ -163,6 +163,80 @@ async function main(): Promise<void> {
       console.error(`  FAIL  ${message.slice(0, 80)}`);
     }
   }
+
+  console.log('\nEvaluator exports are stripped from the context (#SANDBOX):');
+  {
+    const context = (engine as unknown as { context: Record<string, unknown> }).context;
+    for (const name of EVALUATOR_EXPORTS) {
+      if (Object.prototype.hasOwnProperty.call(context, name)) {
+        failures++;
+        console.error(`  FAIL  '${name}' is still reachable from a pattern`);
+      }
+    }
+    if (Object.keys(context).length < 500) {
+      failures++;
+      console.error(`  FAIL  context has only ${String(Object.keys(context).length)} keys — the strip was too broad`);
+    }
+    console.log(`  ok    ${String(EVALUATOR_EXPORTS.length)} evaluator exports absent, ${String(Object.keys(context).length)} functions retained`);
+  }
+
+  // The transpiler rewrites DOUBLE-quoted literals into mini() calls, so
+  // a payload must use single quotes to survive as executable code. A
+  // check written with double quotes passes for the wrong reason.
+  console.log('\nSandbox escape routes are refused (#SANDBOX):');
+  const escapes: [string, string][] = [
+    ['member .constructor', "note('c3').constructor"],
+    ['shorthand destructure', "const { constructor } = note; note('c3')"],
+    ['renamed destructure', "const { constructor: C } = note; note('c3')"],
+    ['param destructure', "const f = ({ constructor: C }) => C; f(note); note('c3')"],
+    ['for-of destructure', "for (const { constructor: C } of [note]) { C; } note('c3')"],
+    ['nested __proto__', "const { __proto__: { constructor: C } } = note; note('c3')"],
+    ['assignment pattern', "let C; ({ constructor: C } = note); note('c3')"],
+    ['computed object key', "const o = { ['constructor']: 1 }; note('c3')"],
+    ['evaluate()', "evaluate('1+1'); note('c3')"],
+    ['evalScope()', "evalScope('1+1'); note('c3')"],
+  ];
+  for (const [label, code] of escapes) {
+    if (engine.validate(code).valid) {
+      failures++;
+      console.error(`  FAIL  ${label} was ACCEPTED`);
+    } else {
+      console.log(`  ok    ${label} refused`);
+    }
+  }
+
+  console.log('\nA refused pattern leaves the host realm untouched:');
+  {
+    const marker = '__verify_sandbox_probe__';
+    (globalThis as unknown as Record<string, unknown>)[marker] = 'untouched';
+    engine.validate(
+      `const { constructor: C } = note; C('globalThis.${marker} = \\'escaped\\'')(); note('c3')`);
+    engine.validate(`evaluate('globalThis.${marker} = \\'escaped\\''); note('c3')`);
+    const value = (globalThis as unknown as Record<string, unknown>)[marker];
+    if (value !== 'untouched') {
+      failures++;
+      console.error(`  FAIL  host globalThis was modified: ${String(value)}`);
+    } else {
+      console.log('  ok    host globalThis untouched');
+    }
+    delete (globalThis as unknown as Record<string, unknown>)[marker];
+  }
+
+  console.log('\nLegitimate patterns still validate:');
+  for (const code of [
+    's("bd*4")',
+    'note("c3 e3 g3").s("piano")',
+    'stack(s("bd*4"), s("hh*8")).gain(0.7)',
+    'const a = s("bd*4"); a.fast(2)',
+    's("bd").every(4, x => x.fast(2))',
+    'n("0 2 4").scale("C:minor")',
+  ]) {
+    if (!engine.validate(code).valid) {
+      failures++;
+      console.error(`  FAIL  the fix broke a real pattern: ${code}`);
+    }
+  }
+  console.log('  ok    6 real patterns unaffected');
 
   if (failures > 0) {
     console.error(`\n${String(failures)} check(s) failed.`);

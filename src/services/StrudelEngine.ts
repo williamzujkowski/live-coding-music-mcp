@@ -150,18 +150,56 @@ export interface PatternMetadata {
  * console.log(`Found ${events.length} events in 2 cycles`);
  * ```
  */
+/**
+ * Strudel exports that compile or evaluate source at runtime.
+ *
+ * Removed from the sandbox context. Each is a route from pattern text
+ * to main-realm execution that no legitimate pattern needs: patterns
+ * build and combine Strudel values, they do not evaluate new source.
+ *
+ * @nist si-10 "Information input validation"
+ * @nist ac-6 "Least privilege"
+ */
+export const EVALUATOR_EXPORTS: readonly string[] = [
+  'evaluate',
+  'evalScope',
+  'safeEval',
+  'webaudioEvaluate',
+  'transpiler',
+  'transpile',
+  'Function',
+  'eval',
+  'require',
+  'process',
+  'globalThis',
+];
+
 export class StrudelEngine {
   /** Execution context with Strudel functions */
   private readonly context: Record<string, any>;
 
   constructor() {
     // Build execution context with all Strudel functions
-    this.context = {
+    const context: Record<string, any> = {
       ...strudelCore,
       ...strudelTonal,
       m: mini,
       mini,
     };
+
+    // Strip the evaluators before anything can reach them.
+    //
+    // @strudel/core exports its own transpile-and-`new Function` under
+    // several names. Spreading the module put them in the sandbox
+    // context, and every context key is automatically an allowed
+    // identifier — so a pattern could call one directly, with no banned
+    // syntax, no member access and no destructuring, and run arbitrary
+    // JavaScript in the main realm. The AST allowlist cannot defend a
+    // context function that is itself an evaluator; the only fix is for
+    // it not to be there.
+    for (const name of EVALUATOR_EXPORTS) delete context[name];
+
+    this.context = context;
   }
 
   /**
