@@ -111,6 +111,27 @@ export class PatternValidator {
         continue;
       }
 
+      // Comments are not code, and an apostrophe in one is not a quote.
+      // Without this, `s("bd*4") // don't stop the beat` was reported as
+      // having an unclosed single quote — and writePatternWithValidation
+      // refuses the write outright on a validation error, so a comment
+      // containing an ordinary English contraction blocked the pattern
+      // (#334).
+      if (!inSingleQuote && !inDoubleQuote && !inBacktick) {
+        if (char === '/' && pattern[i + 1] === '/') {
+          const newline = pattern.indexOf('\n', i);
+          if (newline === -1) break;
+          i = newline;
+          continue;
+        }
+        if (char === '/' && pattern[i + 1] === '*') {
+          const end = pattern.indexOf('*/', i + 2);
+          if (end === -1) break;
+          i = end + 1;
+          continue;
+        }
+      }
+
       if (char === "'" && !inDoubleQuote && !inBacktick) {
         inSingleQuote = !inSingleQuote;
       } else if (char === '"' && !inSingleQuote && !inBacktick) {
@@ -191,18 +212,34 @@ export class PatternValidator {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    // Check for excessive gain that could damage speakers
-    const gainMatches = pattern.match(/\.gain\(([0-9.]+)\)/g);
-    if (gainMatches) {
-      gainMatches.forEach(match => {
-        const gainValue = parseFloat(match.match(/([0-9.]+)/)?.[0] || '0');
-        if (gainValue > 2) {
-          warnings.push(`High gain value detected: ${gainValue} - may be too loud`);
-        }
-        if (gainValue > 5) {
-          errors.push(`Dangerous gain value: ${gainValue} - reduced to 2.0 for safety`);
-        }
-      });
+    // Check for excessive gain that could damage speakers.
+    //
+    // This never fired for any input. The outer match used /g, which
+    // discards capture groups and returns the whole ".gain(9)"; the
+    // inner /([0-9.]+)/ then matched the LEADING DOT of ".gain", and
+    // parseFloat(".") is NaN. Both NaN > 2 and NaN > 5 are false, so
+    // neither branch was reachable — gain(99) validated clean while
+    // CLAUDE.md advertised "prevents dangerous patterns (gain > 2.0)".
+    //
+    // Four tests in PatternValidator.test.ts documented the bug in
+    // detail and asserted the broken behaviour, for coverage. Coverage
+    // measured that these lines ran; nothing measured that they did
+    // anything (#334).
+    //
+    // Now matchAll with the capture, an optional leading dot so bare
+    // `gain(9)` is caught too, whitespace tolerance, and a number
+    // pattern that accepts exponent form.
+    const GAIN = /(?:^|[.\s(])gain\(\s*(\d*\.?\d+(?:e[+-]?\d+)?)\s*\)/gi;
+    for (const match of pattern.matchAll(GAIN)) {
+      const gainValue = Number.parseFloat(match[1]);
+      if (!Number.isFinite(gainValue)) continue;
+      if (gainValue > 5) {
+        errors.push(
+          `Dangerous gain value: ${String(gainValue)} - above the safe maximum of 2.0`
+        );
+      } else if (gainValue > 2) {
+        warnings.push(`High gain value detected: ${String(gainValue)} - may be too loud`);
+      }
     }
 
     // Check for potentially infinite loops
@@ -242,7 +279,7 @@ export class PatternValidator {
     });
 
     // Add missing quotes around sound patterns
-    fixed = fixed.replace(/s\(([a-z0-9*]+)\)/gi, (match, sound) => {
+    fixed = fixed.replace(/(?<![a-z])s\(([a-z0-9*]+)\)/gi, (match, sound) => {
       if (!sound.includes('"') && !sound.includes("'")) {
         fixes.push(`Added quotes around sound: ${sound}`);
         return `s("${sound}")`;
