@@ -276,10 +276,6 @@ export class MockBrowser implements Partial<Browser> {
   }
 }
 
-export const createMockBrowser = (): MockBrowser => {
-  return new MockBrowser();
-};
-
 export const createMockPage = (): MockPage => {
   return new MockPage();
 };
