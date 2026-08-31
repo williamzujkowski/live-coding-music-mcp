@@ -40,7 +40,8 @@ export const tools: Tool[] = [
       'task=jam generates a fresh layer (drums/bass/melody/pad/texture) and merges it into the current pattern, then auto-plays. ' +
       'All three share Gemini auth + rate limiting. ' +
       'Example: ai_assist({ task: "jam", layer: "bass" }). ' +
-      'Requires GEMINI_API_KEY env var. For non-AI pattern generation use generate_part; for full compositions use compose.',
+      'Needs GEMINI_API_KEY, or a logged-in claude/agy/codex CLI on PATH (#252). ' +
+      'For non-AI pattern generation use generate_part; for full compositions use compose.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -106,7 +107,9 @@ async function getPatternFeedback(
   if (!ctx.geminiService.isAvailable()) {
     return {
       gemini_available: false,
-      error: 'Gemini API not configured. Set GEMINI_API_KEY environment variable to enable AI feedback.',
+      error:
+        'No AI transport available. Set GEMINI_API_KEY, or log in to one of the '
+        + 'claude/agy/codex CLIs on PATH (#252).',
     };
   }
 
@@ -258,7 +261,11 @@ async function suggestPatternFromAudio(
     return { error: 'Browser not initialized. Run init and play a pattern first.' };
   }
   if (!ctx.geminiService.isAvailable()) {
-    return { error: 'Gemini API not configured. Set GEMINI_API_KEY to enable AI features.' };
+    return {
+      error:
+        'No AI transport available. Set GEMINI_API_KEY, or log in to one of the '
+        + 'claude/agy/codex CLIs on PATH (#252).',
+    };
   }
   const controller = ctx.getController(sid);
 
