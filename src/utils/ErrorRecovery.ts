@@ -43,8 +43,32 @@ export class ErrorRecovery {
    * coverage that did not exist. Reported explicitly so a reader can
    * tell the two apart (#286).
    */
-  private static readonly INSTRUMENTED_OPERATIONS = ['Pattern Write'];
+  /**
+   * Operations `getErrorStats` seeds with an explicit zero row.
+   *
+   * This named 'Pattern Write' — which nothing calls: its only path,
+   * `handlePatternWrite`, is reached solely from
+   * `writePatternWithValidation`, and nothing in `src/server` calls
+   * that. So diagnostics carried a permanent all-zero row for dead code
+   * while omitting the one operation that does run (#445).
+   *
+   * 'Browser Init' is the live one, from `StrudelController.ts:199`
+   * (#315). A zero row for it is the useful kind: it says the retry
+   * path exists and has not fired, which is exactly what an operator
+   * wants to know before a failure rather than after.
+   */
+  private static readonly INSTRUMENTED_OPERATIONS = ['Browser Init'];
   private readonly ERROR_WINDOW = 60000; // 1 minute window for error tracking
+  /**
+   * Operations this instance has handled, successfully or not.
+   *
+   * The seed list above says which paths EXIST; this says which have
+   * RUN. A clean run has no error and no recovery to record, so without
+   * it a successful operation left no row and looked identical to one
+   * nothing ever watched — the ambiguity #288 removed for the seeded
+   * names and left everywhere else.
+   */
+  private readonly seenOperations = new Set<string>();
 
   constructor() {
     this.logger = new Logger();
@@ -84,6 +108,10 @@ export class ErrorRecovery {
       exponentialBackoff: true
     }
   ): Promise<T> {
+    // Recorded on entry: an operation that ran and succeeded should
+    // report an explicit zero rather than no row at all (#288's
+    // distinction, which only the seeded names used to get).
+    this.seenOperations.add(operationName);
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= strategy.maxRetries; attempt++) {
@@ -96,7 +124,10 @@ export class ErrorRecovery {
         // dropping them is what made recovered flakiness invisible
         // (#286). recordRecovery clears the outstanding bucket itself.
         this.recordRecovery(operationName);
-        this.clearErrorHistory(operationName);
+        // The error bucket only — not `clearErrorHistory`, which also
+        // forgets that the operation ran and would make every success
+        // erase its own zero row (#445).
+        this.errorHistory.delete(operationName);
         return result;
 
       } catch (error: any) {
@@ -196,6 +227,7 @@ export class ErrorRecovery {
     // to mean both.
     const operations = new Set<string>([
       ...ErrorRecovery.INSTRUMENTED_OPERATIONS,
+      ...this.seenOperations,
       ...this.errorHistory.keys(),
       ...this.recoveredHistory.keys(),
     ]);
@@ -219,6 +251,15 @@ export class ErrorRecovery {
    * @param operationName - Operation to clear
    */
   clearErrorHistory(operationName: string): void {
+    // Forgotten entirely, including that it ever ran — "clear this
+    // operation's history" that left a zero row behind would be a
+    // different promise than this method's name makes.
+    //
+    // The success path inside `executeWithRetry` does NOT use this: it
+    // clears the error bucket directly, because an operation that just
+    // succeeded has run and should report an explicit zero rather than
+    // vanish (#288, #445).
+    this.seenOperations.delete(operationName);
     this.errorHistory.delete(operationName);
   }
 
