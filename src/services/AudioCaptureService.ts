@@ -211,6 +211,8 @@ export class AudioCaptureService {
 
             capture.startTime = Date.now();
             capture.isCapturing = true;
+            // A previous capture's error is not this one's.
+            capture.error = null;
             capture.recorder.start(100); // Collect data every 100ms
 
             // A streaming capture had no upper bound at all: it
@@ -256,6 +258,21 @@ export class AudioCaptureService {
           const capture = (window as any).strudelAudioCapture;
 
           if (!capture.recorder || !capture.isCapturing) {
+            // A recorder error clears `isCapturing` too, so this branch
+            // covered two very different situations with one message.
+            // `capture.error` was set and nothing ever read it — the
+            // real cause was discarded and the caller was told there had
+            // been no capture at all (#437).
+            if (capture.error !== null) {
+              const failure = capture.error;
+              const orphaned = capture.chunks.length;
+              capture.error = null;
+              capture.chunks = [];
+              return {
+                success: false,
+                error: `${failure}. ${String(orphaned)} chunk(s) were recorded before it and have been discarded.`,
+              };
+            }
             return { success: false, error: 'No capture in progress.' };
           }
 
@@ -282,6 +299,19 @@ export class AudioCaptureService {
                 clearTimeout(capture.capTimer);
                 capture.capTimer = null;
               }
+
+              // An error that fired after this handler was installed
+              // still delivers `dataavailable` and `stop`, so this used
+              // to return success:true over a truncated recording and
+              // the tool reported a normal capture (#437).
+              if (capture.error !== null) {
+                const failure = capture.error;
+                capture.error = null;
+                capture.chunks = [];
+                resolve({ success: false, error: `${failure} during stop; the recording is incomplete.` });
+                return;
+              }
+
               const duration = Date.now() - startTime;
 
               if (capture.chunks.length === 0) {
