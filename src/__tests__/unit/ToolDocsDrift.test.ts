@@ -58,3 +58,51 @@ describe('README tool table drift guard', () => {
       );
   });
 });
+
+/**
+ * #401: the table showed the first line of nineteen of the twenty-eight
+ * descriptions and dropped the rest, because the extractor read one
+ * quoted literal and most descriptions concatenate several.
+ *
+ * The drift guard above could not catch that: it compares the README
+ * against the same extractor, so both were wrong together. These
+ * assertions name the expected text literally instead.
+ */
+describe('the table carries whole descriptions, not first lines (#401)', () => {
+  const readme = readFileSync(join(ROOT, 'README.md'), 'utf-8');
+  const table = readme.slice(
+    readme.indexOf('<!-- TOOLS:START -->'),
+    readme.indexOf('<!-- TOOLS:END -->'),
+  );
+
+  function row(tool: string): string {
+    const match = new RegExp(`^\\| \`${tool}\` \\| (.*?) \\|$`, 'm').exec(table);
+    expect(match).not.toBeNull();
+    return match?.[1] ?? '';
+  }
+
+  it.each([
+    // The dropped fragments were the ones naming each consolidated
+    // tool's discriminator — exactly what the table is read for.
+    ['ai_assist', 'task=jam'],
+    ['playback', 'action=stop'],
+    ['analyze', 'include='],
+    ['history', 'action='],
+    ['edit_pattern', 'mode='],
+  ])('%s carries text from past its first fragment', (tool, fragment) => {
+    expect(row(tool)).toContain(fragment);
+  });
+
+  it('no row ends at a concatenation seam', () => {
+    // Truncation left a trailing space where the ` + ` had been.
+    const rows = [...table.matchAll(/^\| `([a-z_]+)` \| (.*?) \|$/gm)];
+    expect(rows.length).toBeGreaterThan(0);
+    const seams = rows.filter(m => (m[2] ?? '').endsWith(' ')).map(m => m[1]);
+    expect(seams).toEqual([]);
+  });
+
+  it('every tool in the table has a description', () => {
+    const rows = [...table.matchAll(/^\| `([a-z_]+)` \| (.*?) \|$/gm)];
+    expect(rows.filter(m => (m[2] ?? '').trim() === '').map(m => m[1])).toEqual([]);
+  });
+});
