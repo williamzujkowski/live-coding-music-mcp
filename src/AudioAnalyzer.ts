@@ -757,6 +757,47 @@ export class AudioAnalyzer {
   /**
    * Extract chroma features (12-dimensional pitch class profile) from FFT data
    */
+  /**
+   * Mean in-range bin magnitude below which a spectrum carries no key.
+   *
+   * On the 0-255 byte scale `getByteFrequencyData` produces, so this is
+   * roughly one part in 255 of full scale, averaged over the 20-4000 Hz
+   * bins — far below anything audible.
+   *
+   * **A floor, not a calibration.** It is chosen to be obviously below
+   * real audio rather than measured against it: three attempts to sample
+   * a playing page for a real number failed on playback that had worked
+   * an hour earlier, and inventing a figure would be worse than saying
+   * so. Measuring it against live playback and tightening it is #412.
+   * Its job today is that the guard can fire at all, which it could not
+   * before.
+   */
+  private static readonly CHROMA_NOISE_FLOOR = 1;
+
+  /**
+   * Mean magnitude of the bins `extractChroma` will actually use.
+   *
+   * Read before normalization, which is the whole point: the chroma
+   * vector sums to 1 for a single non-zero bin exactly as it does for a
+   * full mix, so nothing downstream of `extractChroma` can tell silence
+   * from music.
+   *
+   * @param fftData - Byte frequency data
+   * @param sampleRate - The rate the AudioContext reported
+   * @returns Mean magnitude over the 20-4000 Hz bins, 0 if none
+   */
+  private meanInRangeMagnitude(fftData: Uint8Array, sampleRate: number): number {
+    let sum = 0;
+    let count = 0;
+    for (let i = 0; i < fftData.length; i++) {
+      const freq = (i / fftData.length) * (sampleRate / 2);
+      if (freq < 20 || freq > 4000) continue;
+      sum += fftData[i];
+      count++;
+    }
+    return count > 0 ? sum / count : 0;
+  }
+
   extractChroma(fftData: Uint8Array, sampleRate: number = 44100): number[] {
     const chroma = new Array(12).fill(0);
     // How many FFT bins landed in each pitch class. Linear-frequency
@@ -1356,6 +1397,9 @@ export class AudioAnalyzer {
     }
 
     let chroma: number[];
+    // Mean in-range bin magnitude before normalization, or null when the
+    // chroma came from a mock and there is no spectrum behind it.
+    let rawMagnitude: number | null = null;
 
     // Check if this is a mock with pre-calculated chroma vector (for testing)
     if (typeof analyzer.analyze === 'function') {
@@ -1368,6 +1412,7 @@ export class AudioAnalyzer {
           throw new Error('Invalid audio data');
         }
         const fftData = new Uint8Array(analyzer.dataArray);
+        rawMagnitude = this.meanInRangeMagnitude(fftData, analyzer.sampleRate ?? 44100);
         chroma = this.extractChroma(fftData, analyzer.sampleRate ?? 44100);
       }
     } else {
@@ -1380,13 +1425,28 @@ export class AudioAnalyzer {
       // connect time. 44100 was assumed; the real rate is commonly
       // 48000, where every frequency came out 8.8% low — 1.47
       // semitones, enough to put a note in the wrong pitch class (#321).
+      rawMagnitude = this.meanInRangeMagnitude(fftData, analyzer.sampleRate ?? 44100);
       chroma = this.extractChroma(fftData, analyzer.sampleRate ?? 44100);
     }
 
-    // Check for sufficient energy
-    const totalEnergy = chroma.reduce((sum, val) => sum + val, 0);
-    if (totalEnergy < 0.1) {
-      return { key: 'C', scale: 'major', confidence: 0.1 };
+    // Check for sufficient energy.
+    //
+    // This used to sum the chroma vector and compare against 0.1 — a
+    // test that could never fail, because `extractChroma` normalizes to
+    // sum 1 whenever any bin is non-zero. Measured: an FFT with a single
+    // bin at magnitude 1 out of 1024, which is silence, normalized to
+    // sum 1.000 and came back "C locrian, confidence 0.793". Only an
+    // exactly all-zero spectrum could trip the guard.
+    //
+    // The magnitude has to be read before normalization throws it away.
+    if (rawMagnitude !== null && rawMagnitude < AudioAnalyzer.CHROMA_NOISE_FLOOR) {
+      return { key: 'C', scale: 'major', confidence: 0 };
+    }
+    // The mock path supplies a chroma directly and has no spectrum to
+    // measure, so it keeps a chroma-side check — meaningful there
+    // because a mock is not required to be normalized.
+    if (rawMagnitude === null && chroma.reduce((sum, val) => sum + val, 0) <= 0) {
+      return { key: 'C', scale: 'major', confidence: 0 };
     }
 
     return this.detectKeyFromChroma(chroma);
@@ -1470,9 +1530,15 @@ export class AudioAnalyzer {
     // by the same 1.075 meant it discriminated nothing between them).
     // Pearson's spread is wide enough that a nudge this size can only
     // break a genuine near-tie.
+    //
+    // Applied only to a positive score. Multiplying is a boost above
+    // zero and a PENALTY below it: a candidate at -0.4 becomes -0.408,
+    // pushed down by the nudge that exists to lift it. That only bites
+    // when nothing correlates well, which is exactly where a tonic hint
+    // was supposed to help.
     const TONIC_NUDGE = 1.02;
     for (const s of scores) {
-      if (s.key === topPitches[0]) {
+      if (s.key === topPitches[0] && s.score > 0) {
         s.score *= TONIC_NUDGE;
       }
     }
