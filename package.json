@@ -17,11 +17,11 @@
     "build": "tsc && npx tsx scripts/generate-tool-docs.ts",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "test": "jest --coverage",
+    "test": "npm run test:fast && npm run test:browser",
     "test:nocov": "jest",
     "test:watch": "jest --watch",
     "test:integration": "node tests/strudel-integration.js",
-    "test:browser": "HEADLESS=true jest --testPathPattern=browser",
+    "test:browser": "HEADLESS=true jest --runInBand --forceExit --coverage=false --testPathPattern=browser",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "docker:build": "docker build -t live-coding-music-mcp .",
@@ -34,7 +34,8 @@
     "clean": "rm -rf dist coverage",
     "test:sandbox": "tsx scripts/verify-sandbox.ts",
     "test:export-audio": "tsx scripts/verify-export-audio.ts",
-    "test:ai-transport": "tsx scripts/verify-ai-transport.ts"
+    "test:ai-transport": "tsx scripts/verify-ai-transport.ts",
+    "test:fast": "jest --coverage --testPathIgnorePatterns=browser"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
