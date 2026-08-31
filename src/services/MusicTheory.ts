@@ -1,4 +1,5 @@
 import { lookup } from '../utils/TableLookup.js';
+import { ValidationError } from '../utils/CategorisedError.js';
 export class MusicTheory {
   private scales = {
     major: [0, 2, 4, 5, 7, 9, 11],
@@ -129,7 +130,7 @@ export class MusicTheory {
    */
   generateEuclideanRhythm(hits: number, steps: number): string {
     if (hits > steps) {
-      throw new Error('Hits cannot exceed steps');
+      throw new ValidationError('Hits cannot exceed steps');
     }
     
     if (hits <= 0 || steps <= 0) {

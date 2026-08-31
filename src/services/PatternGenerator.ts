@@ -1,6 +1,7 @@
 import { MusicTheory } from './MusicTheory.js';
 import { STYLE_ALIASES, resolveDrumStyle } from './StyleRegistry.js';
 import { lookup } from '../utils/TableLookup.js';
+import { ValidationError } from '../utils/CategorisedError.js';
 
 export class PatternGenerator {
   private theory = new MusicTheory();
@@ -693,7 +694,7 @@ stack(
    */
   generatePolyrhythm(sounds: string[], patterns: number[]): string {
     if (sounds.length !== patterns.length) {
-      throw new Error('Number of sounds must match number of patterns');
+      throw new ValidationError('Number of sounds must match number of patterns');
     }
     
     const rhythms = sounds.map((sound, i) => {

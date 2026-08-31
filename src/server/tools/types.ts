@@ -9,6 +9,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { AiRateLimitError } from '../../services/ai/AiTransport.js';
+import { BusinessError, ValidationError } from '../../utils/CategorisedError.js';
 import type { StrudelController } from '../../StrudelController.js';
 import type { PatternStore } from '../../PatternStore.js';
 import type { PatternGenerator } from '../../services/PatternGenerator.js';
@@ -343,6 +344,13 @@ export function categorizeError(error: unknown): ErrorCategory {
   // retryable failure there is into `internal`, which is not retryable
   // (#380).
   if (error instanceof AiRateLimitError) return 'transient';
+  // A thrower that knows what kind of failure it has beats a phrase
+  // match every time. "Steps cannot exceed 256" contains none of the
+  // words below, and fell through to `internal` — not retryable, and
+  // reading to an agent as "the server is broken" when the fix is to
+  // change an argument (#382).
+  if (error instanceof ValidationError) return 'validation';
+  if (error instanceof BusinessError) return 'business';
 
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();

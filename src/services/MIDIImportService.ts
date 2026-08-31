@@ -34,6 +34,7 @@
 
 import * as midiModule from '@tonejs/midi';
 import { BEATS_PER_BAR } from './MIDIExportService.js';
+import { ValidationError } from '../utils/CategorisedError.js';
 const Midi = (midiModule as any).Midi || (midiModule as any).default?.Midi;
 
 /** Options accepted by `convertBuffer`. */
@@ -290,7 +291,7 @@ export class MIDIImportService {
     // Belt and braces before the per-step allocations below: stepsPerCycle
     // and bars are both bounded above, so this should be unreachable.
     if (!Number.isSafeInteger(totalSteps) || totalSteps < 1 || totalSteps > MAX_BARS * 64) {
-      throw new Error(`Refusing to render ${totalSteps} steps.`);
+      throw new ValidationError(`Refusing to render ${totalSteps} steps.`);
     }
 
     const drumMap: Record<number, string> = { ...GM_DRUM_MAP, ...(options.drum_map ?? {}) };

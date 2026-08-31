@@ -38,6 +38,7 @@ import { categorizeError, err, isEnvelope, ok, isFailureShaped, PATTERN_STASHED_
 import { readResource, resources as mcpResources } from './resources.js';
 import { join } from 'node:path';
 import { parseServerConfig } from '../utils/ServerConfig.js';
+import { BusinessError } from '../utils/CategorisedError.js';
 
 const configPath = './config.json';
 
@@ -637,7 +638,7 @@ export class StrudelMCPServer {
         throw new Error(`Session '${sessionId}' not found. Create it first with session({ action: "create" }).`);
       }
       if (!sessionController.page) {
-        throw new Error(`Session '${sessionId}' has no active page yet.`);
+        throw new BusinessError(`Session '${sessionId}' has no active page yet.`);
       }
       page = sessionController.page;
       key = sessionId;

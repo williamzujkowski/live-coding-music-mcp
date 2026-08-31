@@ -10,6 +10,7 @@ import { InputValidator } from '../../utils/InputValidator.js';
 import { ok, err, categorizeError, withStashNotice } from './types.js';
 import { readFile } from 'fs/promises';
 import path from 'path';
+import { ValidationError } from '../../utils/CategorisedError.js';
 
 /** Hard cap on .mid input size — protects @tonejs/midi from pathological allocations. */
 const MAX_MIDI_BYTES = 1_000_000; // 1 MB
@@ -158,14 +159,14 @@ async function loadMidiBuffer(args: any): Promise<Buffer> {
   if (source === 'base64') {
     // Decoded length ≤ raw length × 3/4; reject before allocating.
     if (data.length > MAX_MIDI_BYTES * 2) {
-      throw new Error(`MIDI base64 input too large (>${MAX_MIDI_BYTES} bytes decoded).`);
+      throw new ValidationError(`MIDI base64 input too large (>${MAX_MIDI_BYTES} bytes decoded).`);
     }
     const buf = Buffer.from(data, 'base64');
     if (buf.length === 0) {
       throw new Error('Invalid data: base64 decoded to zero bytes');
     }
     if (buf.length > MAX_MIDI_BYTES) {
-      throw new Error(`MIDI input too large (${buf.length} > ${MAX_MIDI_BYTES} bytes).`);
+      throw new ValidationError(`MIDI input too large (${buf.length} > ${MAX_MIDI_BYTES} bytes).`);
     }
     return buf;
   }
@@ -182,7 +183,7 @@ async function loadMidiBuffer(args: any): Promise<Buffer> {
     }
     const buf = await readFile(fullPath);
     if (buf.length > MAX_MIDI_BYTES) {
-      throw new Error(`MIDI input too large (${buf.length} > ${MAX_MIDI_BYTES} bytes).`);
+      throw new ValidationError(`MIDI input too large (${buf.length} > ${MAX_MIDI_BYTES} bytes).`);
     }
     return buf;
   }

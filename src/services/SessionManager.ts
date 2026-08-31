@@ -3,6 +3,7 @@ import { StrudelController, waitForStrudelReady } from '../StrudelController.js'
 import { DEFAULT_STRUDEL_URL } from '../utils/ServerConfig.js';
 import { Logger } from '../utils/Logger.js';
 import type { AudioAnalysisConfig } from '../types/AudioAnalysis.js';
+import { BusinessError } from '../utils/CategorisedError.js';
 
 /**
  * Session metadata including creation time and last activity
@@ -148,7 +149,7 @@ export class SessionManager {
 
     // Check max sessions limit, counting creations in flight
     if (this.sessions.size + this.reservedIds.size >= this.MAX_SESSIONS) {
-      throw new Error(
+      throw new BusinessError(
         `Maximum session limit (${this.MAX_SESSIONS}) reached. Destroy an existing session first.`
       );
     }

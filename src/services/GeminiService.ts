@@ -14,6 +14,7 @@ import { buildMeasurementPrompt } from './ai/AudioMeasurements.js';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { ValidationError } from '../utils/CategorisedError.js';
 
 /**
  * Audio feedback from Gemini analysis
@@ -682,7 +683,7 @@ export class GeminiService {
 
     // Check for excessive length
     if (trimmed.length > this.maxPatternLength) {
-      throw new Error(
+      throw new ValidationError(
         `${methodName}: Pattern exceeds maximum length of ${this.maxPatternLength} characters ` +
         `(current: ${trimmed.length}). Truncate or simplify the pattern.`
       );
