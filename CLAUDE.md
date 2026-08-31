@@ -155,7 +155,7 @@ Adding context guidelines to CLAUDE.md after line 70.
 ## Project Purpose
 This is an **open source, actively developed** MCP server enabling AI agents to generate music via Strudel.cc using browser automation.
 
-**Current State:** Beta. `npm test` reports 1903 passing, 51 skipped, 0 failing. 86.89% statement / 77.3% branch coverage. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
+**Current State:** Beta. `npm test` reports ~2070 passing, 20 skipped, 0 failing. <!-- COVERAGE:START -->88.18% statement / 77.79% branch coverage<!-- COVERAGE:END -->. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
 
 ## GitHub Issues Workflow
 
@@ -508,7 +508,7 @@ src/
 - **Unit Tests**: MusicTheory (100% statements, 75% branches), PatternGenerator (78.4% statements) — the 100% target below is a target, not the current state
 - **Integration Tests**: StrudelController, PatternStore (77-85% coverage)
 - **Mock Infrastructure**: MockPlaywright, TestFixtures
-- **Coverage Target**: 80% overall, 100% for services. Current: 86.89% overall; PatternGenerator sits at 78.4% and StrudelEngine at 0% (its tests run against a mock because @strudel/core is ESM and Jest is not configured for it — `npm run test:sandbox` covers the real engine)
+- **Coverage Target**: 80% overall, 100% for services. Current: 88.18% overall; PatternGenerator sits at 78.4% and StrudelEngine at 0% (its tests run against a mock because @strudel/core is ESM and Jest is not configured for it — `npm run test:sandbox` covers the real engine)
 
 ## Debugging Tips
 ```bash

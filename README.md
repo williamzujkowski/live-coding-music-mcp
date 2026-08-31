@@ -4,7 +4,7 @@
 >
 > **Unofficial fan project.** Not affiliated with, or endorsed by, the [Strudel project](https://codeberg.org/uzu/strudel). This adapter exists to make live-coding music accessible to beginners who want to try pattern-based music without learning the whole ecosystem first.
 >
-> **Status:** Beta | 86% statement coverage | Published to npm | Actively developed
+> **Status:** Beta | 88% statement coverage | Published to npm | Actively developed
 
 <a href="https://glama.ai/mcp/servers/@williamzujkowski/live-coding-music-mcp">
   <img width="380" height="200" src="https://glama.ai/mcp/servers/@williamzujkowski/live-coding-music-mcp/badge" alt="live-coding-music-mcp server" />
@@ -18,7 +18,7 @@
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
 
-**Current State: Beta.** The core workflow (init → compose → playback → analyze) works reliably with real audio output. `npm test` reports 1903 passing tests, 86.89% statement coverage / 77.3% branch coverage. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
+**Current State: Beta.** The core workflow (init → compose → playback → analyze) works reliably with real audio output. `npm test` reports ~2070 passing tests, <!-- COVERAGE:START -->88.18% statement coverage / 77.79% branch coverage<!-- COVERAGE:END -->. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
 
 **What "Beta" means here:**
 - Tool schemas are stable within minor versions; breaking changes require a major bump
@@ -56,9 +56,11 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 - **Result envelope** on every `tools/call`: clients branch on `{ ok, errorCategory, isRetryable }` instead of parsing free-text.
 
 ### Testing & CI status
-- **1903 passing tests** across unit, integration, and example-validation suites; 51 skipped under `npm test` (browser and other Playwright-gated cases).
-- **86.89% statement coverage / 77.3% branch coverage** (90.56% functions, 87.47% lines).
-- **Lint blocking in CI**: 0 errors, 190 warnings (mostly `any` in test mocks).
+- **~2070 passing tests** across unit, integration, browser-validation and example suites; 20 skipped under `npm test` (Playwright-gated cases).
+<!-- COVERAGE:START -->
+- **88.18% statement coverage / 77.79% branch coverage** (92.59% functions, 88.6% lines), checked against `coverage/coverage-summary.json` by a drift guard.
+<!-- COVERAGE:END -->
+- **Lint blocking in CI**: 0 errors, ~195 warnings (mostly `any` in test mocks).
 - **OIDC trusted publishing** to npm with SLSA build provenance attestation on every release.
 
 **Not Production-Ready:** This is experimental software under active development. Use for exploration and experimentation. Expect breaking changes, bugs, and incomplete features. See [the Contributing section](#contributing) to help improve it.
