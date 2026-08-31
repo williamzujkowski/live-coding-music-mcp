@@ -213,38 +213,75 @@ export function categorizeError(error: unknown): ErrorCategory {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
 
+  // Transient first. It used to be checked last, behind `validation`,
+  // which meant a timeout mentioning an invalid state was filed as a
+  // caller mistake — and everything not matched fell through to
+  // `internal`, whose isRetryable is false.
+  //
+  // 'timed out' is the important entry: the codebase says that 13 times
+  // and 'timeout' twice, and 'timed out'.includes('timeout') is false. So
+  // essentially every real timeout was reported to agents as a permanent
+  // internal failure not worth retrying. Rate limits had the same
+  // problem across 14 throw sites, and a rate limit is the single most
+  // retryable error there is.
+  if (
+    lower.includes('timed out') ||
+    lower.includes('timeout') ||
+    lower.includes('rate limit') ||
+    lower.includes('econnrefused') ||
+    lower.includes('econnreset') ||
+    lower.includes('etimedout') ||
+    lower.includes('network') ||
+    lower.includes('fetch failed') ||
+    lower.includes('did not become ready')
+  ) {
+    return 'transient';
+  }
+
+  // Auth before business: a CLI that is installed but not logged in is a
+  // credential problem, and saying 'not found' about a login is not the
+  // same as saying it about a session.
+  if (
+    lower.includes('gemini') ||
+    lower.includes('api key') ||
+    lower.includes('unauthorized') ||
+    lower.includes('unauthenticated') ||
+    lower.includes('not authenticated') ||
+    lower.includes('forbidden') ||
+    lower.includes('permission denied') ||
+    lower.includes('credential')
+  ) {
+    return 'permission';
+  }
+
   if (
     lower.includes('not initialized') ||
     lower.includes("run 'init' first") ||
     lower.includes('run init first') ||
     lower.includes('not found') ||
-    lower.includes('already exists')
+    lower.includes('not installed') ||
+    lower.includes('no ai transport') ||
+    lower.includes('already exists') ||
+    lower.includes('already in progress') ||
+    lower.includes('not connected') ||
+    lower.includes('did not start') ||
+    lower.includes('no pattern')
   ) {
     return 'business';
   }
+
   if (
     lower.includes('invalid') ||
     lower.includes('must be') ||
     lower.includes('required') ||
-    lower.includes('out of range')
+    lower.includes('out of range') ||
+    lower.includes('too many') ||
+    lower.includes('too long') ||
+    lower.includes('non-empty') ||
+    lower.includes('cannot be empty')
   ) {
     return 'validation';
   }
-  if (
-    lower.includes('gemini') ||
-    lower.includes('api key') ||
-    lower.includes('unauthorized') ||
-    lower.includes('forbidden')
-  ) {
-    return 'permission';
-  }
-  if (
-    lower.includes('timeout') ||
-    lower.includes('econnrefused') ||
-    lower.includes('network') ||
-    lower.includes('fetch failed')
-  ) {
-    return 'transient';
-  }
+
   return 'internal';
 }
