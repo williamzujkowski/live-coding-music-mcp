@@ -159,12 +159,31 @@ export class StrudelController {
       }
     });
 
-    await this._page.goto(this.strudelUrl, {
-      waitUntil: 'domcontentloaded', // Changed from networkidle for faster load
-      timeout: 15000,
-    });
-
-    await waitForStrudelReady(this._page);
+    // Navigation and readiness are the only parts of init that depend on
+    // a live third-party site, and they had no retry at all: one hiccup
+    // from strudel.cc surfaced to the calling agent as a hard error
+    // (#315). chromium.launch is deliberately outside the retry — a
+    // local process launch does not fail transiently, and relaunching it
+    // would cost seconds per attempt.
+    const page = this._page;
+    await this.errorRecovery.executeWithRetry(
+      async () => {
+        await page.goto(this.strudelUrl, {
+          waitUntil: 'domcontentloaded', // Changed from networkidle for faster load
+          timeout: 15000,
+        });
+        await waitForStrudelReady(page);
+      },
+      'Browser Init',
+      {
+        maxRetries: 2,
+        retryDelay: 750,
+        exponentialBackoff: true,
+        // Sessions that hit the same upstream hiccup must not retry in
+        // lockstep and concentrate load on a struggling service.
+        jitter: true,
+      },
+    );
 
     // Set up console monitoring for runtime errors
     this.setupConsoleMonitoring();
