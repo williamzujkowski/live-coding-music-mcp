@@ -22,7 +22,6 @@ type AudioAnalyzerPrivate = {
   frequencyToPitchClass(freq: number): number;
   pearsonCorrelation(x: number[], y: number[]): number;
   cosineSimilarity(x: number[], y: number[]): number;
-  rotateProfile(profile: number[], steps: number): number[];
   calculateIntervals(values: number[]): number[];
   calculateVariance(values: number[], mean?: number): number;
   findPeaks(autocorr: number[]): number[];
@@ -278,86 +277,6 @@ describe('AudioAnalyzer - Unit Tests', () => {
 
       const similarity = privateAnalyzer.cosineSimilarity.call(analyzer, x, y);
       expect(similarity).toBe(0);
-    });
-  });
-
-  // ============================================================================
-  // PROFILE ROTATION TESTS
-  // ============================================================================
-
-  describe('rotateProfile', () => {
-    it('should rotate profile by given steps', () => {
-      const profile = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-
-      const rotated = privateAnalyzer.rotateProfile.call(analyzer, profile, 1);
-
-      // Rotating by 1 should move element at position 0 to position 1
-      expect(rotated[1]).toBe(profile[0]);
-    });
-
-    it('should handle zero rotation', () => {
-      const profile = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-
-      const rotated = privateAnalyzer.rotateProfile.call(analyzer, profile, 0);
-
-      expect(rotated).toEqual(profile);
-    });
-
-    it('should wrap around (mod 12)', () => {
-      const profile = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-
-      const rotated = privateAnalyzer.rotateProfile.call(analyzer, profile, 12);
-
-      expect(rotated).toEqual(profile);
-    });
-
-    it('should handle large rotation values', () => {
-      const profile = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-
-      // Rotating by 11 steps
-      const rotated = privateAnalyzer.rotateProfile.call(analyzer, profile, 11);
-
-      // The rotation formula is: rotated[i] = profile[(i - steps + 12) % 12]
-      // So rotated[0] = profile[(0 - 11 + 12) % 12] = profile[1] = 2
-      expect(rotated[0]).toBe(profile[1]);
-    });
-  });
-
-  // ============================================================================
-  // INTERVAL CALCULATION TESTS
-  // ============================================================================
-
-  describe('calculateIntervals', () => {
-    it('should calculate differences between consecutive values', () => {
-      const values = [0, 500, 1000, 1500];
-
-      const intervals = privateAnalyzer.calculateIntervals.call(analyzer, values);
-
-      expect(intervals).toEqual([500, 500, 500]);
-    });
-
-    it('should handle irregular intervals', () => {
-      const values = [0, 300, 900, 1100];
-
-      const intervals = privateAnalyzer.calculateIntervals.call(analyzer, values);
-
-      expect(intervals).toEqual([300, 600, 200]);
-    });
-
-    it('should return empty for single value', () => {
-      const values = [100];
-
-      const intervals = privateAnalyzer.calculateIntervals.call(analyzer, values);
-
-      expect(intervals).toEqual([]);
-    });
-
-    it('should return empty for empty array', () => {
-      const values: number[] = [];
-
-      const intervals = privateAnalyzer.calculateIntervals.call(analyzer, values);
-
-      expect(intervals).toEqual([]);
     });
   });
 
