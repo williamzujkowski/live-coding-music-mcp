@@ -33,6 +33,15 @@ interface Session {
 export class SessionManager {
   private browser: Browser | null = null;
   private sessions: Map<string, Session> = new Map();
+
+  /**
+   * Ids currently being created.
+   *
+   * Held from before the first await until the session is in `sessions`
+   * or the attempt has failed, so the duplicate and limit checks account
+   * for creations in flight rather than only completed ones (#263).
+   */
+  private readonly reservedIds = new Set<string>();
   private defaultSessionId: string = 'default';
   private logger: Logger;
   private isHeadless: boolean;
@@ -108,44 +117,72 @@ export class SessionManager {
       throw new Error('Session ID must be a non-empty string');
     }
 
-    // Check if session already exists
-    if (this.sessions.has(id)) {
+    // Check if session already exists, or is mid-creation
+    if (this.sessions.has(id) || this.reservedIds.has(id)) {
       throw new Error(`Session '${id}' already exists`);
     }
 
-    // Check max sessions limit
-    if (this.sessions.size >= this.MAX_SESSIONS) {
+    // Check max sessions limit, counting creations in flight
+    if (this.sessions.size + this.reservedIds.size >= this.MAX_SESSIONS) {
       throw new Error(
         `Maximum session limit (${this.MAX_SESSIONS}) reached. Destroy an existing session first.`
       );
     }
 
-    const browser = await this.ensureBrowser();
+    // Reserve the id synchronously, before the first await.
+    //
+    // The two checks above and the set below used to be ~2 seconds apart
+    // (ensureBrowser, newContext, newPage, goto, readiness wait), and the
+    // MCP SDK does not serialize tool calls. So two concurrent creates
+    // with the same id both passed the duplicate check and the second
+    // overwrote the first — orphaning a context nothing could reach. Four
+    // live sessions plus three concurrent creates all read size === 4 and
+    // produced seven on a five-session limit (#263).
+    this.reservedIds.add(id);
 
-    // Create isolated browser context
-    const context = await browser.newContext({
-      permissions: ['microphone'],
-      viewport: { width: 1280, height: 720 },
-      reducedMotion: 'reduce',
-    });
+    let context: BrowserContext | undefined;
+    let controller: StrudelController;
+    try {
+      const browser = await this.ensureBrowser();
 
-    const page = await context.newPage();
+      context = await browser.newContext({
+        permissions: ['microphone'],
+        viewport: { width: 1280, height: 720 },
+        reducedMotion: 'reduce',
+      });
 
-    // Create controller with injected page (using a factory pattern)
-    const controller = new StrudelController(this.isHeadless, this.audioAnalysisConfig, this.strudelUrl);
+      const page = await context.newPage();
 
-    // Initialize the controller with the existing page
-    await this.initializeControllerWithPage(controller, page);
+      controller = new StrudelController(this.isHeadless, this.audioAnalysisConfig, this.strudelUrl);
+      await this.initializeControllerWithPage(controller, page);
 
-    const session: Session = {
-      controller,
-      context,
-      page,
-      created: new Date(),
-      lastActivity: new Date(),
-    };
+      const session: Session = {
+        controller,
+        context,
+        page,
+        created: new Date(),
+        lastActivity: new Date(),
+      };
 
-    this.sessions.set(id, session);
+      this.sessions.set(id, session);
+    } catch (error) {
+      // Close what was allocated. Without this the context stayed alive
+      // and unreachable: it never entered `sessions`, so destroyAll, the
+      // idle sweep, and the MAX_SESSIONS count could none of them see it.
+      // Each failed create leaked a Chromium renderer while the limit
+      // still read 0/5, and an agent retrying a transient strudel.cc
+      // failure leaked one per attempt.
+      if (context !== undefined) {
+        try {
+          await context.close();
+        } catch (closeError: any) {
+          this.logger.warn(`Failed to close context for '${id}': ${closeError.message}`);
+        }
+      }
+      throw error;
+    } finally {
+      this.reservedIds.delete(id);
+    }
 
     this.logger.info(`Session '${id}' created`, {
       totalSessions: this.sessions.size,
