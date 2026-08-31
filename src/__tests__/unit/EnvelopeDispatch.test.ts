@@ -127,6 +127,42 @@ describe('StrudelMCPServer.dispatchToolCall', () => {
     expect(e).toEqual({ ok: true, data: 'Loaded pattern "x"' });
   });
 
+  /**
+   * #274: several modules report problems as `{ success: false, message }`
+   * rather than throwing. Those used to be wrapped by ok(), so an MCP
+   * client checking `envelope.ok` — the documented contract — saw success
+   * with the real outcome buried in `data.success`.
+   */
+  it('reports a self-declared failure as ok:false, not ok:true', async () => {
+    server.executeTool = jest.fn().mockResolvedValue({
+      success: false,
+      message: 'Failed to stop audio capture: no capture in progress',
+    });
+
+    const e = await server.dispatchToolCall('audio_capture', { action: 'stop' });
+
+    expect(e.ok).toBe(false);
+    expect(e.message).toBe('Failed to stop audio capture: no capture in progress');
+  });
+
+  it('keeps the tool output alongside the failure', async () => {
+    const raw = { success: false, message: 'Audio export failed: decode error', bytes: 0 };
+    server.executeTool = jest.fn().mockResolvedValue(raw);
+
+    const e = await server.dispatchToolCall('export_audio', {});
+
+    expect(e.partialResult).toEqual(raw);
+  });
+
+  it('still wraps a successful { success: true } result as ok', async () => {
+    const raw = { success: true, path: '/exports/take-01.wav' };
+    server.executeTool = jest.fn().mockResolvedValue(raw);
+
+    const e = await server.dispatchToolCall('export_audio', {});
+
+    expect(e).toEqual({ ok: true, data: raw });
+  });
+
   it('wraps a raw object return into ok(...)', async () => {
     server.executeTool = jest.fn().mockResolvedValue({ bpm: 174, confidence: 0.92 });
     const e = await server.dispatchToolCall('analyze', { include: ['tempo'] });

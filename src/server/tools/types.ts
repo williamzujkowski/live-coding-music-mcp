@@ -209,6 +209,41 @@ export function err(
  * dispatcher when a tool throws without wrapping. Tools that know better
  * should construct `err(category, message)` directly.
  */
+/**
+ * Whether a tool returned a self-declared failure.
+ *
+ * Several modules report problems as `{ success: false, message }`
+ * rather than throwing or building an envelope. Wrapped with `ok()`
+ * those reach MCP clients as successes, with the real outcome hidden in
+ * a field the envelope contract says nothing about (#274).
+ *
+ * @param value - A tool's raw return value
+ * @returns True when it declares failure
+ */
+export function isFailureShaped(
+  value: unknown,
+): value is { success?: false; message?: unknown; error?: unknown } {
+  if (typeof value !== 'object' || value === null) return false;
+
+  const record = value as { success?: unknown; error?: unknown };
+
+  // An explicit success:false is unambiguous.
+  if ('success' in record && record.success === false) return true;
+
+  // A bare `{ error: '...' }` with no success flag is equally a failure,
+  // and several modules return exactly that — ai.ts and analysis.ts both
+  // do. Requiring a `success` key let those through as ok:true, which is
+  // the same bug one shape over (#274).
+  //
+  // Guarded by `success !== true` so a result that genuinely succeeded
+  // while carrying a non-fatal `error` field is left alone.
+  return (
+    record.success !== true &&
+    typeof record.error === 'string' &&
+    record.error.length > 0
+  );
+}
+
 export function categorizeError(error: unknown): ErrorCategory {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
