@@ -238,6 +238,58 @@ async function main(): Promise<void> {
   }
   console.log('  ok    6 real patterns unaffected');
 
+  console.log('\nEvent materialization is capped before it allocates (#307):');
+  {
+    // queryArc builds the whole array, so a cap on its result arrives
+    // after the memory is gone. A 20-character pattern reached 153 MB;
+    // a slightly larger multiplier ended in V8 FatalProcessOutOfMemory,
+    // which no try/catch can intercept.
+    const cases: [string, number, number, boolean][] = [
+      ['s("bd*4")', 0, 1, true],
+      ['s("bd*16")', 0, 16, true],
+      ['s("bd").fast(1000)', 0, 1, true],
+      ['s("bd").fast(100000)', 0, 1, false],
+      ['s("bd").fast(20000000)', 0, 1, false],
+    ];
+    for (const [code, from, to, shouldPass] of cases) {
+      const before = process.memoryUsage().heapUsed;
+      let passed: boolean;
+      try {
+        engine.queryEvents(code, from, to);
+        passed = true;
+      } catch {
+        passed = false;
+      }
+      const grewMb = (process.memoryUsage().heapUsed - before) / 1048576;
+      if (passed !== shouldPass) {
+        failures++;
+        console.error(`  FAIL  ${code} ${passed ? 'was allowed' : 'was refused'}, expected the opposite`);
+      } else if (!shouldPass && grewMb > 50) {
+        failures++;
+        console.error(`  FAIL  ${code} was refused but still allocated ${grewMb.toFixed(0)} MB`);
+      } else {
+        console.log(`  ok    ${code.padEnd(24)} ${passed ? 'allowed' : 'refused'} (+${grewMb.toFixed(1)} MB)`);
+      }
+    }
+  }
+
+  console.log('\nThe refusal says what to do about it:');
+  {
+    try {
+      engine.queryEvents('s("bd").fast(100000)', 0, 1);
+      failures++;
+      console.error('  FAIL  expected a refusal');
+    } catch (error: unknown) {
+      const message = (error as Error).message;
+      if (message.includes('cap') && message.includes('fast')) {
+        console.log('  ok    names the cap and the usual cause');
+      } else {
+        failures++;
+        console.error(`  FAIL  unhelpful message: ${message.slice(0, 80)}`);
+      }
+    }
+  }
+
   if (failures > 0) {
     console.error(`\n${String(failures)} check(s) failed.`);
     process.exit(1);

@@ -160,6 +160,23 @@ export interface PatternMetadata {
  * @nist si-10 "Information input validation"
  * @nist ac-6 "Least privilege"
  */
+/**
+ * Most events `queryEvents` will materialize.
+ *
+ * ~1.5 KB per event in practice, so this bounds a query at roughly
+ * 75 MB. Well above any musical pattern: a dense 16-cycle drum pattern
+ * is a few thousand events.
+ */
+export const MAX_QUERY_EVENTS = 50_000;
+
+/**
+ * Fraction of the requested range sampled to estimate density before
+ * committing to the full query. Small enough that even a pathological
+ * pattern's probe stays cheap, large enough to catch a real pattern's
+ * first event.
+ */
+const PROBE_FRACTION = 1e-4;
+
 export const EVALUATOR_EXPORTS: readonly string[] = [
   'evaluate',
   'evalScope',
@@ -386,7 +403,42 @@ export class StrudelEngine {
         throw new Error('Code did not produce a valid pattern');
       }
 
+      // Probe before materializing.
+      //
+      // queryArc builds the whole array, so a cap applied to its result
+      // is applied after the memory is already gone: `s('bd').fast(1e5)`
+      // over one cycle is 100,000 events and 153 MB from a 20-character
+      // pattern, and a slightly larger multiplier ends in V8
+      // FatalProcessOutOfMemory — which no try/catch can intercept, so
+      // the server dies and takes every open browser session with it
+      // (#307). The cycle range was capped at 16; events per cycle were
+      // not capped at all.
+      //
+      // A tiny window costs a proportionally tiny slice of that memory
+      // and gives the density, which extrapolates to a projection.
+      const span = end - start;
+      const probeSpan = span * PROBE_FRACTION;
+      const probe = pattern.queryArc(start, start + probeSpan);
+      const projected = Math.round((probe.length / PROBE_FRACTION));
+
+      if (projected > MAX_QUERY_EVENTS) {
+        throw new Error(
+          `Pattern produces roughly ${String(projected)} events over ${String(span)} cycle(s), ` +
+          `above the ${String(MAX_QUERY_EVENTS)} cap. Narrow the range, or reduce the ` +
+          'pattern density (a large .fast() multiplier is the usual cause).'
+        );
+      }
+
       const haps = pattern.queryArc(start, end);
+      // Belt and braces: the projection is an extrapolation from a
+      // sample, so a pattern whose density is wildly uneven could still
+      // land above the cap. Truncating beats returning 40 MB of JSON.
+      if (haps.length > MAX_QUERY_EVENTS) {
+        throw new Error(
+          `Pattern produced ${String(haps.length)} events, above the ` +
+          `${String(MAX_QUERY_EVENTS)} cap. Narrow the range.`
+        );
+      }
       return haps.map((hap: any) => this.hapToEvent(hap));
     } catch (error: any) {
       // Same clarification validate() applies. Without it, queryEvents and
