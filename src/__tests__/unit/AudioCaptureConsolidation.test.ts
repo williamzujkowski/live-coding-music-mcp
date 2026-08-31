@@ -9,6 +9,10 @@ function makeCtx() {
   const service = {
     isCapturing: jest.fn(() => false),
     startCapture: jest.fn(async () => undefined),
+    // The response reports the mime the recorder actually produces, so
+    // start and stop cannot name different formats for one recording
+    // (#437).
+    getMimeType: jest.fn(() => 'audio/webm;codecs=opus'),
     stopCapture: jest.fn(async () => ({
       blob: { arrayBuffer: async () => new ArrayBuffer(8) },
       duration: 3000,
