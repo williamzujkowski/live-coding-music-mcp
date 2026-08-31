@@ -90,7 +90,7 @@ describe('diagnostics consolidation (#144)', () => {
 
     it('level=errors lists console errors and warnings', async () => {
       const { ctx } = makeCtx();
-      const result = await execute('diagnostics', { level: 'errors' }, ctx);
+      const result: any = await execute('diagnostics', { level: 'errors' }, ctx);
       const text = result as string;
       expect(text).toContain('Errors (2)');
       expect(text).toContain('err1');
@@ -103,7 +103,9 @@ describe('diagnostics consolidation (#144)', () => {
       (controller.getConsoleErrors as jest.Mock).mockReturnValueOnce([]);
       (controller.getConsoleWarnings as jest.Mock).mockReturnValueOnce([]);
       const result = await execute('diagnostics', { level: 'errors' }, ctx);
-      expect(result).toBe('No errors or warnings captured.');
+      expect(result.ok).toBe(true);
+      expect(result.empty).toBe(true);
+      expect(result.data).toBe('No errors or warnings captured.');
     });
 
     it('default level is "full" (no schema surprise)', async () => {

@@ -169,8 +169,12 @@ describe('edit_pattern replace occurrence handling (#243)', () => {
     const result = (await execute('edit_pattern',
       { mode: 'replace', search: 'gain', replace: 'pan' }, ctx)) as any;
 
-    expect(result).toMatchObject({ matches: 2, replaced: 1, remaining: 1 });
-    expect(result.message).toMatch(/replace_all/);
+    // mode=replace now returns an envelope so a zero-match search can
+    // be flagged `empty` rather than looking like a real edit (#288).
+    expect(result.ok).toBe(true);
+    expect(result.empty).toBeUndefined();
+    expect(result.data).toMatchObject({ matches: 2, replaced: 1, remaining: 1 });
+    expect(result.data.message).toMatch(/replace_all/);
   });
 
   it('reports nothing remaining after a replace-all', async () => {
@@ -179,8 +183,9 @@ describe('edit_pattern replace occurrence handling (#243)', () => {
     const result = (await execute('edit_pattern',
       { mode: 'replace', search: 'gain', replace: 'pan', replace_all: true }, ctx)) as any;
 
-    expect(result).toMatchObject({ matches: 2, replaced: 2, remaining: 0 });
-    expect(result.message).not.toMatch(/remain/);
+    expect(result.empty).toBeUndefined();
+    expect(result.data).toMatchObject({ matches: 2, replaced: 2, remaining: 0 });
+    expect(result.data.message).not.toMatch(/remain/);
   });
 
   it('says so when nothing matched', async () => {
@@ -189,8 +194,12 @@ describe('edit_pattern replace occurrence handling (#243)', () => {
     const result = (await execute('edit_pattern',
       { mode: 'replace', search: 'nope', replace: 'x' }, ctx)) as any;
 
-    expect(result).toMatchObject({ matches: 0, replaced: 0, remaining: 0 });
-    expect(result.message).toMatch(/No occurrences/);
+    // Zero matches is the valid-empty case: the search ran, found none,
+    // and changed nothing.
+    expect(result.ok).toBe(true);
+    expect(result.empty).toBe(true);
+    expect(result.data).toMatchObject({ matches: 0, replaced: 0, remaining: 0 });
+    expect(result.data.message).toMatch(/No occurrences/);
     expect(pattern()).toBe(MULTI);
   });
 
@@ -209,7 +218,7 @@ describe('edit_pattern replace occurrence handling (#243)', () => {
         { mode: 'replace', search, replace: 'X', replace_all: true }, ctx)) as any;
 
       expect(Date.now() - started).toBeLessThan(1000);
-      expect(typeof result.matches).toBe('number');
+      expect(typeof result.data.matches).toBe('number');
     },
   );
 

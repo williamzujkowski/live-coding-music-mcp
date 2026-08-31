@@ -820,7 +820,7 @@ describe('StrudelMCPServer', () => {
 
     describe('analyze tempo', () => {
       test('should detect tempo successfully', async () => {
-        const result = await (server as any).executeTool('analyze', { include: ['tempo'] });
+        const result: any = await (server as any).executeTool('analyze', { include: ['tempo'] });
 
         expect(result.tempo.bpm).toBe(120);
         expect(result.tempo.confidence).toBe(0.85);
@@ -831,27 +831,33 @@ describe('StrudelMCPServer', () => {
       test('should handle no tempo detected', async () => {
         mockController.detectTempo.mockResolvedValue({ bpm: 0, confidence: 0 });
 
-        const result = await (server as any).executeTool('analyze', { include: ['tempo'] });
+        const result: any = await (server as any).executeTool('analyze', { include: ['tempo'] });
 
-        expect(result.tempo.bpm).toBe(0);
+        // Nothing detected: null, not a measured zero (#288).
+        expect(result.tempo.bpm).toBeNull();
+        expect(result.tempo.detected).toBe(false);
         expect(result.tempo.message).toContain('No tempo detected');
       });
 
       test('should handle null tempo result', async () => {
         mockController.detectTempo.mockResolvedValue(null);
 
-        const result = await (server as any).executeTool('analyze', { include: ['tempo'] });
+        const result: any = await (server as any).executeTool('analyze', { include: ['tempo'] });
 
-        expect(result.tempo.bpm).toBe(0);
+        // Nothing detected: null, not a measured zero (#288).
+        expect(result.tempo.bpm).toBeNull();
+        expect(result.tempo.detected).toBe(false);
         expect(result.tempo.message).toContain('No tempo detected');
       });
 
       test('should handle detection error', async () => {
         mockController.detectTempo.mockRejectedValue(new Error('Detection failed'));
 
-        const result = await (server as any).executeTool('analyze', { include: ['tempo'] });
+        const result: any = await (server as any).executeTool('analyze', { include: ['tempo'] });
 
-        expect(result.tempo.bpm).toBe(0);
+        // Nothing detected: null, not a measured zero (#288).
+        expect(result.tempo.bpm).toBeNull();
+        expect(result.tempo.detected).toBe(false);
         expect(result.tempo.error).toContain('Detection failed');
       });
 
@@ -877,7 +883,8 @@ describe('StrudelMCPServer', () => {
 
         const result = await (server as any).executeTool('analyze', { include: ['key'] });
 
-        expect(result.key.key).toBe('Unknown');
+        expect(result.key.key).toBeNull();
+        expect(result.key.detected).toBe(false);
         expect(result.key.message).toContain('No clear key detected');
       });
 
@@ -886,7 +893,8 @@ describe('StrudelMCPServer', () => {
 
         const result = await (server as any).executeTool('analyze', { include: ['key'] });
 
-        expect(result.key.key).toBe('Unknown');
+        expect(result.key.key).toBeNull();
+        expect(result.key.detected).toBe(false);
         expect(result.key.error).toContain('Key detection failed');
       });
 
@@ -1011,7 +1019,10 @@ describe('StrudelMCPServer', () => {
       test('should handle empty undo stack', async () => {
         const result = await (server as any).executeTool('history', { action: 'undo' });
 
-        expect(result).toBe('Nothing to undo');
+        expect((result as any).ok).toBe(true);
+        // Valid-empty, not a failure (#288).
+        expect((result as any).empty).toBe(true);
+        expect((result as any).data).toBe('Nothing to undo');
       });
 
       test('should require initialization', async () => {
@@ -1036,7 +1047,10 @@ describe('StrudelMCPServer', () => {
       test('should handle empty redo stack', async () => {
         const result = await (server as any).executeTool('history', { action: 'redo' });
 
-        expect(result).toBe('Nothing to redo');
+        expect((result as any).ok).toBe(true);
+        // Valid-empty, not a failure (#288).
+        expect((result as any).empty).toBe(true);
+        expect((result as any).data).toBe('Nothing to redo');
       });
     });
   });
@@ -1163,7 +1177,8 @@ describe('StrudelMCPServer', () => {
       await (server as any).executeTool('edit_pattern', { mode: 'write', pattern: 's("cp*2")' });
 
       const redoResult = await (server as any).executeTool('history', { action: 'redo' });
-      expect(redoResult).toBe('Nothing to redo');
+      expect((redoResult as any).empty).toBe(true);
+      expect((redoResult as any).data).toBe('Nothing to redo');
     });
   });
 
@@ -1254,7 +1269,8 @@ describe('StrudelMCPServer', () => {
         mockController.getConsoleWarnings.mockReturnValue([]);
 
         const result = await (server as any).executeTool('diagnostics', { level: 'errors' });
-        expect(result).toContain('No errors');
+        expect((result as any).empty).toBe(true);
+        expect((result as any).data).toContain('No errors');
       });
     });
 
@@ -1442,7 +1458,10 @@ describe('StrudelMCPServer', () => {
         const newServer = new StrudelMCPServer();
         const result = await (newServer as any).executeTool('history', { action: 'list' });
 
-        expect(result).toContain('No pattern history yet');
+        expect((result as any).empty).toBe(true);
+        // Records, not prose: callers read `entries` unconditionally (#288).
+        expect((result as any).data.entries).toEqual([]);
+        expect((result as any).data.message).toContain('No pattern history yet');
       });
 
       test('list_history should show pattern history after edits', async () => {
@@ -1799,9 +1818,10 @@ describe('StrudelMCPServer', () => {
 
         const result = await (server as any).executeTool('session', { action: 'list' });
 
-        expect(result.count).toBe(1);
-        expect(result.sessions).toHaveLength(1);
-        expect(result.sessions[0].id).toBe('session1');
+        expect(result.ok).toBe(true);
+        expect(result.data.count).toBe(1);
+        expect(result.data.sessions).toHaveLength(1);
+        expect(result.data.sessions[0].id).toBe('session1');
       });
 
       test('list_sessions should indicate default session', async () => {
@@ -1816,8 +1836,8 @@ describe('StrudelMCPServer', () => {
 
         const result = await (server as any).executeTool('session', { action: 'list' });
 
-        expect(result.default_session).toBe('default');
-        expect(result.sessions[0].is_default).toBe(true);
+        expect(result.data.default_session).toBe('default');
+        expect(result.data.sessions[0].is_default).toBe(true);
       });
 
       test('switch_session should change default session', async () => {

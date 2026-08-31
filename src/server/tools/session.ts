@@ -8,6 +8,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
+import { empty, ok } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 
 export const tools: Tool[] = [
@@ -74,7 +75,8 @@ async function doDestroy(args: any, ctx: ToolContext): Promise<unknown> {
 function doList(ctx: ToolContext): unknown {
   const sm = ctx.sessionManager;
   const info = sm.getSessionsInfo();
-  return {
+  const wrap = info.length === 0 ? empty : ok;
+  return wrap({
     count: info.length,
     max_sessions: sm.getMaxSessions(),
     default_session: sm.getDefaultSessionId(),
@@ -85,7 +87,7 @@ function doList(ctx: ToolContext): unknown {
       is_playing: s.isPlaying,
       is_default: s.id === sm.getDefaultSessionId(),
     })),
-  };
+  });
 }
 
 function doSwitch(args: any, ctx: ToolContext): unknown {

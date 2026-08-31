@@ -11,7 +11,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
-import { withStashField } from './types.js';
+import { empty, withStashField } from './types.js';
 import type { CreativeFeedback, AudioFeedback } from '../../services/GeminiService.js';
 import type { AudioMeasurements } from '../../services/ai/AudioMeasurements.js';
 import { Logger } from '../../utils/Logger.js';
@@ -241,7 +241,7 @@ async function suggestPatternFromAudio(
   role: string,
   ctx: ToolContext,
   sid?: string,
-): Promise<Record<string, unknown>> {
+): Promise<unknown> {
   if (!sid && !ctx.isInitialized()) {
     return { error: 'Browser not initialized. Run init and play a pattern first.' };
   }
@@ -290,7 +290,14 @@ Example patterns:
   try {
     const geminiResponse = await ctx.geminiService.suggestVariations(prompt, style);
     if (!geminiResponse || geminiResponse.length === 0) {
-      return { error: 'Gemini returned no pattern suggestions.' };
+      // The model answered; it just had nothing to offer. Returning a
+      // bare `error` key made `isFailureShaped` convert this into an
+      // err() envelope, so a working call was reported as a failure —
+      // the same bug as #274, pointing the other way (#288).
+      return empty({
+        suggestions: [],
+        message: 'Gemini returned no pattern suggestions.',
+      });
     }
     const suggestedPattern = geminiResponse[0].code;
     const validation = ctx.strudelEngine.validate(suggestedPattern);

@@ -46,8 +46,11 @@ describe('effect consolidation (#153)', () => {
 
   it('effect(action=remove) reports clean message when nothing to remove', async () => {
     const { ctx } = makeCtx();
-    const result = await execute('effect', { action: 'remove', effect: 'reverb' }, ctx);
-    expect(result).toContain('No reverb effect found');
+    const result: any = await execute('effect', { action: 'remove', effect: 'reverb' }, ctx);
+    expect(result.ok).toBe(true);
+      // Nothing matched: the strip ran and found none — valid-empty (#288).
+      expect(result.empty).toBe(true);
+      expect(result.data).toContain('No reverb effect found');
   });
 
   it('throws on invalid action', async () => {
@@ -135,17 +138,23 @@ describe('effect consolidation (#153)', () => {
     it('leaves an unbalanced pattern alone rather than mangling it', async () => {
       const { ctx } = makeCtx('s("bd").lpf(200');
 
-      const result = await execute('effect', { action: 'remove', effect: 'lpf' }, ctx);
+      const result: any = await execute('effect', { action: 'remove', effect: 'lpf' }, ctx);
 
-      expect(result).toContain('No lpf effect found');
+      expect(result.ok).toBe(true);
+      // Nothing matched: the strip ran and found none — valid-empty (#288).
+      expect(result.empty).toBe(true);
+      expect(result.data).toContain('No lpf effect found');
     });
 
     it('does not match an effect name that is only a suffix', async () => {
       const { ctx } = makeCtx('s("bd").hicutoff(200)');
 
-      const result = await execute('effect', { action: 'remove', effect: 'cutoff' }, ctx);
+      const result: any = await execute('effect', { action: 'remove', effect: 'cutoff' }, ctx);
 
-      expect(result).toContain('No cutoff effect found');
+      expect(result.ok).toBe(true);
+      // Nothing matched: the strip ran and found none — valid-empty (#288).
+      expect(result.empty).toBe(true);
+      expect(result.data).toContain('No cutoff effect found');
     });
   });
 });
