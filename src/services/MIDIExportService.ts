@@ -604,7 +604,14 @@ export class MIDIExportService {
       // name*n or name!n — repetition.
       const repeat = /^(.+?)[*!](\d+)$/.exec(token);
       if (repeat) {
-        const count = Math.min(Number.parseInt(repeat[2], 10), MAX_REPEAT);
+        const requested = Number.parseInt(repeat[2], 10);
+        const count = Math.min(requested, MAX_REPEAT);
+        // Truncation is loss, and it was silent. `note("c4*128")`
+        // exported 64 notes with no `unrepresented` and no
+        // `partiallyExported` entry — and because layout divides the bar
+        // by token count, halving the repeats also changed the rhythm of
+        // everything beside it (#433).
+        if (requested > MAX_REPEAT) onPartial(token);
         if (count > 0) {
           const inner = MIDIExportService.expandOperators([repeat[1]], onUnrepresented, onPartial);
           for (let i = 0; i < count; i++) out.push(...inner);
