@@ -67,7 +67,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'validate_pattern_local',
-    description: 'Validate pattern syntax against the in-process StrudelEngine (no browser required)',
+    description: 'Validate pattern syntax against the local StrudelEngine, which runs in a sandboxed child process (no browser required)',
     inputSchema: {
       type: 'object',
       properties: {

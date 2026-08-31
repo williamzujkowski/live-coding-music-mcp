@@ -384,8 +384,11 @@ the function source and runs it in the browser. `tsx` transpiles with
 esbuild's `keepNames`, which rewrites a named inner function into
 `__name(fn, "fn")` — and `__name` does not exist in page context, so the
 whole evaluate throws `ReferenceError: __name is not defined`. `tsc`
-emits it untouched, so this breaks **only** under `npm run dev` and the
-`test:sandbox` / `test:export-audio` scripts, never in production or CI.
+emits it untouched, so this breaks **only** where the source is run
+through `tsx`: `npm run dev`, and the verification scripts. Those
+scripts DO run in CI now — `test:sandbox` and `verify-envelopes` in
+ci.yml, `test:export-audio` nightly (#376, #388) — so a `__name` failure
+is caught there rather than never.
 
 Measured, not guessed — which forms survive:
 
@@ -994,7 +997,30 @@ Wire-level shape MCP clients see:
 { "ok": false, "errorCategory": "validation", "isRetryable": false, "message": "..." }
 ```
 
-`errorCategory` is one of `validation` / `transient` / `business` / `permission` / `internal`. Tools that throw raw `Error`s get categorised by message via `categorizeError()` — fine for the common cases (`Invalid X`, `not found`, `not initialized`, `timeout`, ...), but tools that own a specific error condition should call `err(category, message)` directly so the categorisation isn't string-sniffed.
+`errorCategory` is one of `validation` / `transient` / `business` / `permission` / `internal`.
+
+**Throw a typed error and the category travels with it.** `categorizeError()` checks `instanceof` before it looks at any message:
+
+| class | category | where it lives |
+|---|---|---|
+| `ValidationError` | `validation` | `utils/CategorisedError.ts` |
+| `BusinessError` | `business` | `utils/CategorisedError.ts` |
+| `TransientError` | `transient` | `utils/CategorisedError.ts` |
+| `AiAuthError` | `permission` | `services/ai/AiTransport.ts` |
+| `AiRateLimitError` | `transient` | `services/ai/AiTransport.ts` |
+
+The message matcher remains as the backstop for errors thrown by dependencies, where the type is not ours to set. It is a backstop and not the mechanism: an audit put 47 messages in `internal` — the fall-through, not retryable — of which eleven were plainly the caller's input, saying things like `Steps cannot exceed 256, got 512` (#382).
+
+A tool that catches and re-shapes an error must pass the ORIGINAL to `categorizeError`, not a rebuilt one:
+
+```typescript
+} catch (error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return err(categorizeError(error), message);   // not new Error(message)
+}
+```
+
+Rebuilding it destroys the type one frame above the code that reads it. That happened at four separate seams — the tool/dispatcher boundary, the IPC boundary to the isolated engine, `StrudelEngine`'s own catch, and `capture.ts` — each time inside a change that was reviewed on its own and passed. `scripts/verify-envelopes.ts` drives the built server over real stdio JSON-RPC and asserts the envelope a client actually receives, because unit tests that call `categorizeError` directly cannot see any of this.
 
 Module-level adoption is incremental: dispatch normalises legacy `'Browser not initialized...'` and `'Error: ...'` string returns into envelopes, so a tool can keep its current return shape until someone migrates it.
 
