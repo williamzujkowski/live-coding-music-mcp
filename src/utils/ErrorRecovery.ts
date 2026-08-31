@@ -15,6 +15,26 @@ export interface RecoveryStrategy {
 export class ErrorRecovery {
   private logger: Logger;
   private errorHistory: Map<string, number[]> = new Map();
+  /**
+   * Failures that a retry or fallback went on to rescue.
+   *
+   * Kept apart from `errorHistory` because success calls
+   * clearErrorHistory, which used to erase exactly the case an operator
+   * most wants to see — "writes are flaky but recovering on retry 2".
+   * Measured before this: a run that failed once then succeeded
+   * reported `{}`, indistinguishable from a run with no trouble at all
+   * (#286).
+   */
+  private recoveredHistory: Map<string, number[]> = new Map();
+  /**
+   * Operations that actually feed these statistics. Only
+   * handlePatternWrite routes through executeWithRetry today, so an
+   * empty map meant "nothing instrumented reported trouble", not "the
+   * system is healthy" — and the Record<string, …> shape implied
+   * coverage that did not exist. Reported explicitly so a reader can
+   * tell the two apart (#286).
+   */
+  private static readonly INSTRUMENTED_OPERATIONS = ['Pattern Write'];
   private readonly ERROR_WINDOW = 60000; // 1 minute window for error tracking
 
   constructor() {
@@ -44,7 +64,11 @@ export class ErrorRecovery {
         this.logger.debug(`Executing ${operationName} (attempt ${attempt + 1}/${strategy.maxRetries + 1})`);
         const result = await operation();
 
-        // Success - clear error history for this operation
+        // Success. The failures that preceded it still happened, so
+        // move them to the recovered log rather than dropping them —
+        // dropping them is what made recovered flakiness invisible
+        // (#286). recordRecovery clears the outstanding bucket itself.
+        this.recordRecovery(operationName);
         this.clearErrorHistory(operationName);
         return result;
 
@@ -76,7 +100,10 @@ export class ErrorRecovery {
     if (strategy.fallbackAction) {
       this.logger.info(`Executing fallback for ${operationName}`);
       try {
-        return await strategy.fallbackAction();
+        const fallbackResult = await strategy.fallbackAction();
+        // The fallback rescued it, so these failures are recovered too.
+        this.recordRecovery(operationName);
+        return fallbackResult;
       } catch (fallbackError: any) {
         this.logger.error(`Fallback failed for ${operationName}`, fallbackError);
       }
@@ -195,17 +222,40 @@ export class ErrorRecovery {
    * Gets error statistics for monitoring
    * @returns Error statistics by operation
    */
-  getErrorStats(): Record<string, { count: number; lastError: Date | null }> {
-    const stats: Record<string, { count: number; lastError: Date | null }> = {};
+  getErrorStats(): Record<string, {
+    count: number;
+    lastError: Date | null;
+    recovered: number;
+    lastRecovery: Date | null;
+  }> {
+    const stats: Record<string, {
+      count: number;
+      lastError: Date | null;
+      recovered: number;
+      lastRecovery: Date | null;
+    }> = {};
     const now = Date.now();
+    const recent = (ts: number[]) => ts.filter(t => now - t < this.ERROR_WINDOW);
 
-    this.errorHistory.forEach((timestamps, operation) => {
-      const recentErrors = timestamps.filter(ts => now - ts < this.ERROR_WINDOW);
+    // Seed with every instrumented operation so an all-zero row is
+    // distinguishable from an operation nothing ever watched. `{}` used
+    // to mean both.
+    const operations = new Set<string>([
+      ...ErrorRecovery.INSTRUMENTED_OPERATIONS,
+      ...this.errorHistory.keys(),
+      ...this.recoveredHistory.keys(),
+    ]);
+
+    for (const operation of operations) {
+      const failed = recent(this.errorHistory.get(operation) ?? []);
+      const rescued = recent(this.recoveredHistory.get(operation) ?? []);
       stats[operation] = {
-        count: recentErrors.length,
-        lastError: recentErrors.length > 0 ? new Date(Math.max(...recentErrors)) : null
+        count: failed.length,
+        lastError: failed.length > 0 ? new Date(Math.max(...failed)) : null,
+        recovered: rescued.length,
+        lastRecovery: rescued.length > 0 ? new Date(Math.max(...rescued)) : null,
       };
-    });
+    }
 
     return stats;
   }
@@ -223,6 +273,30 @@ export class ErrorRecovery {
    */
   clearAllErrorHistory(): void {
     this.errorHistory.clear();
+    this.recoveredHistory.clear();
+  }
+
+  /**
+   * Moves an operation's recorded failures into the recovered log.
+   *
+   * Called when a retry or fallback rescues the operation, so the
+   * failures survive the clearErrorHistory that follows.
+   *
+   * @param operationName - Name of the operation
+   */
+  private recordRecovery(operationName: string): void {
+    const failures = this.errorHistory.get(operationName);
+    if (!failures || failures.length === 0) return;
+
+    const now = Date.now();
+    const existing = this.recoveredHistory.get(operationName) ?? [];
+    const merged = [...existing, ...failures]
+      .filter(ts => now - ts < this.ERROR_WINDOW);
+    this.recoveredHistory.set(operationName, merged);
+    // A move, not a copy: a failure belongs in exactly one bucket, or
+    // the fallback path reports the same three failures as both
+    // outstanding and rescued.
+    this.errorHistory.delete(operationName);
   }
 
   /**

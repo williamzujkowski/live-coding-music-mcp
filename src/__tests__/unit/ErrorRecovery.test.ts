@@ -456,9 +456,14 @@ describe('ErrorRecovery', () => {
   });
 
   describe('getErrorStats', () => {
-    test('should return empty stats when no errors', () => {
+    test('should report instrumented operations with zero counts when no errors', () => {
+      // `{}` meant both "healthy" and "nothing is instrumented", and an
+      // operator could not tell which. Instrumented operations now
+      // always appear, with explicit zeros (#286).
       const stats = recovery.getErrorStats();
-      expect(Object.keys(stats)).toHaveLength(0);
+      expect(stats['Pattern Write']).toEqual({
+        count: 0, lastError: null, recovered: 0, lastRecovery: null,
+      });
     });
 
     test('should return accurate error counts', async () => {
@@ -596,7 +601,11 @@ describe('ErrorRecovery', () => {
       recovery.clearAllErrorHistory();
 
       const stats = recovery.getErrorStats();
-      expect(Object.keys(stats)).toHaveLength(0);
+      // The ad-hoc op-1/2/3 rows are gone; only the always-reported
+      // instrumented row remains, at zero (#286).
+      expect(Object.keys(stats)).toEqual(['Pattern Write']);
+      expect(stats['Pattern Write'].count).toBe(0);
+      expect(stats['Pattern Write'].recovered).toBe(0);
     });
   });
 

@@ -96,8 +96,17 @@ export interface PatternStats {
  * Error statistics by operation
  */
 export interface ErrorStats {
+  /** Failures in the last minute that were NOT rescued. */
   count: number;
   lastError: Date | null;
+  /**
+   * Failures in the last minute that a retry or fallback did rescue.
+   * Reported separately because success clears `count`, which used to
+   * erase exactly the signal an operator wants — "flaky but
+   * recovering" looked identical to "no trouble at all" (#286).
+   */
+  recovered: number;
+  lastRecovery: Date | null;
 }
 
 /**
