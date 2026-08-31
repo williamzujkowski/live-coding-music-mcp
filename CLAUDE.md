@@ -588,11 +588,34 @@ new density cases through `IsolatedStrudelEngine` too.
     174, and 115 was unrecoverable because its double (230) sits outside
     the 40-200 window so the half-time walk had nowhere to go.
 
-    The amen break reads 164 on its first poll and settles to half-time
-    after — a defensible hearing of that break, but the switch means one
-    of the two is not a measurement. Unresolved. The two non-percussive
-    examples report no tempo rather than guessing, which is the right
-    answer for a pad with a three-second attack.
+    The amen break flips between octave families run to run on identical
+    audio — six runs gave 83, 83, 164, 82, 167, 83. Measured, the two
+    candidates score within a few percent of each other, so ordinary
+    variation in which transients are detected swaps the winner:
+
+    | example | winner vs runner-up | vs best out-of-family rival |
+    |---|---|---|
+    | House 125 | 35.9% | 52.8% |
+    | Techno 130 | 30.8% | 51.3% |
+    | Trap 140 | 20.9% | 23.7% |
+    | Amen break | 2.3% | 13.8% |
+    | Drum & bass 174 | 4.1% | 10.2% |
+
+    **Do not add a margin threshold to suppress the near ties.** Drum and
+    bass sits at 4.1% and reads 174 correctly on six of six runs; any cut
+    that catches the amen break catches it too. A consensus vote chose to
+    refuse on near ties 4-to-1, on the stated premise that the clean
+    examples win by margins that are "not close" — the table above is
+    what that premise looks like when measured, and it is false (#374).
+
+    Reporting `bpm: 0` here would also be its own false claim: the amen
+    break HAS a strong pulse, and what is ambiguous is which metrical
+    level to call the beat. Half-time is a legitimate hearing of a
+    breakbeat. `alternatives` carries the other octave and confidence is
+    0.21 against techno's 0.93, so the uncertainty is already reported.
+
+    The two non-percussive examples report no tempo rather than guessing,
+    which is the right answer for a pad with a three-second attack.
 - Key detection uses Krumhansl-Schmuckler with Pearson correlation and no
   mode boosts (#320). It recovers all 24 canonical profiles exactly, but
   it depends on chroma resolution: at the shipped `fft_size: 2048`
