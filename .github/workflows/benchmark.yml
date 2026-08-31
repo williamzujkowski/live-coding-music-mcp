@@ -43,12 +43,29 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Runs here rather than in ci.yml because it needs a real browser,
+      # and this is the workflow that already installs one. It covers
+      # what cannot be mocked — MediaRecorder, decodeAudioData, WAV
+      # encoding, and the CDP boundary the bytes cross. Mocking exactly
+      # that is how `audio_capture` shipped broken for its whole life
+      # (#223), and the script existed without CI ever running it.
+      - name: Verify export_audio end to end
+        env:
+          HEADLESS: 'true'
+        run: npm run test:export-audio
+
       - name: Run latency benchmark
         id: bench
         env:
           RUNS: ${{ github.event.inputs.runs || '50' }}
           GATE: ${{ github.event.inputs.gate || 'true' }}
         run: |
+          # Without pipefail the pipeline's status is tee's, which is
+          # always 0 — so `--gate`'s exit(1) could never fail this job.
+          # The nightly run reported success for weeks while the gate was
+          # inert, which is the same shape as test:sandbox existing and
+          # never being run (#376).
+          set -o pipefail
           mkdir -p benchmarks/results
           ARGS="--runs=${RUNS}"
           if [ "${GATE}" = "true" ]; then
