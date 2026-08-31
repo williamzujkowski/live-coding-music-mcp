@@ -278,41 +278,61 @@ describe('PatternValidator', () => {
       });
     });
 
-    describe('safety checks (lines 53, 200, 203, 210, 215)', () => {
-      // Note: The gain detection regex has a bug - the inner regex /([0-9.]+)/
-      // matches the dot in ".gain(" first, causing parseFloat to return NaN.
-      // These tests document the actual behavior.
+    describe('gain safety (#334)', () => {
+      /**
+       * This check never fired for any input. The outer match used /g,
+       * which discards capture groups and returns the whole
+       * ".gain(9)"; the inner /([0-9.]+)/ then matched the LEADING DOT
+       * of ".gain", and parseFloat(".") is NaN.
+       *
+       * Four tests used to live here documenting that bug in detail and
+       * asserting the broken behaviour — "Due to regex bug, no error is
+       * generated", `expect(result.valid).toBe(true)`. They were written
+       * so the lines would be covered. Coverage measured that they ran;
+       * nothing measured that they did anything, while CLAUDE.md
+       * advertised "prevents dangerous patterns (gain > 2.0)".
+       */
+      test.each([
+        's("bd*4").gain(99)',
+        's("bd*4").gain(10)',
+        's("bd*4").gain(6)',
+        's("bd*4").gain(5.1)',
+      ])('%s is a dangerous gain error', pattern => {
+        const result = validator.validate(pattern);
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.includes('Dangerous gain'))).toBe(true);
+      });
 
-      test('should collect safety errors (line 53) - gain regex bug causes NaN', () => {
-        // Due to regex bug, gain values are parsed as NaN
-        // This test verifies the code path is exercised even if detection fails
-        const result = validator.validate('s("bd*4").gain(10)');
-
-        // The regex matches ".gain(10)" but inner match gets "." first
-        // parseFloat(".") = NaN, so no warnings/errors are added
+      test.each([
+        's("bd*4").gain(3)',
+        's("bd*4").gain(2.5)',
+        's("bd*4").gain(4)',
+      ])('%s is a high-gain warning but still valid', pattern => {
+        const result = validator.validate(pattern);
+        expect(result.warnings.some(w => w.includes('High gain'))).toBe(true);
         expect(result.valid).toBe(true);
       });
 
-      test('should exercise gain parsing code path (line 200)', () => {
-        const result = validator.validate('s("bd*4").gain(3)');
-
-        // Due to regex bug, no warnings are generated
-        // This test ensures the code path is covered
-        expect(result.warnings.filter(w => w.includes('High gain'))).toHaveLength(0);
+      test.each([
+        '.gain( 3 )',
+        '.gain(3.0)',
+        '.gain(1e3)',
+        '.gain(  99  )',
+      ])('tolerates the %s spelling', spelling => {
+        const result = validator.validate(`s("bd*4")${spelling}`);
+        const flagged = result.warnings.some(w => w.includes('High gain'))
+          || result.errors.some(e => e.includes('Dangerous gain'));
+        expect(flagged).toBe(true);
       });
 
-      test('should exercise gain parsing with multiple values', () => {
+      test('catches a bare gain( with no leading dot', () => {
+        // Valid Strudel; the old regex required the dot.
+        expect(validator.validate('stack(gain(9))').valid).toBe(false);
+      });
+
+      test('flags every offending value in a chain', () => {
         const result = validator.validate('s("bd*4").gain(2.5).gain(3.5)');
-
-        // Both matches are found but parsed as NaN due to regex bug
-        expect(result.warnings.filter(w => w.includes('High gain'))).toHaveLength(0);
-      });
-
-      test('should exercise dangerous gain code path (line 203)', () => {
-        const result = validator.validate('s("bd*4").gain(6)');
-
-        // Due to regex bug, no error is generated
-        expect(result.valid).toBe(true);
+        expect(result.warnings.filter(w => w.includes('High gain'))).toHaveLength(2);
       });
 
       test('should not warn for safe gain values', () => {
@@ -692,5 +712,57 @@ describe('PatternValidator', () => {
 
       expect(result.valid).toBe(true);
     });
+  });
+});
+
+/**
+ * The two other #334 defects: autoFix corrupting function arguments,
+ * and an apostrophe in a comment invalidating a pattern.
+ */
+describe('autoFix does not corrupt function arguments (#334)', () => {
+  const validator = new PatternValidator();
+
+  it.each([
+    's("bd*4").sometimes(rev)',
+    'stack(s("bd"), s("hh")).sometimes(rev)',
+    's("bd*4").somecycles(fast)',
+  ])('leaves %s alone', pattern => {
+    // `/s\(([a-z0-9*]+)\)/gi` had no boundary, so it matched the `s(`
+    // at the tail of `sometimes(` and quoted the function argument:
+    // s("bd*4").sometimes("rev"). writePatternWithValidation applies
+    // autoFix and then writes, so this reached the editor.
+    expect(validator.autoFix(pattern).pattern).toBe(pattern);
+  });
+
+  it('still quotes a genuine bare sound', () => {
+    expect(validator.autoFix('s(bd)').pattern).toBe('s("bd")');
+  });
+
+  it('still quotes a bare sound with a multiplier', () => {
+    expect(validator.autoFix('s(bd*4)').pattern).toBe('s("bd*4")');
+  });
+});
+
+describe('quote balance is comment-aware (#334)', () => {
+  const validator = new PatternValidator();
+
+  it.each([
+    `s("bd*4") // don't stop the beat`,
+    `s("bd*4") /* it's fine */ .fast(2)`,
+    `s("bd*4")\n// don't stop\nnote("c3")`,
+  ])('accepts an apostrophe in a comment: %s', pattern => {
+    // writePatternWithValidation refuses the write outright on a
+    // validation error, so an ordinary English contraction in a comment
+    // blocked the pattern entirely.
+    expect(validator.validate(pattern).valid).toBe(true);
+  });
+
+  it('still rejects a genuinely unclosed quote', () => {
+    // A comment-skipping fix that accepts everything is not a fix.
+    expect(validator.validate(`s("bd*4").gain('x)`).valid).toBe(false);
+  });
+
+  it('still handles apostrophes inside a string', () => {
+    expect(validator.validate(`note("c'maj e'min")`).valid).toBe(true);
   });
 });

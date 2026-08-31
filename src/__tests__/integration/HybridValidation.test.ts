@@ -118,14 +118,25 @@ stack(
       const localResult = strudelEngine.validate(pattern);
       const patternValidatorResult = patternValidator.validate(pattern);
 
-      // Pattern is syntactically valid but has warnings
+      // The two validators answer different questions, and this test
+      // used to assert the broken behaviour of one of them: it is named
+      // "dangerous gain" while asserting patternValidatorResult.valid
+      // is true. It was true only because the gain check never fired
+      // (#334).
+      //
+      // StrudelEngine asks "is this syntactically valid Strudel" —
+      // gain(10) is. PatternValidator additionally asks "is this safe
+      // to send to someone's speakers" — gain(10) is not.
       expect(localResult.valid).toBe(true);
-      expect(patternValidatorResult.valid).toBe(true);
+      expect(patternValidatorResult.valid).toBe(false);
+      expect(patternValidatorResult.errors.some((e) => /gain/i.test(e))).toBe(true);
 
-      // Both should warn about dangerous gain
+      // At least one of them says something about the gain.
       const localWarns = localResult.warnings.some((w) => /gain/i.test(w));
-      const validatorWarns = patternValidatorResult.warnings.some((w) => /gain/i.test(w));
-      expect(localWarns || validatorWarns).toBe(true);
+      const validatorFlags =
+        patternValidatorResult.warnings.some((w) => /gain/i.test(w))
+        || patternValidatorResult.errors.some((e) => /gain/i.test(e));
+      expect(localWarns || validatorFlags).toBe(true);
     });
 
     test('should handle edge case: pattern without sound function', () => {
