@@ -73,7 +73,8 @@ describe('refine Tool (#78)', () => {
     (PatternStore as jest.Mock).mockReturnValue({
       save: jest.fn().mockResolvedValue(undefined),
       load: jest.fn().mockResolvedValue(null),
-      list: jest.fn().mockResolvedValue([])
+      list: jest.fn().mockResolvedValue([]),
+      listDetailed: jest.fn().mockResolvedValue({ patterns: [], skipped: 0 })
     });
     (MusicTheory as jest.Mock).mockReturnValue({
       generateScale: jest.fn().mockReturnValue(['C', 'D', 'E', 'F', 'G', 'A', 'B']),
@@ -316,7 +317,8 @@ describe('set_energy Tool (#81)', () => {
     (PatternStore as jest.Mock).mockReturnValue({
       save: jest.fn().mockResolvedValue(undefined),
       load: jest.fn().mockResolvedValue(null),
-      list: jest.fn().mockResolvedValue([])
+      list: jest.fn().mockResolvedValue([]),
+      listDetailed: jest.fn().mockResolvedValue({ patterns: [], skipped: 0 })
     });
     (MusicTheory as jest.Mock).mockReturnValue({
       generateScale: jest.fn().mockReturnValue(['C', 'D', 'E', 'F', 'G', 'A', 'B']),

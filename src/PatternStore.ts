@@ -3,6 +3,24 @@ import * as path from 'path';
 import { Logger } from './utils/Logger.js';
 import { ValidationError } from './utils/CategorisedError.js';
 
+/**
+ * Narrows a parsed JSON value to a pattern, or null when it is not one.
+ *
+ * `JSON.parse(data) as PatternData` is a cast: it asserts a shape rather
+ * than checking it, so a file that parses but lacks `tags` or
+ * `timestamp` threw further downstream and took the whole listing with
+ * it (#426).
+ */
+function asPatternData(value: unknown): PatternData | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.name !== 'string') return null;
+  if (typeof candidate.content !== 'string') return null;
+  if (typeof candidate.timestamp !== 'string') return null;
+  if (!Array.isArray(candidate.tags)) return null;
+  return candidate as unknown as PatternData;
+}
+
 interface PatternData {
   name: string;
   content: string;
@@ -13,7 +31,9 @@ interface PatternData {
 
 export class PatternStore {
   private patternCache: Map<string, PatternData> = new Map();
-  private listCache: { patterns: PatternData[], timestamp: number } | null = null;
+  private listCache: { patterns: PatternData[], timestamp: number, skipped: number } | null = null;
+  /** Set by the read `listDetailed` wraps; never read except through it. */
+  private skippedInLastRead = 0;
   private readonly LIST_CACHE_TTL = 5000; // 5 seconds
   private readonly MAX_CACHE_SIZE = 100; // LRU cache limit
   private directoryEnsured: boolean = false;
@@ -114,26 +134,80 @@ export class PatternStore {
     }
   }
 
+  /**
+   * Patterns, plus how many files could not be read.
+   *
+   * The count travels WITH the data rather than sitting on the instance:
+   * a `getLastSkipped()` would belong to whichever listing finished most
+   * recently, and two concurrent calls would cross their answers.
+   *
+   * A partial listing presented as complete is the same lie as reporting
+   * zero, quieter — the store logs what it skipped and no MCP client
+   * reads the log (#426; #335 is the precedent for making a warning
+   * reach the caller).
+   */
+  async listDetailed(tag?: string): Promise<{ patterns: PatternData[]; skipped: number }> {
+    const patterns = await this.list(tag);
+    return { patterns, skipped: this.skippedInLastRead };
+  }
+
   async list(tag?: string): Promise<PatternData[]> {
     // Use cached list if available and not expired
     const now = Date.now();
     if (!tag && this.listCache && (now - this.listCache.timestamp) < this.LIST_CACHE_TTL) {
+      // The cached listing carries its own skipped count, so a cache hit
+      // does not inherit the previous uncached read's.
+      this.skippedInLastRead = this.listCache.skipped;
       return this.listCache.patterns;
     }
 
     try {
+      await this.ensureDirectory();
       const files = await fs.readdir(this.basePath);
 
-      // Parallel file reading for better performance
-      const readPromises = files
-        .filter(file => file.endsWith('.json'))
-        .map(async (file) => {
-          const filepath = path.join(this.basePath, file);
-          const data = await fs.readFile(filepath, 'utf-8');
-          return JSON.parse(data) as PatternData;
-        });
+      // Parallel file reading for better performance.
+      //
+      // `allSettled`, not `all`. Fail-fast meant one truncated or
+      // unparseable `.json` rejected the whole batch, the catch below
+      // returned `[]`, and `doList` reported that as the success "No
+      // patterns found" — measured, five saved patterns plus one
+      // truncated file listed as zero (#426). A hundred patterns and one
+      // bad file told the user they had none.
+      const results = await Promise.allSettled(
+        files
+          .filter(file => file.endsWith('.json'))
+          .map(async (file) => {
+            const filepath = path.join(this.basePath, file);
+            const data = await fs.readFile(filepath, 'utf-8');
+            return { file, parsed: JSON.parse(data) as unknown };
+          })
+      );
 
-      const allPatterns = await Promise.all(readPromises);
+      const allPatterns: PatternData[] = [];
+      const skipped: string[] = [];
+      for (const result of results) {
+        if (result.status !== 'fulfilled') {
+          skipped.push('unreadable');
+          continue;
+        }
+        // A cast is not a check. A file missing `timestamp` threw in the
+        // sort below and one missing `tags` threw in the tag filter —
+        // each taking the entire listing down the same way a truncated
+        // file did.
+        const pattern = asPatternData(result.value.parsed);
+        if (pattern === null) {
+          skipped.push(result.value.file);
+          continue;
+        }
+        allPatterns.push(pattern);
+      }
+      this.skippedInLastRead = skipped.length;
+      if (skipped.length > 0) {
+        this.logger.warn(
+          `Skipped ${String(skipped.length)} unreadable or malformed pattern file(s)`,
+          { skipped }
+        );
+      }
 
       // Filter and sort
       const filteredPatterns = tag
@@ -146,7 +220,7 @@ export class PatternStore {
 
       // Update cache only for non-filtered lists
       if (!tag) {
-        this.listCache = { patterns: sorted, timestamp: now };
+        this.listCache = { patterns: sorted, timestamp: now, skipped: skipped.length };
       }
 
       return sorted;

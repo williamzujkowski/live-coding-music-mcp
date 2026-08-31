@@ -21,6 +21,12 @@ function makeCtx(): { ctx: ToolContext; store: any; pattern: { current: string }
       const all = Array.from(saved.values());
       return tag ? all.filter(p => p.tags.includes(tag)) : all;
     }),
+    // Same data as `list`, plus the skipped count the real store
+    // reports; nothing here is unreadable (#426).
+    listDetailed: jest.fn(async (tag?: string) => {
+      const all = Array.from(saved.values());
+      return { patterns: tag ? all.filter(p => p.tags.includes(tag)) : all, skipped: 0 };
+    }),
   };
 
   const ctx: ToolContext = {
