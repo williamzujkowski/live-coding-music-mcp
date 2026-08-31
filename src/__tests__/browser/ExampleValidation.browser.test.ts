@@ -54,10 +54,29 @@ describe('Browser Validation: Example Patterns', () => {
     it('should load and play hard-techno.json', async () => {
       const example = loadExample('techno', 'hard-techno.json');
 
-      await controller.writePattern(example.pattern);
+      // This is the first browser test in the file, and it flakes
+      // intermittently inside the full suite — an assertion failure at
+      // ~3.1s against a 30s timeout, not a hang (#300). Two mechanisms
+      // were probed against the live site and ruled out:
+      //   - `sm.code` going stale after a dispatch (it updates
+      //     synchronously; verified both before and 300ms after)
+      //   - strudel.cc restoring its default demo over an early write
+      //     (verified at 0ms and 200ms settle; not clobbered)
+      // So the next failure needs to say what was actually read.
+      const writeResult = await controller.writePattern(example.pattern);
       const written = await controller.getCurrentPattern();
-      expect(written).toContain('techno');
-      expect(written.length).toBeGreaterThan(50);
+
+      // Asserted as an object so a failure prints what was actually
+      // read, not just "expected to contain 'techno'". Jest's expect()
+      // takes no message argument, so the diff is the only channel.
+      expect({
+        containsTechno: written.includes('techno'),
+        longEnough: written.length > 50,
+        writeReturned: writeResult,
+        readLength: written.length,
+        readSample: written.slice(0, 120),
+        exampleLength: example.pattern.length,
+      }).toMatchObject({ containsTechno: true, longEnough: true });
 
       await controller.play();
       await new Promise(resolve => setTimeout(resolve, 1000));
