@@ -28,7 +28,7 @@ import { transpiler } from '@strudel/transpiler';
 import { assertPatternIsSafe, runPatternCode, PatternSafetyError } from './PatternSandbox.js';
 import { clarifyEngineError, explainBrowserOnly, findBrowserOnlyCall } from './BrowserOnlyFunctions.js';
 import { probeEventDensity } from './EventDensityProbe.js';
-import { ValidationError } from '../utils/CategorisedError.js';
+import { TransientError, ValidationError } from '../utils/CategorisedError.js';
 import {
   calculateComplexity,
   checkCommonIssues,
@@ -443,7 +443,7 @@ export class StrudelEngine {
       // probe and legitimately none over the whole range. Requiring a
       // real sample keeps that from being reported as a crash.
       if (verdict.observedOnsets >= 32 && verdict.windowsWithOnsets >= 2 && haps.length === 0) {
-        throw new Error(
+        throw new TransientError(
           'The pattern produced no events, but sampling it found some — the query ' +
           'failed inside Strudel rather than returning an empty result. A very large ' +
           '.fast() or `*` multiplier is the usual cause; reduce it.'
@@ -478,7 +478,7 @@ export class StrudelEngine {
       // ValidationError, and flattening them here into a generic
       // "Pattern execution failed" was the third time in one day that a
       // verdict was destroyed one frame above the code that reads it.
-      if (error instanceof ValidationError) throw error;
+      if (error instanceof ValidationError || error instanceof TransientError) throw error;
       if (error instanceof PatternSafetyError) {
         // The caller's pattern was refused before it ran. That is their
         // input to change, not an internal failure.
@@ -527,7 +527,7 @@ export class StrudelEngine {
       // ValidationError, and flattening them here into a generic
       // "Pattern execution failed" was the third time in one day that a
       // verdict was destroyed one frame above the code that reads it.
-      if (error instanceof ValidationError) throw error;
+      if (error instanceof ValidationError || error instanceof TransientError) throw error;
       if (error instanceof PatternSafetyError) {
         // The caller's pattern was refused before it ran. That is their
         // input to change, not an internal failure.

@@ -1612,7 +1612,7 @@ describe('StrudelMCPServer', () => {
         const uninitServer = new StrudelMCPServer();
         const result = await (uninitServer as any).executeTool('audio_capture', { action: 'start' });
 
-        expect(result.success).toBe(false);
+        expect(result.ok).toBe(false);
         expect(result.message).toContain('not initialized');
       });
 
@@ -1642,7 +1642,7 @@ describe('StrudelMCPServer', () => {
 
         const result = await (server as any).executeTool('audio_capture', { action: 'start' });
 
-        expect(result.success).toBe(false);
+        expect(result.ok).toBe(false);
         expect(result.message).toContain('already in progress');
       });
 
@@ -1650,7 +1650,7 @@ describe('StrudelMCPServer', () => {
         const uninitServer = new StrudelMCPServer();
         const result = await (uninitServer as any).executeTool('audio_capture', { action: 'stop' });
 
-        expect(result.success).toBe(false);
+        expect(result.ok).toBe(false);
         expect(result.message).toContain('not initialized');
       });
 
@@ -1674,7 +1674,7 @@ describe('StrudelMCPServer', () => {
 
         const result = await (server as any).executeTool('audio_capture', { action: 'stop' });
 
-        expect(result.success).toBe(false);
+        expect(result.ok).toBe(false);
         expect(result.message).toContain('No audio capture in progress');
       });
 
@@ -1682,7 +1682,7 @@ describe('StrudelMCPServer', () => {
         const uninitServer = new StrudelMCPServer();
         const result = await (uninitServer as any).executeTool('audio_capture', { action: 'sample' });
 
-        expect(result.success).toBe(false);
+        expect(result.ok).toBe(false);
         expect(result.message).toContain('not initialized');
       });
 
@@ -1721,7 +1721,11 @@ describe('StrudelMCPServer', () => {
           action: 'sample',
           duration: 50
         });
-        expect(resultShort.success).toBe(false);
+        // Envelope: a duration outside the range is the caller's to fix,
+        // and capture.ts now says so rather than letting the dispatcher
+        // guess from the wording (#392).
+        expect(resultShort.ok).toBe(false);
+        expect(resultShort.errorCategory).toBe('validation');
         expect(resultShort.message).toContain('Duration must be between');
 
         // Too long
@@ -1729,7 +1733,7 @@ describe('StrudelMCPServer', () => {
           action: 'sample',
           duration: 120000
         });
-        expect(resultLong.success).toBe(false);
+        expect(resultLong.ok).toBe(false);
         expect(resultLong.message).toContain('Duration must be between');
       });
 
@@ -1739,7 +1743,7 @@ describe('StrudelMCPServer', () => {
 
         const result = await (server as any).executeTool('audio_capture', { action: 'sample' });
 
-        expect(result.success).toBe(false);
+        expect(result.ok).toBe(false);
         expect(result.message).toContain('already in progress');
       });
 
@@ -1749,7 +1753,7 @@ describe('StrudelMCPServer', () => {
 
         const result = await (server as any).executeTool('audio_capture', { action: 'start' });
 
-        expect(result.success).toBe(false);
+        expect(result.ok).toBe(false);
         expect(result.message).toContain('Failed to start audio capture');
       });
 
@@ -1760,7 +1764,7 @@ describe('StrudelMCPServer', () => {
 
         const result = await (server as any).executeTool('audio_capture', { action: 'stop' });
 
-        expect(result.success).toBe(false);
+        expect(result.ok).toBe(false);
         expect(result.message).toContain('Failed to stop audio capture');
       });
 
@@ -1770,7 +1774,7 @@ describe('StrudelMCPServer', () => {
 
         const result = await (server as any).executeTool('audio_capture', { action: 'sample' });
 
-        expect(result.success).toBe(false);
+        expect(result.ok).toBe(false);
         expect(result.message).toContain('Failed to capture audio sample');
       });
     });

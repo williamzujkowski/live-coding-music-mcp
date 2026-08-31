@@ -13,7 +13,7 @@
 import { StrudelEngine } from './StrudelEngine.js';
 import { ISOLATED_METHODS } from './LocalPatternEngine.js';
 import { toTransferable } from './Transferable.js';
-import { BusinessError, ValidationError } from '../utils/CategorisedError.js';
+import { BusinessError, TransientError, ValidationError } from '../utils/CategorisedError.js';
 
 const engine = new StrudelEngine();
 
@@ -39,9 +39,10 @@ const HANDLERS = {
 };
 
 /** The category an error carries, when it is one of ours. */
-function categoryOf(error: unknown): 'validation' | 'business' | undefined {
+function categoryOf(error: unknown): 'validation' | 'business' | 'transient' | undefined {
   if (error instanceof ValidationError) return 'validation';
   if (error instanceof BusinessError) return 'business';
+  if (error instanceof TransientError) return 'transient';
   return undefined;
 }
 
