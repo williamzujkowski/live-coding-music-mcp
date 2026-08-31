@@ -255,11 +255,15 @@ describe('MIDIExportService', () => {
     });
 
     it('should calculate correct timing for notes', () => {
+      // Times are in beats, and a pattern string spans one BAR.
+      //
+      // This asserted 0.25-beat spacing — the whole four-note pattern
+      // crammed into a single beat, which at 120 BPM is 500ms for the
+      // lot. Import lays a cycle over 4 beats, so a round trip
+      // compressed everything 4x and turned a scale into chords (#336).
       const notes = service.parsePatternNotes('note("c4 e4 g4 b4")');
-      expect(notes[0].time).toBe(0);
-      expect(notes[1].time).toBe(0.25);
-      expect(notes[2].time).toBe(0.5);
-      expect(notes[3].time).toBe(0.75);
+      expect(notes.map(n => n.time)).toEqual([0, 1, 2, 3]);
+      expect(notes.every(n => n.duration === 1)).toBe(true);
     });
 
     it('should return empty array for patterns without notes', () => {

@@ -139,6 +139,15 @@ const CASE_SENSITIVE_CHORDS: Record<string, number[]> = {
   'M13': [0, 4, 7, 11, 14, 21],
 };
 
+/**
+ * Beats in one bar / cycle.
+ *
+ * Export and import must agree on this or a round trip rescales time.
+ * `MIDIImportService` uses `secondsPerBeat * 4`; this is the same 4,
+ * named so the next person changing one finds the other (#336).
+ */
+export const BEATS_PER_BAR = 4;
+
 export class MIDIExportService {
   /**
    * Mini-notation tokens the parser could not represent, collected
@@ -303,7 +312,7 @@ export class MIDIExportService {
       const noteContent = noteMatch[1];
       const parsedNotes = this.parseNoteString(noteContent, currentTime);
       notes.push(...parsedNotes);
-      currentTime += parsedNotes.length > 0 ? 1 : 0;
+      currentTime += parsedNotes.length > 0 ? BEATS_PER_BAR : 0;
     }
 
     // Extract n() function calls (Strudel shorthand)
@@ -315,7 +324,7 @@ export class MIDIExportService {
       // n() uses MIDI numbers directly
       const parsedNotes = this.parseNoteString(noteContent, currentTime, true);
       notes.push(...parsedNotes);
-      currentTime += parsedNotes.length > 0 ? 1 : 0;
+      currentTime += parsedNotes.length > 0 ? BEATS_PER_BAR : 0;
     }
 
     // Extract chord patterns
@@ -326,7 +335,7 @@ export class MIDIExportService {
       const chordContent = chordMatch[1];
       const parsedChords = this.parseChordString(chordContent, currentTime);
       notes.push(...parsedChords);
-      currentTime += parsedChords.length > 0 ? 1 : 0;
+      currentTime += parsedChords.length > 0 ? BEATS_PER_BAR : 0;
     }
 
     // Extract s() sound patterns with n() modifier for samples
@@ -338,7 +347,7 @@ export class MIDIExportService {
       const noteContent = soundNMatch[1];
       const parsedNotes = this.parseNoteString(noteContent, currentTime, true);
       notes.push(...parsedNotes);
-      currentTime += parsedNotes.length > 0 ? 1 : 0;
+      currentTime += parsedNotes.length > 0 ? BEATS_PER_BAR : 0;
     }
 
     // If no notes found through function parsing, try to find inline notes
@@ -357,15 +366,61 @@ export class MIDIExportService {
    * @param asMidiNumbers - Treat values as MIDI numbers
    * @returns Array of NoteEvent objects
    */
+  /**
+   * Splits mini-notation into tokens, treating `[...]` as one token.
+   *
+   * @param source - A mini-notation string
+   * @returns Tokens, with bracket groups intact
+   * @example
+   * MIDIExportService.tokenize('[c4 e4] g4'); // ['[c4 e4]', 'g4']
+   */
+  static tokenize(source: string): string[] {
+    const tokens: string[] = [];
+    let current = '';
+    let depth = 0;
+
+    for (const char of source) {
+      if (char === '[') depth++;
+      if (char === ']') depth = Math.max(0, depth - 1);
+
+      const isSeparator = (char === ' ' || char === '\t' || char === '\n' || char === ',');
+      if (isSeparator && depth === 0) {
+        if (current.length > 0) tokens.push(current);
+        current = '';
+        continue;
+      }
+      current += char;
+    }
+    if (current.length > 0) tokens.push(current);
+    return tokens;
+  }
+
   private parseNoteString(
     noteString: string,
     startTime: number,
     asMidiNumbers: boolean = false
   ): NoteEvent[] {
     const notes: NoteEvent[] = [];
-    const parts = noteString.split(/[\s,]+/).filter(p => p.length > 0);
+    // Tokenize with brackets kept whole.
+    //
+    // Splitting on /[\s,]+/ first meant the `startsWith('[')` branch
+    // below could only ever see a bracket containing no spaces or
+    // commas — i.e. never a real chord. `[c4 e4] g4` became
+    // ["[c4", "e4]", "g4"], and "e4]" fails noteNameToMidi, so the last
+    // note of every chord was dropped. Import emits exactly this
+    // notation, so its own output could not be re-exported (#336).
+    const parts = MIDIExportService.tokenize(noteString);
 
-    const noteDuration = parts.length > 0 ? 1 / parts.length : 1;
+    // One pattern string spans one BAR, not one beat.
+    //
+    // Export treated a whole note("...") as 1 beat while import lays a
+    // cycle out over 4 (`secondsPerBar = secondsPerBeat * 4`), so a
+    // round trip compressed everything 4x: an 8-note scale came back as
+    // note("c4 [d4,e4] [f4,g4] [a4,b4] c5 ~ ~ ...") — collisions from
+    // the mismatch, which then triggered the documented chord-collapse
+    // and looked like a quantization loss. It was a unit disagreement
+    // (#336).
+    const noteDuration = parts.length > 0 ? BEATS_PER_BAR / parts.length : BEATS_PER_BAR;
 
     parts.forEach((part, index) => {
       // Check for rest

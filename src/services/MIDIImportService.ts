@@ -28,6 +28,7 @@
  */
 
 import * as midiModule from '@tonejs/midi';
+import { BEATS_PER_BAR } from './MIDIExportService.js';
 const Midi = (midiModule as any).Midi || (midiModule as any).default?.Midi;
 
 /** Options accepted by `convertBuffer`. */
@@ -227,7 +228,9 @@ export class MIDIImportService {
 
     const bpm = Math.round(midi.header.tempos[0]?.bpm ?? 120);
     const secondsPerBeat = 60 / bpm;
-    const secondsPerBar = secondsPerBeat * 4;
+    // Must match MIDIExportService.BEATS_PER_BAR, or a round trip
+    // rescales time (#336).
+    const secondsPerBar = secondsPerBeat * BEATS_PER_BAR;
     const stepSeconds = secondsPerBar / stepsPerCycle;
 
     if (options.bars !== undefined) {
