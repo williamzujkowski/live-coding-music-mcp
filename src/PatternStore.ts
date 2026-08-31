@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { randomBytes } from 'crypto';
 import * as path from 'path';
 import { Logger } from './utils/Logger.js';
 import { ValidationError } from './utils/CategorisedError.js';
@@ -157,7 +158,39 @@ export class PatternStore {
     // passes InputValidator's 255 limit and `sanitizeFilename` measures
     // the stem without `.json` — and then fails ENAMETOOLONG on the
     // 260-byte component (#428).
-    await fs.writeFile(filepath, JSON.stringify(data, null, 2));
+    // Write to a temp file, then rename.
+    //
+    // `rename` is atomic within a filesystem, so a reader sees either
+    // the old pattern or the new one and never a half-written file. The
+    // direct write left truncated JSON behind on a crash or a full disk
+    // — which is exactly the input that used to take the entire listing
+    // down (#426). That fix made the listing survive such a file; this
+    // one stops producing them.
+    //
+    // The temp name is random, and the write is exclusive.
+    //
+    // A predictable name (pid plus a counter) is guessable, so anyone
+    // able to write into the pattern directory could pre-create it as a
+    // symlink and redirect the write elsewhere — CodeQL flags exactly
+    // this as js/insecure-temporary-file, and it was right. `randomBytes`
+    // removes the guess and the `wx` flag refuses to open a path that
+    // already exists, symlink included, rather than following it.
+    //
+    // It sits in the same directory so the rename stays within one
+    // filesystem, which is what makes the rename atomic.
+    const tempPath = `${filepath}.${randomBytes(8).toString('hex')}.tmp`;
+    try {
+      // `mode: 0o600` is the part CodeQL's js/insecure-temporary-file is
+      // actually about — "accessible by other users". A temp file
+      // holding the user's pattern has no business being world-readable
+      // even for the instant before the rename.
+      await fs.writeFile(tempPath, JSON.stringify(data, null, 2), { flag: 'wx', mode: 0o600 });
+      await fs.rename(tempPath, filepath);
+    } catch (error) {
+      // Leaving a stray .tmp would make it the next listing's problem.
+      await fs.unlink(tempPath).catch(() => undefined);
+      throw error;
+    }
 
     // Keyed by the FILE's name, not the caller's.
     //
