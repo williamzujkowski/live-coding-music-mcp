@@ -39,6 +39,7 @@
 
 import { fork, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { BusinessError, ValidationError } from '../utils/CategorisedError.js';
 
 /** How the child died, when it died. */
 export type RunnerFailureKind = 'oom' | 'timeout' | 'crash' | 'spawn';
@@ -182,7 +183,12 @@ export class IsolatedEngineRunner {
       };
 
       const onMessage = (raw: unknown): void => {
-        const message = raw as { id?: number; ok?: boolean; result?: unknown; error?: { message?: string; name?: string } } | null;
+        const message = raw as {
+          id?: number;
+          ok?: boolean;
+          result?: unknown;
+          error?: { message?: string; name?: string; category?: 'validation' | 'business' };
+        } | null;
         if (!message || message.id !== id) return;
         this.answeredSinceSpawn = true;
         if (message.ok) {
@@ -191,8 +197,21 @@ export class IsolatedEngineRunner {
         }
         // The child's own error, faithfully re-raised. Not an
         // IsolatedRunnerError: the isolation worked, the pattern was bad.
-        const rebuilt = new Error(message.error?.message ?? 'Pattern evaluation failed');
-        if (message.error?.name) rebuilt.name = message.error.name;
+        //
+        // Rebuilt with its category when the child sent one. A class
+        // cannot cross IPC, so without this the child's ValidationError
+        // arrived as a bare Error and was categorised by phrase — which
+        // put "Result exceeds the transfer limit. Narrow the query" into
+        // `internal`, not retryable and not the caller's fault, when it
+        // is exactly the caller's to fix (#382).
+        const detail = message.error?.message ?? 'Pattern evaluation failed';
+        const rebuilt =
+          message.error?.category === 'validation' ? new ValidationError(detail)
+          : message.error?.category === 'business' ? new BusinessError(detail)
+          : new Error(detail);
+        if (message.error?.name !== undefined && message.error.category === undefined) {
+          rebuilt.name = message.error.name;
+        }
         pending.reject(rebuilt);
       };
 

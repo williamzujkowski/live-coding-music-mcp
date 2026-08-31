@@ -13,6 +13,7 @@
 import { StrudelEngine } from './StrudelEngine.js';
 import { ISOLATED_METHODS } from './LocalPatternEngine.js';
 import { toTransferable } from './Transferable.js';
+import { BusinessError, ValidationError } from '../utils/CategorisedError.js';
 
 const engine = new StrudelEngine();
 
@@ -36,6 +37,13 @@ const HANDLERS = {
     return engine.queryEvents(code, start, end);
   },
 };
+
+/** The category an error carries, when it is one of ours. */
+function categoryOf(error: unknown): 'validation' | 'business' | undefined {
+  if (error instanceof ValidationError) return 'validation';
+  if (error instanceof BusinessError) return 'business';
+  return undefined;
+}
 
 interface Request {
   id: number;
@@ -66,6 +74,12 @@ process.on('message', (raw: unknown) => {
       error: {
         name: error instanceof Error ? error.name : 'Error',
         message: error instanceof Error ? error.message : String(error),
+        // The class cannot cross IPC — the parent rebuilds a plain Error
+        // from this payload — so the verdict travels as a field. Without
+        // it, "Result exceeds the 2000000-value transfer limit. Narrow
+        // the query" arrived uncategorised and was reported as an
+        // internal failure not worth retrying (#382).
+        category: categoryOf(error),
       },
     });
   }
