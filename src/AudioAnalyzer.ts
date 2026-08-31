@@ -50,7 +50,7 @@ export function onsetTimes(onsets: OnsetInput): number[] {
 }
 
 /** Strengths, or an empty array when the caller had none to give. */
-export function onsetStrengths(onsets: OnsetInput): number[] {
+function onsetStrengths(onsets: OnsetInput): number[] {
   if (onsets.length === 0 || typeof onsets[0] === 'number') return [];
   return (onsets as readonly OnsetObservation[]).map(onset => onset.strength);
 }
