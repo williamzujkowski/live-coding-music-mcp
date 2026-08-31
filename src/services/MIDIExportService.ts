@@ -102,7 +102,41 @@ const CHORD_INTERVALS: Record<string, number[]> = {
   'm9': [0, 3, 7, 10, 14],    // minor 9
   'add9': [0, 4, 7, 14],      // add 9
   '6': [0, 4, 7, 9],          // major 6
-  'm6': [0, 3, 7, 9]          // minor 6
+  'm6': [0, 3, 7, 9],         // minor 6
+
+  // Aliases people actually write. Without these they fell through to
+  // the major-triad fallback, so `Cmin` and `Cm7b5` both came back as
+  // C major — a wrong third, silently, which is worse than the unknown
+  // suffix the fallback was written for (#336).
+  'min': [0, 3, 7],           // minor, spelled out
+  'minor': [0, 3, 7],
+  'maj': [0, 4, 7],           // major, spelled out
+  'major': [0, 4, 7],
+  'sus': [0, 5, 7],           // bare sus is conventionally sus4
+  'm7b5': [0, 3, 6, 10],      // half-diminished
+  'm11': [0, 3, 7, 10, 14, 17],
+  '11': [0, 4, 7, 10, 14, 17],
+  '13': [0, 4, 7, 10, 14, 21],
+  'maj13': [0, 4, 7, 11, 14, 21],
+  'm13': [0, 3, 7, 10, 14, 21],
+  '7sus4': [0, 5, 7, 10],
+  'add11': [0, 4, 7, 17],
+  '5': [0, 7],                // power chord
+};
+
+/**
+ * Suffixes whose meaning depends on case, checked before lowercasing.
+ *
+ * `M7` is standard notation for a major seventh, but the lookup
+ * lowercased first, turning it into the `m7` key — so `CM7` produced a
+ * C MINOR 7 while `Cmaj7` produced the correct major 7. Two spellings
+ * of the same chord, a semitone apart (#336).
+ */
+const CASE_SENSITIVE_CHORDS: Record<string, number[]> = {
+  'M7': [0, 4, 7, 11],   // major 7
+  'M9': [0, 4, 7, 11, 14],
+  'M6': [0, 4, 7, 9],
+  'M13': [0, 4, 7, 11, 14, 21],
 };
 
 export class MIDIExportService {
@@ -160,7 +194,18 @@ export class MIDIExportService {
     }
 
     // Default octave is 4 (middle C area)
-    const octave = octaveStr !== undefined ? parseInt(octaveStr, 10) : 4;
+    let octave = octaveStr !== undefined ? parseInt(octaveStr, 10) : 4;
+
+    // Cb and B# cross the octave boundary. NOTE_NAMES maps 'cb' to 11
+    // and 'b#' to 0, which are the right pitch CLASSES, but the octave
+    // has to move with them: Cb4 is B3 (59), not B4 (71), and B#4 is C5
+    // (72), not C4 (60). The semitone was right and the octave was not
+    // — the classic off-by-one-octave (#336).
+    if (noteKey === 'cb') {
+      octave -= 1;
+    } else if (noteKey === 'b#') {
+      octave += 1;
+    }
 
     // MIDI note = (octave + 1) * 12 + semitone
     // C4 = 60, so octave 4 base = 60, but 60 = (4+1)*12 + 0
@@ -219,10 +264,14 @@ export class MIDIExportService {
     // fallback never fired. `intervals.map` then threw a TypeError that
     // failed the whole export, including any valid chords beside it
     // (#308).
+    // Case-sensitive suffixes first: 'M7' means major 7 and must not be
+    // lowercased into the 'm7' (minor 7) key (#336).
     const key = chordType.toLowerCase();
-    const intervals = Object.hasOwn(CHORD_INTERVALS, key)
-      ? CHORD_INTERVALS[key]
-      : CHORD_INTERVALS[''];
+    const intervals = Object.hasOwn(CASE_SENSITIVE_CHORDS, chordType)
+      ? CASE_SENSITIVE_CHORDS[chordType]
+      : Object.hasOwn(CHORD_INTERVALS, key)
+        ? CHORD_INTERVALS[key]
+        : CHORD_INTERVALS[''];
 
     const rootMidi = (octave + 1) * 12 + rootSemitone;
 
@@ -439,6 +488,19 @@ export class MIDIExportService {
       timeSignatureNumerator = 4,
       timeSignatureDenominator = 4
     } = options;
+
+    // bpm <= 0 makes `time = beats / (bpm / 60)` non-finite, and
+    // @tonejs/midi's addNote then never returns — an infinite loop, not
+    // an exception, so the try/catch around this cannot catch it.
+    // Currently shielded by InputValidator at the tool boundary, but an
+    // unguarded hang at a public service method is not something to
+    // leave to a caller two layers up (#336).
+    if (!Number.isFinite(bpm) || bpm <= 0) {
+      throw new Error(`Invalid BPM: ${String(bpm)}. Must be a positive number.`);
+    }
+    if (!Number.isFinite(bars) || bars < 1) {
+      throw new Error(`Invalid bars: ${String(bars)}. Must be at least 1.`);
+    }
 
     const midi = new Midi();
 
