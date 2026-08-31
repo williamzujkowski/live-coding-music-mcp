@@ -451,6 +451,54 @@ export class MIDIExportService {
    * MIDIExportService.tokenize('[c4 e4] g4');  // ['[c4 e4]', 'g4']
    * MIDIExportService.tokenize('<c4 e4> g4');  // ['<c4 e4>', 'g4']
    */
+  /**
+   * Splits a pattern string into its parallel lanes.
+   *
+   * A comma at depth 0 stacks lanes in Strudel — `s("bd*4, hh*8")` is a
+   * kick on every beat AND a hat on every eighth, both spanning the bar.
+   * `tokenize` treated it as an ordinary separator, so the lanes were
+   * concatenated and redistributed across the bar. Measured:
+   *
+   *   s("bd*4")        -> beats [0, 1, 2, 3]                  correct
+   *   s("hh*8")        -> beats [0, .5, 1, ... 3.5]           correct
+   *   s("bd*4, hh*8")  -> beats [0, .33, .67, 1, ... 3.67]    WRONG
+   *
+   * The note COUNT was right, which is why nothing caught it. And this
+   * is the shape the generator emits — `s("bd*4, ~ cp ~ cp, hh*8")` is
+   * its standard drum line — so every generated drum pattern exported
+   * at the wrong rhythm and reported success (#432).
+   *
+   * A comma inside `[...]` or `<...>` is a chord or an alternation and
+   * stays where it is; only depth 0 separates lanes.
+   *
+   * @param source - Pattern string, e.g. `bd*4, hh*8`
+   * @returns One string per lane, in order; `['']` becomes `[]`
+   *
+   * @example
+   * MIDIExportService.splitLanes('bd*4, hh*8');   // ['bd*4', 'hh*8']
+   * MIDIExportService.splitLanes('[c4,e4] g4');   // ['[c4,e4] g4']
+   */
+  static splitLanes(source: string): string[] {
+    const lanes: string[] = [];
+    let current = '';
+    let depth = 0;
+
+    for (const char of source) {
+      if (char === '[' || char === '<') depth++;
+      if (char === ']' || char === '>') depth = Math.max(0, depth - 1);
+
+      if (char === ',' && depth === 0) {
+        lanes.push(current);
+        current = '';
+        continue;
+      }
+      current += char;
+    }
+    lanes.push(current);
+
+    return lanes.map(lane => lane.trim()).filter(lane => lane.length > 0);
+  }
+
   static tokenize(source: string): string[] {
     const tokens: string[] = [];
     let current = '';
@@ -557,6 +605,15 @@ export class MIDIExportService {
    * @returns Percussion events, or [] if this is not a drum lane
    */
   private parseDrumString(soundString: string, startTime: number): NoteEvent[] {
+    // Each lane spans the whole bar; they play together, not in turn
+    // (#432). Laid out independently and concatenated, which is what
+    // `parsePatternNotes` already does across separate `s(...)` calls in
+    // a stack — this is the same thing one nesting level down.
+    const lanes = MIDIExportService.splitLanes(soundString);
+    if (lanes.length > 1) {
+      return lanes.flatMap(lane => this.parseDrumString(lane, startTime));
+    }
+
     const tokens = MIDIExportService.expandOperators(
       MIDIExportService.tokenize(soundString),
       token => { this.unrepresented.add(token); },
@@ -598,6 +655,13 @@ export class MIDIExportService {
     // ["[c4", "e4]", "g4"], and "e4]" fails noteNameToMidi, so the last
     // note of every chord was dropped. Import emits exactly this
     // notation, so its own output could not be re-exported (#336).
+    // Parallel lanes, as in parseDrumString (#432). `note("c4 e4, g4")`
+    // sounds g4 with c4 at beat 0, not two thirds of the way through.
+    const lanes = MIDIExportService.splitLanes(noteString);
+    if (lanes.length > 1) {
+      return lanes.flatMap(lane => this.parseNoteString(lane, startTime, asMidiNumbers));
+    }
+
     const parts = MIDIExportService.expandOperators(
       MIDIExportService.tokenize(noteString),
       token => { this.unrepresented.add(token); },
