@@ -18,7 +18,7 @@
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
 
-**Current State: Beta.** The core workflow (init → compose → playback → analyze) works reliably with real audio output. `npm test` reports ~2070 passing tests, <!-- COVERAGE:START -->88.18% statement coverage / 77.79% branch coverage<!-- COVERAGE:END -->. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
+**Current State: Beta.** The core workflow (init → compose → playback → analyze) works reliably with real audio output. `npm test` reports ~2070 passing tests, <!-- COVERAGE:START -->88.02% statement coverage / 77.72% branch coverage<!-- COVERAGE:END -->. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
 
 **What "Beta" means here:**
 - Tool schemas are stable within minor versions; breaking changes require a major bump
@@ -56,9 +56,9 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 - **Result envelope** on every `tools/call`: clients branch on `{ ok, errorCategory, isRetryable }` instead of parsing free-text.
 
 ### Testing & CI status
-- **~2070 passing tests** across unit, integration, browser-validation and example suites; 20 skipped under `npm test` (Playwright-gated cases).
+- **~2100 passing tests**: `npm test` runs ~2050 unit/integration/example tests in parallel, then 58 browser-validation tests serially against real Chromium. The coverage figure below is from the first tier, which is the one CI also runs — the browser tier adds ~0.2 points and CI does not execute it, so counting it would document coverage nothing verifies.
 <!-- COVERAGE:START -->
-- **88.18% statement coverage / 77.79% branch coverage** (92.59% functions, 88.6% lines), checked against `coverage/coverage-summary.json` by a drift guard.
+- **88.02% statement coverage / 77.72% branch coverage** (92.23% functions, 88.43% lines), checked against `coverage/coverage-summary.json` by a drift guard.
 <!-- COVERAGE:END -->
 - **Lint blocking in CI**: 0 errors, ~195 warnings (mostly `any` in test mocks).
 - **OIDC trusted publishing** to npm with SLSA build provenance attestation on every release.

@@ -134,6 +134,9 @@ describe('documented coverage figures (#246)', () => {
   });
 
   it('does not quote a test count precise enough to rot', () => {
+    // "58 browser-validation tests" is exempt by being three digits; the
+    // guard targets the four-digit total, which is the figure that moves
+    // on every PR.
     // `it.each` makes a static count wrong (1871 declarations, 2091
     // tests), and the artifact carries no count at all — so an exact
     // figure here can only be maintained by hand, which is what failed.
