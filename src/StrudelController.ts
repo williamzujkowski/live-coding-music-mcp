@@ -53,6 +53,31 @@ export async function waitForStrudelReady(page: Page, timeoutMs = 5000): Promise
   }
 }
 
+/**
+ * How long playback is given to start.
+ *
+ * Two budgets because the two cases cost different amounts. The first
+ * play of a session waits for the AudioContext to resume and for every
+ * sample the pattern names to be fetched; later plays reuse both.
+ *
+ * The single 3000ms budget that used to cover both sat right on the
+ * measured cost of a cold start — one corpus example failed at 3128ms
+ * while the next succeeded at 4008ms — so the first test to play went
+ * red roughly one run in five, and driving the controller from a script
+ * failed more often than that (#416).
+ */
+export interface PlaybackStartBudget {
+  /** Cold: AudioContext resume plus first sample fetches. */
+  firstPlayMs: number;
+  /** Warm: the scheduler is already running and samples are cached. */
+  subsequentPlayMs: number;
+}
+
+export const DEFAULT_PLAYBACK_BUDGET: PlaybackStartBudget = {
+  firstPlayMs: 15_000,
+  subsequentPlayMs: 3_000,
+};
+
 export class StrudelController {
   private browser: Browser | null = null;
   private _page: Page | null = null;
@@ -72,6 +97,7 @@ export class StrudelController {
   // (first play-button click per session). Subsequent plays can use the
   // keyboard shortcut cleanly because AudioContext is already resumed.
   private hasEstablishedGesture: boolean = false;
+  private readonly playbackBudget: PlaybackStartBudget;
   private consoleErrors: string[] = [];
   private consoleWarnings: string[] = [];
 
@@ -79,7 +105,11 @@ export class StrudelController {
     headless: boolean = false,
     audioAnalysisConfig?: import('./types/AudioAnalysis.js').AudioAnalysisConfig,
     strudelUrl: string = DEFAULT_STRUDEL_URL,
+    // Injectable so a test asserting a start FAILURE does not have to
+    // wait out a budget sized for a real cold start.
+    playbackBudget: PlaybackStartBudget = DEFAULT_PLAYBACK_BUDGET,
   ) {
+    this.playbackBudget = playbackBudget;
     this.isHeadless = headless;
     this.strudelUrl = strudelUrl;
     this.analyzer = new AudioAnalyzer(audioAnalysisConfig);
@@ -386,12 +416,15 @@ export class StrudelController {
 
     // First play per session: click the play button to establish the user
     // gesture the AudioContext needs. Slow (~3s in headless) but only once.
-    if (!this.hasEstablishedGesture) {
+    const firstPlay = !this.hasEstablishedGesture;
+    let usedKeyboardFallback = false;
+    if (firstPlay) {
       try {
         const playButton = this._page.locator('button[title="play"]').first();
         await playButton.click({ timeout: 3000 });
         this.hasEstablishedGesture = true;
       } catch {
+        usedKeyboardFallback = true;
         await this._page.keyboard.press('ControlOrMeta+Enter');
       }
     } else {
@@ -403,7 +436,18 @@ export class StrudelController {
       });
     }
 
-    if (!(await this.waitForPlaybackState(true, 3000))) {
+    // The first play of a session pays for cold caches: the AudioContext
+    // resuming, and every sample the pattern names being fetched before
+    // a cycle can be scheduled. Measured, the first play sat right on a
+    // 3000ms budget — a corpus example failed at 3128ms while the one
+    // that followed it succeeded in 4008ms, so the margin was under a
+    // second either way and the first test to play went red about one
+    // run in five (#416). Later plays reuse everything and stay fast.
+    const startBudgetMs = firstPlay
+      ? this.playbackBudget.firstPlayMs
+      : this.playbackBudget.subsequentPlayMs;
+
+    if (!(await this.waitForPlaybackState(true, startBudgetMs))) {
       const state = await this.readPlaybackState();
       this.isPlaying = state === 'playing';
       this.analyzer.clearCache();
@@ -412,12 +456,23 @@ export class StrudelController {
       // error for every startup failure, including a page that had gone
       // away and an AudioContext that never resumed — confident about one
       // cause when three were possible.
+      //
+      // The gesture-click fallback is a fourth: when the transport button
+      // could not be clicked we pressed Ctrl+Enter instead, which only
+      // reaches CodeMirror while the editor holds focus. That case used
+      // to be reported as a possible syntax error, sending the reader to
+      // look for a bug that is not in their pattern.
       throw new Error(
         state === 'unreadable'
           ? 'Playback did not start: the page could not be read. It may have ' +
             'navigated or closed — run init to recover.'
-          : 'Playback did not start. The pattern may have a syntax error, or the ' +
-            'AudioContext may not have resumed — check diagnostics({ level: "errors" }).'
+          : usedKeyboardFallback
+            ? 'Playback did not start: the transport button could not be clicked, ' +
+              'so the keyboard fallback was used and the AudioContext may never ' +
+              'have resumed. Run init to recover; the pattern is probably fine.'
+            : `Playback did not start within ${String(startBudgetMs)}ms. The pattern ` +
+              'may have a syntax error, or the AudioContext may not have resumed — ' +
+              'check diagnostics({ level: "errors" }).'
       );
     }
 
