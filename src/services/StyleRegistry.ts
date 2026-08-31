@@ -34,6 +34,8 @@ export const STYLE_ALIASES: Record<string, string> = {
   portishead: 'trip_hop',
   massive_attack: 'trip_hop',
   flying_lotus: 'trip_hop',
+  'drum and bass': 'dnb',
+  'drum-and-bass': 'dnb',
   boombap: 'boom_bap',
   golden_era: 'boom_bap',
   premier: 'boom_bap',
@@ -157,4 +159,74 @@ export function resolveLayers(style: string): LayerResolution {
     layers: { drums: drums.resolved, bass: bass.resolved, chords, scale },
     substituted,
   };
+}
+
+/**
+ * Default BPM per canonical style.
+ *
+ * This lived in compose.ts and disagreed with the style tables in both
+ * directions (#296). It had no entry for `intelligent_dnb`, `trip_hop`
+ * or `boom_bap`, so those three fell to 120 — and because compose
+ * passes that 120 down, the generator's own `bpm || 170` fallback was
+ * never reached: compose({style:'bukem'}) produced
+ * "// Intelligent DnB in C at 120 BPM". Meanwhile it carried
+ * 'drum and bass' at 174, a style STYLE_ALIASES had never heard of, so
+ * that request became 174-BPM techno.
+ *
+ * Lookup happens after alias resolution now, so `bukem` gets
+ * intelligent_dnb's tempo. A test asserts every key here is a style the
+ * registry actually knows.
+ */
+export const TEMPO_BY_STYLE: Record<string, number> = {
+  techno: 130,
+  house: 125,
+  dnb: 174,
+  ambient: 80,
+  trap: 140,
+  jungle: 160,
+  jazz: 110,
+  experimental: 120,
+  breakbeat: 130,
+  // The three specialized genres, which had no entry at all.
+  intelligent_dnb: 170,
+  trip_hop: 90,
+  boom_bap: 92,
+  // Styles with a bassline but no drums of their own.
+  acid: 130,
+  dub: 140,
+  funk: 110,
+  // Tempo-only: see TEMPO_ONLY_STYLES.
+  dubstep: 140,
+  trance: 138,
+  garage: 130,
+  electro: 128,
+  downtempo: 90,
+  idm: 115,
+};
+
+/**
+ * Styles that have a sensible tempo but no drums or bassline of their
+ * own. A caller asking for one gets that tempo with techno material,
+ * and `resolveLayers` reports both layers as substituted — so the
+ * result is honest, and these are listed rather than left to look like
+ * an oversight.
+ *
+ * Anything here is a candidate for real content; adding it to
+ * DRUM_STYLES or BASS_STYLES without the content will fail the registry
+ * accuracy test in PerLayerStyleReporting.
+ */
+export const TEMPO_ONLY_STYLES: readonly string[] = [
+  'dubstep', 'trance', 'garage', 'electro', 'downtempo', 'idm',
+];
+
+/** Default BPM for a style, resolving aliases first. */
+export function defaultTempoFor(style: string): number {
+  const lower = String(style ?? '').toLowerCase();
+  const resolved = Object.hasOwn(STYLE_ALIASES, lower) ? STYLE_ALIASES[lower] : lower;
+  // hasOwn throughout, for the reason in #295: TEMPO_BY_STYLE is a plain
+  // object literal, so TEMPO_BY_STYLE['__proto__'] returns the prototype
+  // and `?? 120` never fires.
+  if (Object.hasOwn(TEMPO_BY_STYLE, resolved)) return TEMPO_BY_STYLE[resolved];
+  if (Object.hasOwn(TEMPO_BY_STYLE, lower)) return TEMPO_BY_STYLE[lower];
+  return 120;
 }
