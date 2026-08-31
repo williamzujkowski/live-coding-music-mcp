@@ -119,6 +119,35 @@ export class AudioAnalyzer {
    */
   private static readonly MIN_TEMPO_CONFIDENCE = 0.1;
 
+  /**
+   * How much of the past a tempo reading may be built from.
+   *
+   * `MAX_HISTORY_LENGTH` bounds the COUNT, which is not the same thing:
+   * 100 onsets can span ten seconds of one pattern or five minutes
+   * across four. Age is what matters to a tempo.
+   *
+   * 12s rather than 6s, measured. A 6s window reads dnb correctly about
+   * half the time and then flips (174, 115, 115, 174) and drags trap
+   * down to 70 on later polls; 12s gives the same answer every poll for
+   * every pattern. The reported failure in #352 was a SPREAD, so
+   * stability is the property worth buying — even though it costs the
+   * occasional lucky-correct reading a short window produces.
+   */
+  private static readonly MAX_ONSET_AGE_MS = 12_000;
+
+  /**
+   * A gap this large between the newest kept onset and the oldest new
+   * one means the audio stopped — a different pattern, a stop/play, or
+   * an agent that went away and came back.
+   *
+   * Measured, this is not theoretical: playing dnb at 174 and then house
+   * at 125, the FIRST house reading came back 174. The previous
+   * pattern's onsets were still in the history and outnumbered the new
+   * ones. Every wrong first reading in that run was the pattern before
+   * it (#366).
+   */
+  private static readonly ONSET_CONTINUITY_GAP_MS = 1_500;
+
   // Per-instance analyser config (wired through from config.audio_analysis
   // in config.json). #195.
   private readonly fftSize: number;
@@ -551,6 +580,53 @@ export class AudioAnalyzer {
     return peaks;
   }
 
+  /**
+   * Folds newly detected onsets into the history, dropping what no
+   * longer belongs to the same performance.
+   *
+   * @param detected - Onsets from the latest buffer, oldest first
+   */
+  private mergeOnsetHistory(detected: readonly OnsetObservation[]): void {
+    const newest = this._onsetHistory[this._onsetHistory.length - 1];
+    const first = detected[0];
+
+    // A silence longer than a bar is a different performance. Keeping
+    // the old onsets across it does not add data, it mixes two tempos
+    // and puts a multi-second interval between them.
+    if (newest !== undefined && first !== undefined &&
+        first.t - newest.t > AudioAnalyzer.ONSET_CONTINUITY_GAP_MS) {
+      this._onsetHistory = [];
+    }
+
+    this._onsetHistory.push(...detected);
+
+    const latest = this._onsetHistory[this._onsetHistory.length - 1];
+    if (latest !== undefined) {
+      const cutoff = latest.t - AudioAnalyzer.MAX_ONSET_AGE_MS;
+      // Bound by age first: a count bound alone let a reading span
+      // minutes of unrelated audio.
+      while (this._onsetHistory.length > 0 && this._onsetHistory[0].t < cutoff) {
+        this._onsetHistory.shift();
+      }
+    }
+
+    while (this._onsetHistory.length > this.MAX_HISTORY_LENGTH) {
+      this._onsetHistory.shift();
+    }
+  }
+
+  /**
+   * Forgets every onset collected so far.
+   *
+   * Called when the pattern changes or the transport stops: the next
+   * reading must describe the next performance, not average it with the
+   * last one.
+   */
+  resetTempoHistory(): void {
+    this._onsetHistory = [];
+    this.resetOnsetDetection();
+  }
+
   isOnset(flux: number): boolean {
     const history = this._fluxHistory;
     history.push(flux);
@@ -808,10 +884,7 @@ export class AudioAnalyzer {
       const buffered = await this.takeBufferedFlux(page);
       if (buffered.length >= 8) {
         const detected = this.onsetsFromFlux(buffered);
-        this._onsetHistory.push(...detected);
-        while (this._onsetHistory.length > this.MAX_HISTORY_LENGTH) {
-          this._onsetHistory.shift();
-        }
+        this.mergeOnsetHistory(detected);
         return this.tempoFromOnsets([...this._onsetHistory]);
       }
 

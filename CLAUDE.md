@@ -560,11 +560,30 @@ new density cases through `IsolatedStrudelEngine` too.
     not audio: it says nothing about how a real mix's spectrum behaves,
     and the browser band stays wide (40-200) until measured against real
     playback.
-  - **Accuracy against real audio is currently unmeasurable.** Every
-    shipped example declares a `bpm` it never sets (#367), so they all
-    play at Strudel's default and there is no pattern in the repo whose
-    real tempo is known. Do not compare a detected tempo against an
-    example's metadata; it means nothing until #367 lands.
+  - Onset history is bounded by AGE (12s) and dropped entirely across a
+    silence longer than a bar, and the controller clears it on
+    `writePattern` and `stop`. A count bound alone let one reading mix
+    two patterns: playing dnb then house, the first house reading came
+    back 174 (#366).
+  - **Measured against real playback**, writing once and then polling —
+    which is how an agent listens, and not the same as rewriting the
+    pattern before every read:
+
+    | example | declared | read |
+    |---|---|---|
+    | House (classic) | 125 | 125, 125, 125, 125 |
+    | Driving techno | 130 | 130, 130, 130, 130 |
+    | Modern trap | 140 | 141, 141, 141, 141 |
+    | Drum & bass (classic) | 174 | 117, 115, 117, 115 |
+    | Amen break | 165 | 83, 83, 83, 83 |
+    | Ambient pad / Jazz | 70 / 120 | no tempo reported |
+
+    Stable everywhere — the 82 BPM spread #352 reported is gone. Three
+    of five percussive examples are accurate; the amen break reads
+    consistent half-time, which is a defensible hearing of it; dnb reads
+    two-thirds of its tempo, which is not (#370). The two non-percussive
+    examples report no tempo rather than guessing, which is the right
+    answer for a pad with a three-second attack.
 - Key detection uses Krumhansl-Schmuckler with Pearson correlation and no
   mode boosts (#320). It recovers all 24 canonical profiles exactly, but
   it depends on chroma resolution: at the shipped `fft_size: 2048`
