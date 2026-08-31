@@ -28,17 +28,34 @@ interface Tool {
   description: string;
 }
 
+/**
+ * A tool's `name` and everything between its `description:` and the
+ * `inputSchema:` that follows.
+ *
+ * The description is an EXPRESSION, not a literal. Nineteen of the
+ * twenty-eight tools concatenate theirs across several lines, and the
+ * regex this replaces captured one quoted literal — so the table showed
+ * the first line of each and dropped the rest, which for a consolidated
+ * tool is precisely the part naming its `action`/`task`/`op` values
+ * (#401).
+ */
+const TOOL_BLOCK = /name:\s*'([^']+)',\s*\n\s*description:\s*([\s\S]*?),?\s*\n\s*inputSchema:/g;
+
+/** Every single-quoted literal in a concatenation, unescaped and joined. */
+const QUOTED = /'((?:[^'\\]|\\.)*)'/g;
+
 function extractToolsFromFile(path: string): Tool[] {
   const content = readFileSync(path, 'utf-8');
   const tools: Tool[] = [];
 
-  // Match tool definitions: { name: 'tool_name', description: 'desc' }
-  const regex = /name:\s*'([^']+)',\s*\n\s*description:\s*'([^']+)'/g;
-  for (const match of content.matchAll(regex)) {
+  for (const match of content.matchAll(TOOL_BLOCK)) {
     const name = match[1] ?? '';
-    const desc = match[2] ?? '';
+    const description = [...(match[2] ?? '').matchAll(QUOTED)]
+      .map(part => (part[1] ?? '').replace(/\\(['\\])/g, '$1'))
+      .join('')
+      .trim();
     if (name !== '' && name !== 'live-coding-music-mcp') {
-      tools.push({ name, description: desc });
+      tools.push({ name, description });
     }
   }
 

@@ -272,7 +272,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `edit_pattern` | Mutate the current session pattern.  |
+| `edit_pattern` | Mutate the current session pattern. mode=write replaces the editor contents (default; mirrors the old write tool exactly, including optional pattern validation and auto_play). mode=append concatenates `code` after the current pattern with a newline. mode=insert places `code` at the given line `position`. mode=replace substitutes `search` with `replace` — the first occurrence only, unless replace_all is true. The response reports how many occurrences matched, were replaced, and remain. mode=clear empties the editor. Example: edit_pattern({ mode: "write", pattern: "s(\"bd\")", auto_play: true }). For reading the editor without mutating it use get_pattern; for the on-disk pattern catalog use pattern_store. |
 | `get_pattern` | Get current pattern code |
 
 </details>
@@ -281,7 +281,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `playback` | Control transport on the current session.  |
+| `playback` | Control transport on the current session. action=play starts the editor pattern. action=pause stops without resetting clock. action=stop ends playback. Example: playback({ action: "play" }). For pattern editing use edit_pattern; for tempo use set_tempo. |
 | `set_tempo` | Set BPM. Writes setcpm(bpm/4), assuming one bar of 4/4 per cycle. |
 
 </details>
@@ -290,8 +290,8 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `pattern_store` | Persist patterns to disk and read them back.  |
-| `import_midi` | Convert a .mid file into a playable Strudel pattern (Phase 1: literal transcription, #201).  |
+| `pattern_store` | Persist patterns to disk and read them back. Use action=save to write the current session pattern under a name; action=load to restore a named pattern into the current session; action=list to enumerate the on-disk catalog (optionally filtered by tag). Example: pattern_store({ action: "save", name: "my-jam", tags: ["techno"] }). For session lifecycle (create/destroy/list active sessions) use the session tool — pattern_store deals with on-disk patterns, not runtime sessions. |
+| `import_midi` | Convert a .mid file into a playable Strudel pattern (Phase 1: literal transcription, #201). Use source="base64" with data=<base64 string> for inline bytes, or source="path" with data=<basename> to read from the patterns/midi/ directory (path traversal blocked). Drum tracks (MIDI channel 10) emit one s() lane per sample so simultaneous kicks/hats do not collide. Pitched tracks emit note("...").s("piano") with simultaneous notes merged into [a,b,c] chord tokens. Phase 2+ (structural compression, voice separation, LLM idiomatic pass) tracked in separate issues. Example: import_midi({ source: "path", data: "drumloop.mid", steps_per_cycle: 16 }). For the reverse direction (Strudel → MIDI) use the analyze tool with task="export_midi". |
 
 </details>
 
@@ -299,7 +299,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `history` | Navigate or inspect the pattern edit history.  |
+| `history` | Navigate or inspect the pattern edit history. action=undo reverts the last edit on the targeted session. action=redo replays a previously-undone edit. action=list returns recent entries with timestamps and previews (limit defaults to 10). action=restore jumps the editor to a specific entry by id (current pattern goes on the undo stack). action=compare diffs two entries by id (or one entry vs current pattern). Example: history({ action: "list", limit: 5 }) — recent edits, newest first. For on-disk saved patterns use pattern_store — history deals with the in-memory edit timeline of the current session. |
 
 </details>
 
@@ -308,8 +308,8 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 | Tool | Description |
 |------|-------------|
 | `compose` | Generate, write, and play a complete pattern in one step. Auto-initializes default browser if needed. |
-| `generate_part` | Generate a single instrumental layer and append it to the current session pattern.  |
-| `generate_rhythm` | Generate a rhythmic pattern and append it to the current session.  |
+| `generate_part` | Generate a single instrumental layer and append it to the current session pattern. role=drums takes `style` (e.g. "techno"/"house") and optional `complexity` 0-1. role=bass takes `key` (e.g. "C") + `style`. role=melody takes `root`/`scale` (e.g. C/minor) and optional `length` (notes). role=fill takes `style` and optional `bars`. Example: generate_part({ role: "drums", style: "techno", complexity: 0.7 }). For full compositions use compose; for rhythmic patterns use generate_rhythm; for music-theory queries use music_theory. |
+| `generate_rhythm` | Generate a rhythmic pattern and append it to the current session. type=euclidean produces a Euclidean rhythm with `hits` evenly distributed across `steps` (optional `sound` param, default "bd"). type=polyrhythm overlays multiple sound layers with given pattern numbers. Example: generate_rhythm({ type: "euclidean", hits: 3, steps: 8, sound: "hh" }). For complete patterns (drums/bass/melody) use generate_part; for whole compositions use compose. |
 
 </details>
 
@@ -317,7 +317,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `music_theory` | Music-theory queries.  |
+| `music_theory` | Music-theory queries. query=scale returns the notes of a scale (e.g. "C major scale: C, D, E, F, G, A, B"). query=chord_progression returns a chord progression for the key/style AND writes the resulting chord pattern into the current session. Example: music_theory({ query: "scale", root: "C", scale: "major" }). For pattern generation (drums/bass/melody) use generate_part; for rhythmic patterns use generate_rhythm. |
 
 </details>
 
@@ -325,9 +325,9 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `transform` | Apply a single transform op to the current session pattern.  |
-| `effect` | Add or remove a Strudel effect on the current session pattern.  |
-| `shape` | Shape the current pattern along one of three high-level dimensions.  |
+| `transform` | Apply a single transform op to the current session pattern. op=transpose shifts notes by `semitones`. op=reverse appends `.rev` to the pattern. op=stretch slows by `factor` (>1 slower, <1 faster). op=quantize snaps to the `grid` (e.g. "1/16"). op=humanize adds rand-nudge timing of `amount` (0-1). op=swing applies `.swing(amount)`. op=scale applies a `root`/`scale` filter to notes. op=vary returns a variation of `type` (subtle/moderate/extreme/glitch/evolving). Example: transform({ op: "transpose", semitones: 7 }). For effects (add/remove) use effect; for mood/energy/refine use shape; for tempo use set_tempo. |
+| `effect` | Add or remove a Strudel effect on the current session pattern. action=add appends `.<effect>(<params>)`. action=remove strips the last `.<effect>(...)` call from the pattern. Example: effect({ action: "add", effect: "lpf", params: "1000" }). For higher-level effect bundles (mood/energy/refine) use shape; for raw transforms use transform. |
+| `shape` | Shape the current pattern along one of three high-level dimensions. dimension=mood applies a mood profile (dark/euphoric/melancholic/aggressive/dreamy/peaceful/energetic) with optional intensity 0-1. dimension=energy applies an energy level (integer 0-10). dimension=refine applies a directional refinement: faster/slower/louder/quieter/brighter/darker/"more reverb"/drier. All three auto-play by default. Example: shape({ dimension: "mood", target_mood: "dark", intensity: 0.8 }). For raw transform ops use transform; for explicit effects use effect. |
 
 </details>
 
@@ -335,7 +335,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `ai_assist` | Gemini-backed pattern assistance.  |
+| `ai_assist` | Gemini-backed pattern assistance. task=feedback returns creative critique on the current pattern (optionally with audio analysis). task=suggest analyzes the currently playing audio and suggests a complementary Strudel pattern as text (not auto-executed). task=jam generates a fresh layer (drums/bass/melody/pad/texture) and merges it into the current pattern, then auto-plays. All three share Gemini auth + rate limiting. Example: ai_assist({ task: "jam", layer: "bass" }). Requires GEMINI_API_KEY env var. For non-AI pattern generation use generate_part; for full compositions use compose. |
 
 </details>
 
@@ -343,7 +343,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `analyze` | Audio analysis on the currently-playing pattern.  |
+| `analyze` | Audio analysis on the currently-playing pattern. include=["all"] (default) returns the full spectrum + features object, matching the pre-consolidation behaviour. include=["tempo"] returns only BPM with confidence. include=["key"] returns detected key + scale + confidence. include=["spectrum"] returns FFT features (bass, mid, treble, brightness, etc.). include=["rhythm"] returns rhythm-only analysis (complexity, density, syncopation). Combining values returns an object keyed by category, e.g. analyze({ include: ["tempo", "key"] }) → { tempo: {...}, key: {...} }. Example: analyze({ include: ["tempo"] }) to cheaply re-check BPM during a session. For static pattern analysis (no browser) use analyze_pattern_local; for runtime validation use validate_pattern_runtime. |
 | `validate_pattern_runtime` | Validate pattern with runtime error checking (monitors Strudel console for errors) |
 | `validate_pattern_local` | Validate pattern syntax against the local StrudelEngine, which runs in a sandboxed child process (no browser required) |
 | `analyze_pattern_local` | Static analysis (events/cycle, complexity, optional BPM) without browser playback |
@@ -356,7 +356,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `session` | Manage isolated Strudel browser sessions (multi-session, #108).  |
+| `session` | Manage isolated Strudel browser sessions (multi-session, #108). action=create starts a new named session (sessions share one browser but isolated contexts). action=destroy closes a named session and releases its resources. action=list returns metadata for all active sessions (id, created, last_activity, is_playing, is_default). action=switch changes the default session that subsequent tool calls route to when no session_id is passed. Example: session({ action: "create", session_id: "live-set-1" }). For the on-disk pattern catalog use pattern_store(action=list) — session(action=list) lists *runtime* sessions, not saved patterns. |
 
 </details>
 
@@ -365,7 +365,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 | Tool | Description |
 |------|-------------|
 | `export_midi` | Export current pattern to MIDI file. Parses note(), n(), and chord() functions. |
-| `browser_window` | Interact with the visible Strudel browser window.  |
+| `browser_window` | Interact with the visible Strudel browser window. action=show brings the window to the foreground. action=screenshot captures the current editor view to disk (optional `filename`). Example: browser_window({ action: "screenshot", filename: "demo.png" }). For diagnostics (status/errors/perf) use diagnostics; for the editor itself use edit_pattern. |
 
 </details>
 
@@ -373,7 +373,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `audio_capture` | Record audio output from the live Strudel session.  |
+| `audio_capture` | Record audio output from the live Strudel session. action=start begins streaming capture (optional `format` webm/opus, default webm). action=stop ends the stream and returns base64-encoded audio. action=sample captures a fixed-`duration` window in one call (100-60000ms, default 5000ms). Example: audio_capture({ action: "sample", duration: 3000 }). Audio must be playing for capture to record meaningful data. For MIDI export use export_midi; for runtime diagnostics use diagnostics. Each session has its own recorder, so captures in different sessions do not interfere (#180). |
 
 </details>
 
@@ -381,7 +381,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `diagnostics` | Inspect server and browser state.  |
+| `diagnostics` | Inspect server and browser state. level=status returns a quick state snapshot (cache read, <15ms SLA). level=full returns detailed browser diagnostics including caches, errors, and performance. level=perf returns server-side timing metrics + top bottlenecks. level=memory returns process memory usage. level=errors returns captured console errors and warnings from Strudel. Default level=full preserves the pre-consolidation behaviour. Example: diagnostics({ level: "status" }) — millisecond-cheap. For screenshots use browser_window; for tool listings use the strudel://docs/tools resource. |
 
 </details>
 
@@ -389,7 +389,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 
 | Tool | Description |
 |------|-------------|
-| `export_audio` | Record a window of live Strudel audio and write it to a file.  |
+| `export_audio` | Record a window of live Strudel audio and write it to a file. Returns a path plus what was actually recorded, not a wall of base64 — prefer this over audio_capture when you want the audio to exist somewhere. format=wav (default) decodes to 16-bit PCM a DAW will open; format=webm writes the raw Opus recording. Reports silent captures instead of writing a silent file and claiming success. Audio must already be playing: call playback({ action: "play" }) first. Example: export_audio({ duration: 4000, filename: "take-01" }). |
 
 </details>
 
