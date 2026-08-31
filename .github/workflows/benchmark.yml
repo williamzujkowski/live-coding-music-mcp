@@ -43,6 +43,17 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Runs here rather than in ci.yml because it needs a real browser,
+      # and this is the workflow that already installs one. It covers
+      # what cannot be mocked — MediaRecorder, decodeAudioData, WAV
+      # encoding, and the CDP boundary the bytes cross. Mocking exactly
+      # that is how `audio_capture` shipped broken for its whole life
+      # (#223), and the script existed without CI ever running it.
+      - name: Verify export_audio end to end
+        env:
+          HEADLESS: 'true'
+        run: npm run test:export-audio
+
       - name: Run latency benchmark
         id: bench
         env:
