@@ -139,6 +139,12 @@ export class StrudelMCPServer {
     this.audioExportService = new AudioExportService(config.exportsDir);
     this.midiImportService = new MIDIImportService();
     this.sessionManager = new SessionManager(config.headless, audioAnalysisConfig, config.strudelUrl);
+    // Covers every teardown path — the destroy tool, idle eviction, and
+    // destroyAll — rather than only the one the tool handler knew about.
+    this.sessionManager.onSessionDestroyed = (id: string): void => {
+      this.historyBundles.delete(id);
+      this.audioCaptureServices.delete(id);
+    };
     this.logger = new Logger();
 
     // A config problem the user never sees is how #227 survived: two
@@ -593,8 +599,22 @@ export class StrudelMCPServer {
       key = 'default';
     }
 
+    // Re-inject when the cached service is bound to a different page.
+    //
+    // A cached service used to be returned unconditionally, which broke
+    // in two ways (#264). A session recreated under a previously-evicted
+    // id got the old session's recorder, pointing at a closed page. And
+    // after `init` recovered a dead browser (#206), the 'default' service
+    // still referenced the old page — so audio capture was permanently
+    // broken by the very mechanism meant to recover from a crash, with
+    // "Audio capture not initialized" until restart.
+    //
+    // Strict false, like the liveness check in ensureInitialized: a
+    // service that cannot answer keeps the old reuse-the-cache
+    // behaviour, so this can only ever add a re-injection that was
+    // needed, never drop one that was working.
     let service = this.audioCaptureServices.get(key);
-    if (!service) {
+    if (!service || service.isInjectedInto?.(page) === false) {
       service = new AudioCaptureService();
       await service.injectRecorder(page);
       this.audioCaptureServices.set(key, service);
