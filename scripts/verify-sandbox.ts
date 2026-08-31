@@ -121,6 +121,49 @@ async function main(): Promise<void> {
     }
   }
 
+  console.log('\nAnalysis reports whether it actually measured (#276):');
+  {
+    const unevaluatable = engine.analyzePattern('setcpm(120); s("bd*4")');
+    const valid = engine.analyzePattern('s("bd*4")');
+
+    const cases: [string, boolean, string][] = [
+      ['unevaluatable pattern marked not evaluated', unevaluatable.evaluated === false, ''],
+      ['valid pattern marked evaluated', valid.evaluated === true, ''],
+      ['valid pattern has a real event count', valid.eventsPerCycle > 0,
+        `eventsPerCycle=${String(valid.eventsPerCycle)}`],
+      ['failure explains itself in the caller\'s terms',
+        (unevaluatable.evaluationError ?? '').includes('real Strudel function'),
+        (unevaluatable.evaluationError ?? '').slice(0, 50)],
+      ['static analysis still reported', unevaluatable.bpm === 120, ''],
+    ];
+
+    for (const [label, pass, detail] of cases) {
+      if (pass) {
+        console.log(`  ok    ${label}`);
+      } else {
+        failures++;
+        console.error(`  FAIL  ${label} ${detail}`);
+      }
+    }
+  }
+
+  console.log('\nqueryEvents explains browser-only calls, like validate does (#232):');
+  try {
+    engine.queryEvents('setcpm(120); s("bd*4")', 0, 1);
+    failures++;
+    console.error('  FAIL  expected a throw');
+  } catch (error: unknown) {
+    const message = (error as Error).message;
+    const explained = message.includes('real Strudel function');
+    const notATypo = !message.includes('unknown identifier');
+    if (explained && notATypo) {
+      console.log('  ok    names the function instead of calling it unknown');
+    } else {
+      failures++;
+      console.error(`  FAIL  ${message.slice(0, 80)}`);
+    }
+  }
+
   if (failures > 0) {
     console.error(`\n${String(failures)} check(s) failed.`);
     process.exit(1);

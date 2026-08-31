@@ -254,6 +254,31 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
     case 'analyze_pattern_local': {
       InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
       const patternMetadata = ctx.strudelEngine.analyzePattern(args.pattern);
+
+      // Do not report event counts the engine never measured. When
+      // evaluation failed, `eventsPerCycle: 0` is a default, not a
+      // finding — and it is indistinguishable from a genuinely silent
+      // pattern, so an agent was told working code produced nothing
+      // (#276). Say what happened instead.
+      if (!patternMetadata.evaluated) {
+        // Build explicitly rather than destructuring the unwanted fields
+        // out: naming them only to discard them trips no-unused-vars, and
+        // listing what IS reported is clearer about the contract anyway.
+        return {
+          usesSound: patternMetadata.usesSound,
+          usesNote: patternMetadata.usesNote,
+          isStack: patternMetadata.isStack,
+          functionsUsed: patternMetadata.functionsUsed,
+          complexity: patternMetadata.complexity,
+          ...(patternMetadata.bpm !== undefined ? { bpm: patternMetadata.bpm } : {}),
+          evaluated: false,
+          message:
+            'Pattern could not be evaluated, so event counts are unavailable. ' +
+            'The static analysis below is still valid. ' +
+            (patternMetadata.evaluationError ?? ''),
+        };
+      }
+
       return {
         ...patternMetadata,
         message: `Pattern analysis: ${patternMetadata.eventsPerCycle} events/cycle, ` +
