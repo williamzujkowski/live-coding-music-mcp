@@ -72,7 +72,10 @@ describe('documented browser test count (#246)', () => {
   const { declarations } = actualBrowserTestCount();
 
   it('the browser file has the declarations we think it has', () => {
-    expect(declarations).toBeGreaterThan(5);
+    // Was >5 when the file listed 18 examples by name. It is now
+    // data-driven — four `it.each` declarations over a discovered
+    // corpus, generating ~36 tests (#353).
+    expect(declarations).toBeGreaterThan(2);
     expect(declarations).toBeLessThan(50);
   });
 
@@ -81,11 +84,17 @@ describe('documented browser test count (#246)', () => {
       .map(m => Number(m[1]));
 
     expect(claims.length).toBeGreaterThan(0);
-    // The forEach over example files expands one declaration into many,
-    // so the real total exceeds the declaration count — but it cannot
-    // plausibly exceed a generous multiple of it. "58" against 18
-    // declarations failed this; the true figure is 31.
-    const implausible = claims.filter(n => n > declarations * 2.5 || n < declarations);
+    // The declaration-count heuristic no longer bounds this usefully.
+    // The browser file became data-driven in #353: it discovers the
+    // corpus and uses `it.each`, so four declarations now generate ~36
+    // tests. A multiplier tight enough to catch "58 against 18" is far
+    // too tight against "36 against 4".
+    //
+    // What still holds is the direction: a documented count below the
+    // declaration count is definitely wrong, and an absurdly large one
+    // is too. Between those, this can no longer discriminate, and
+    // pretending otherwise would be worse than saying so.
+    const implausible = claims.filter(n => n > declarations * 20 || n < declarations);
     expect(implausible).toEqual([]);
   });
 });
