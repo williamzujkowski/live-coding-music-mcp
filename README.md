@@ -345,7 +345,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 |------|-------------|
 | `analyze` | Audio analysis on the currently-playing pattern.  |
 | `validate_pattern_runtime` | Validate pattern with runtime error checking (monitors Strudel console for errors) |
-| `validate_pattern_local` | Validate pattern syntax against the in-process StrudelEngine (no browser required) |
+| `validate_pattern_local` | Validate pattern syntax against the local StrudelEngine, which runs in a sandboxed child process (no browser required) |
 | `analyze_pattern_local` | Static analysis (events/cycle, complexity, optional BPM) without browser playback |
 | `query_pattern_events` | Enumerate events the pattern would emit between two cycle indices (max 16 cycles) |
 | `transpile_pattern` | Transpile pattern source via StrudelEngine; returns transpiled code or syntax error |
