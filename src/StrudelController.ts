@@ -196,29 +196,50 @@ export class StrudelController {
     // local process launch does not fail transiently, and relaunching it
     // would cost seconds per attempt.
     const page = this._page;
-    await this.errorRecovery.executeWithRetry(
-      async () => {
-        await page.goto(this.strudelUrl, {
-          waitUntil: 'domcontentloaded', // Changed from networkidle for faster load
-          timeout: 15000,
-        });
-        await waitForStrudelReady(page);
-      },
-      'Browser Init',
-      {
-        maxRetries: 2,
-        retryDelay: 750,
-        exponentialBackoff: true,
-        // Sessions that hit the same upstream hiccup must not retry in
-        // lockstep and concentrate load on a struggling service.
-        jitter: true,
-      },
-    );
 
-    // Set up console monitoring for runtime errors
-    this.setupConsoleMonitoring();
+    // Everything past `newPage()` is rolled back if it fails.
+    //
+    // Without this, a failed navigation left `browser` and `_page`
+    // assigned with the page sitting on about:blank. `isAlive()` only
+    // asks whether the page is CLOSED, so it said yes; the server clears
+    // `isInitialized` only when `isAlive()` is false, so the next call
+    // re-entered `initialize()`, hit the `'Already initialized'`
+    // shortcut, and every tool after that failed on a blank page with
+    // "editor not found after 3 attempts" — permanently, with no path
+    // back short of a restart.
+    //
+    // #202 and #206 cover a page that DIED. This is a page that was
+    // never born, which their `isAlive()` check cannot distinguish from
+    // a healthy one (#456).
+    try {
+      await this.errorRecovery.executeWithRetry(
+        async () => {
+          await page.goto(this.strudelUrl, {
+            waitUntil: 'domcontentloaded', // Changed from networkidle for faster load
+            timeout: 15000,
+          });
+          await waitForStrudelReady(page);
+        },
+        'Browser Init',
+        {
+          maxRetries: 2,
+          retryDelay: 750,
+          exponentialBackoff: true,
+          // Sessions that hit the same upstream hiccup must not retry in
+          // lockstep and concentrate load on a struggling service.
+          jitter: true,
+        },
+      );
 
-    await this.analyzer.inject(this._page);
+      // Set up console monitoring for runtime errors
+      this.setupConsoleMonitoring();
+
+      await this.analyzer.inject(this._page);
+    } catch (error: unknown) {
+      // Leave nothing half-built behind, so the next init starts clean.
+      await this.cleanup().catch(() => undefined);
+      throw error;
+    }
 
     return 'Strudel initialized successfully';
   }
@@ -1064,7 +1085,16 @@ export class StrudelController {
     warningCount: number;
   } {
     return {
-      initialized: this._page !== null,
+      // `isAlive()`, not "a page object exists". A user closing the
+      // visible browser window — the documented default is headless
+      // false — left this reporting `initialized: true` for a page that
+      // was gone (#456).
+      initialized: this.isAlive(),
+      // Cached: set by play/pause/stop and NOT reconciled with the page,
+      // so it is stale if playback changed outside this controller (the
+      // user pressing stop in the window). `readPlaybackState()` asks
+      // the page; this field is a last-known value and is named as such
+      // in the returned object.
       playing: this.isPlaying,
       patternLength: this.editorCache.length,
       cacheValid: this.editorCache.length > 0 && (Date.now() - this.cacheTimestamp) < this.CACHE_TTL,
