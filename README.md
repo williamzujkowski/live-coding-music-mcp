@@ -282,7 +282,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 | Tool | Description |
 |------|-------------|
 | `playback` | Control transport on the current session.  |
-| `set_tempo` | Set BPM |
+| `set_tempo` | Set BPM. Writes setcpm(bpm/4), assuming one bar of 4/4 per cycle. |
 
 </details>
 

@@ -135,7 +135,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'set_tempo',
-    description: 'Set BPM',
+    description: 'Set BPM. Writes setcpm(bpm/4), assuming one bar of 4/4 per cycle.',
     inputSchema: {
       type: 'object',
       properties: { bpm: { type: 'number', description: 'Tempo in BPM' }, ...SESSION_ID_PROP },

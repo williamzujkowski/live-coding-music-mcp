@@ -191,8 +191,12 @@ describe('MIDI import declares the tempo of the file it read (#397)', () => {
     expect(lane).not.toBeNull();
     const steps = lane?.[1].trim().split(/\s+/) ?? [];
     expect(steps).toHaveLength(summary.steps_per_cycle);
-    // Four notes across those steps, evenly spaced: one per beat.
-    expect(steps.filter(s => s !== '~')).toHaveLength(BEATS_PER_BAR);
+    // Where they land, not just how many there are — four notes bunched
+    // into the first half of the bar would pass a count and would mean
+    // the grid was wrong.
+    const onsets = steps.flatMap((step, i) => (step === '~' ? [] : [i]));
+    const perBeat = summary.steps_per_cycle / BEATS_PER_BAR;
+    expect(onsets).toEqual([0, perBeat, perBeat * 2, perBeat * 3]);
   });
 });
 
