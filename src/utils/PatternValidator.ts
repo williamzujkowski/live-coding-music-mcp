@@ -63,9 +63,77 @@ export class PatternValidator {
   }
 
   /**
+   * The pattern with comments and string bodies blanked out.
+   *
+   * Both are text, not code, and scanning them as code went wrong in
+   * both directions. Measured before this:
+   *
+   *   s("bd*4") // sounds sad :(      -> BLOCKED, "Unclosed '('"
+   *   s("bd*4") // yay :)             -> BLOCKED, "Unexpected closing ')'"
+   *   s("bd*4") // try gain(10) later -> BLOCKED, "Dangerous gain value"
+   *   s(" eval(x)")                   -> BLOCKED, "eval() is not allowed"
+   *
+   * Every one of those is a valid pattern, and `edit_pattern` refuses
+   * the write on a validation error — so a smiley in a comment stopped
+   * the music. #334 taught `checkBalancedQuotes` about comments for
+   * exactly this reason and stopped there; these are the halves it did
+   * not reach (#445).
+   *
+   * Lengths and offsets are preserved, so positions reported to the user
+   * still point at the right character.
+   *
+   * @param pattern - Pattern source
+   * @returns The same string with comment and string contents replaced
+   *   by spaces, delimiters kept
+   */
+  private codeOnly(pattern: string): string {
+    const out = pattern.split('');
+    let quote: string | null = null;
+
+    for (let i = 0; i < pattern.length; i++) {
+      const char = pattern[i];
+
+      if (quote !== null) {
+        // Count the backslash run: an escaped backslash does not escape
+        // the quote that follows it.
+        if (char === '\\') {
+          out[i] = ' ';
+          if (i + 1 < pattern.length) out[i + 1] = ' ';
+          i++;
+          continue;
+        }
+        if (char === quote) { quote = null; continue; }
+        out[i] = ' ';
+        continue;
+      }
+
+      if (char === '"' || char === "'" || char === '`') { quote = char; continue; }
+
+      if (char === '/' && pattern[i + 1] === '/') {
+        const newline = pattern.indexOf('\n', i);
+        const end = newline === -1 ? pattern.length : newline;
+        for (let j = i; j < end; j++) out[j] = ' ';
+        i = end;
+        continue;
+      }
+      if (char === '/' && pattern[i + 1] === '*') {
+        const close = pattern.indexOf('*/', i + 2);
+        const end = close === -1 ? pattern.length : close + 2;
+        for (let j = i; j < end; j++) out[j] = ' ';
+        i = end - 1;
+        continue;
+      }
+    }
+
+    return out.join('');
+  }
+
+  /**
    * Checks if parentheses, brackets, and braces are balanced
    */
-  private checkBalancedParentheses(pattern: string): { valid: boolean; message: string } {
+  private checkBalancedParentheses(source: string): { valid: boolean; message: string } {
+    // Brackets inside a comment or a sample name are not structure.
+    const pattern = this.codeOnly(source);
     const stack: string[] = [];
     const pairs: Record<string, string> = { '(': ')', '[': ']', '{': '}' };
     const opening = Object.keys(pairs);
@@ -208,9 +276,12 @@ export class PatternValidator {
   /**
    * Checks for potentially dangerous operations
    */
-  private checkSafety(pattern: string): { safe: boolean; errors: string[]; warnings: string[] } {
+  private checkSafety(source: string): { safe: boolean; errors: string[]; warnings: string[] } {
     const errors: string[] = [];
     const warnings: string[] = [];
+    // A comment mentioning gain(10), or a sample called " eval(x)", is
+    // not a dangerous pattern — and both used to be refused (#445).
+    const pattern = this.codeOnly(source);
 
     // Check for excessive gain that could damage speakers.
     //
@@ -229,7 +300,14 @@ export class PatternValidator {
     // Now matchAll with the capture, an optional leading dot so bare
     // `gain(9)` is caught too, whitespace tolerance, and a number
     // pattern that accepts exponent form.
-    const GAIN = /(?:^|[.\s(])gain\(\s*(\d*\.?\d+(?:e[+-]?\d+)?)\s*\)/gi;
+    // `\s*` before the paren, and an optional sign.
+    //
+    // One space defeated every rule below: `gain (10)`, `eval ("x")` and
+    // `while ( true )` all passed as safe while their unspaced forms
+    // were errors. #334 fixed this regex's capture group and left the
+    // shape of the match, so the advertised guarantee still did not hold
+    // (#445). `+10` is the same evasion by a different character.
+    const GAIN = /(?:^|[.\s(])gain\s*\(\s*\+?(\d*\.?\d+(?:e[+-]?\d+)?)\s*\)/gi;
     for (const match of pattern.matchAll(GAIN)) {
       const gainValue = Number.parseFloat(match[1]);
       if (!Number.isFinite(gainValue)) continue;
@@ -243,12 +321,12 @@ export class PatternValidator {
     }
 
     // Check for potentially infinite loops
-    if (/while\s*\(true\)/.test(pattern) || /for\s*\(.*;;.*\)/.test(pattern)) {
+    if (/while\s*\(\s*true\s*\)/.test(pattern) || /for\s*\(.*;;.*\)/.test(pattern)) {
       errors.push('Potential infinite loop detected');
     }
 
     // Check for eval or similar dangerous functions
-    if (/\beval\(/.test(pattern) || /Function\(/.test(pattern)) {
+    if (/\beval\s*\(/.test(pattern) || /\bFunction\s*\(/.test(pattern)) {
       errors.push('Use of eval() or Function() is not allowed');
     }
 
