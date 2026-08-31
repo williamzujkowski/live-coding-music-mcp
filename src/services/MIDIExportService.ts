@@ -56,6 +56,10 @@ export interface MIDIExportResult {
   bars: number;
   /** BPM used */
   bpm: number;
+  /** Present when material was skipped rather than exported (#335). */
+  warning?: string;
+  /** The specific tokens that could not be represented (#335). */
+  unrepresented?: string[];
   /** Error message if failed */
   error?: string;
   /** Set when the requested filename had to be sanitized (#224). */
@@ -102,6 +106,16 @@ const CHORD_INTERVALS: Record<string, number[]> = {
 };
 
 export class MIDIExportService {
+  /**
+   * Mini-notation tokens the parser could not represent, collected
+   * during the most recent conversion.
+   *
+   * `parseNoteString` handles bare note names separated by whitespace
+   * and nothing else. Everything it cannot read was previously dropped
+   * without a word, so an export that lost most of its material still
+   * reported plain success (#335).
+   */
+  private unrepresented = new Set<string>();
   /** Directory file exports are confined to. */
   private readonly exportDir: string;
 
@@ -310,6 +324,17 @@ export class MIDIExportService {
         return;
       }
 
+      // Mini-notation operators this parser does not implement. They
+      // used to be dropped in silence: a realistic five-lane generated
+      // pattern exported as success:true with noteCount 2, because
+      // `*`, `!`, `@` and `<>` are in essentially every pattern the
+      // generator produces. Recording them lets the caller be told
+      // (#335).
+      if (/[*!@<>?%]/.test(part)) {
+        this.unrepresented.add(part);
+        return;
+      }
+
       // Handle sub-patterns in brackets [c4 e4]
       if (part.startsWith('[')) {
         const subContent = part.replace(/[[\]]/g, '');
@@ -467,6 +492,7 @@ export class MIDIExportService {
     options: MIDIExportOptions = {}
   ): MIDIExportResult {
     try {
+      this.unrepresented.clear();
       const notes = this.parsePatternNotes(pattern);
 
       if (notes.length === 0) {
@@ -507,6 +533,7 @@ export class MIDIExportService {
         ...(target.wasModified
           ? { sanitizedFilename: target.filename, requestedFilename: target.requested }
           : {}),
+        ...this.lossReport(),
       };
     } catch (error: any) {
       return {
@@ -526,8 +553,32 @@ export class MIDIExportService {
    * @param options - MIDI export options
    * @returns Export result with base64 data
    */
+  /**
+   * Describes anything the parser could not represent.
+   *
+   * Spread into a successful result, so a caller that checks only
+   * `success` is unchanged while one that reads the response sees what
+   * was lost. An export that silently drops most of a pattern is the
+   * shape #274 and #287 were about, one layer down (#335).
+   *
+   * @returns `{}` when everything was representable
+   */
+  private lossReport(): { warning?: string; unrepresented?: string[] } {
+    if (this.unrepresented.size === 0) return {};
+    const tokens = [...this.unrepresented].sort();
+    return {
+      warning:
+        `${String(tokens.length)} token(s) could not be exported and were skipped: ` +
+        `${tokens.slice(0, 8).join(', ')}${tokens.length > 8 ? ', ...' : ''}. ` +
+        'MIDI export reads plain note names only — mini-notation operators ' +
+        '(*, !, @, <>) are not implemented.',
+      unrepresented: tokens,
+    };
+  }
+
   exportToBase64(pattern: string, options: MIDIExportOptions = {}): MIDIExportResult {
     try {
+      this.unrepresented.clear();
       const notes = this.parsePatternNotes(pattern);
 
       if (notes.length === 0) {
@@ -551,7 +602,8 @@ export class MIDIExportService {
         output: base64,
         noteCount: notes.length,
         bars: options.bars || 4,
-        bpm: options.bpm || 120
+        bpm: options.bpm || 120,
+        ...this.lossReport(),
       };
     } catch (error: any) {
       return {

@@ -252,13 +252,20 @@ async function exportMidi(
     const result = ctx.midiExportService.exportToFile(pattern, filename, exportOptions);
     return {
       success: result.success,
+      // The warning has to reach the caller or computing it in the
+      // service is pointless: this handler builds its own response and
+      // used to drop it, so an export that skipped most of a pattern
+      // still reported "Exported 2 notes" and nothing else (#335).
       message: result.success
         ? `Exported ${result.noteCount} notes to ${result.output}`
+          + (result.warning ? ` — ${result.warning}` : '')
         : result.error || 'Export failed',
       output: result.output,
       noteCount: result.noteCount,
       bars: result.bars,
       bpm: result.bpm,
+      ...(result.warning ? { warning: result.warning } : {}),
+      ...(result.unrepresented ? { unrepresented: result.unrepresented } : {}),
       error: result.error,
     };
   }
@@ -268,11 +275,14 @@ async function exportMidi(
     success: result.success,
     message: result.success
       ? `Exported ${result.noteCount} notes as base64 MIDI data`
+        + (result.warning ? ` — ${result.warning}` : '')
       : result.error || 'Export failed',
     output: result.output,
     noteCount: result.noteCount,
     bars: result.bars,
     bpm: result.bpm,
+    ...(result.warning ? { warning: result.warning } : {}),
+    ...(result.unrepresented ? { unrepresented: result.unrepresented } : {}),
     error: result.error,
   };
 }
