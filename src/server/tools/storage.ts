@@ -7,7 +7,7 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
-import { ok, err } from './types.js';
+import { ok, err, categorizeError } from './types.js';
 import { readFile } from 'fs/promises';
 import path from 'path';
 
@@ -199,12 +199,15 @@ async function doImportMidi(args: any, ctx: ToolContext): Promise<unknown> {
       drum_map: drumMapNormalized,
     });
     return ok(result);
-  } catch (e: any) {
-    const msg = e?.message ?? String(e);
-    if (/parse|invalid|must be/i.test(msg)) {
-      return err('validation', msg);
-    }
-    return err('internal', msg);
+  } catch (e: unknown) {
+    // Use the shared categoriser rather than a second, narrower one.
+    // This local matcher knew only parse/invalid/must-be, so every cap
+    // added in #235 landed in `internal` — including "MIDI file spans too
+    // many bars (N > 512). Pass bars=<n> to import a prefix.", which is
+    // the most actionable message in the file and was being delivered as
+    // a server bug the caller could do nothing about (#280).
+    const msg = e instanceof Error ? e.message : String(e);
+    return err(categorizeError(e), msg);
   }
 }
 

@@ -190,12 +190,21 @@ describe('PatternGenerator', () => {
     });
 
     test('should generate pattern for different styles', () => {
-      const styles = ['techno', 'house', 'jazz', 'ambient'];
+      const styles = ['techno', 'house', 'ambient'];
       styles.forEach(style => {
         const pattern = generator.generateCompletePattern(style, 'C', 120);
         expect(pattern).toContain(`// ${style}`);
         expect(pattern).toContain('stack(');
       });
+    });
+
+    test('names the substituted style for a genre with no drums', () => {
+      // jazz is a bassline/harmony style with no drum pattern of its own.
+      // The header used to say "// jazz" over a techno beat (#279).
+      const pattern = generator.generateCompletePattern('jazz', 'C', 120);
+      expect(pattern).toContain('// techno');
+      expect(pattern).toContain('no drums defined for "jazz"');
+      expect(pattern).toContain('stack(');
     });
 
     test('should use correct key', () => {

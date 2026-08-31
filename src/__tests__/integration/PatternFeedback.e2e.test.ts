@@ -47,6 +47,7 @@ import { StrudelMCPServer } from '../../server/server';
 import { StrudelController } from '../../StrudelController';
 import { PatternStore } from '../../PatternStore';
 import { GeminiService, CreativeFeedback, AudioFeedback } from '../../services/GeminiService';
+import { resolveDrumStyle } from '../../services/StyleRegistry';
 
 // Test timeouts
 const E2E_TIMEOUT = 30000;
@@ -223,7 +224,11 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.metadata.style).toBe('jazz');
+      // jazz has a bassline but no drums, so compose substitutes techno
+      // and now says so rather than echoing the request back (#279).
+      expect(result.metadata.style).toBe('techno');
+      expect(result.metadata.requested_style).toBe('jazz');
+      expect(result.metadata.style_substituted).toBe(true);
       expect(result.feedback.estimatedStyle).toBe('jazz');
       expect(result.feedback.complexity).toBe('complex');
     }, MOCKED_TEST_TIMEOUT);
@@ -545,7 +550,12 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
         });
 
         expect(result.success).toBe(true);
-        expect(result.metadata.style).toBe(style);
+        // A style with no drums of its own reports the substitution
+        // instead of echoing the request (#279).
+        const resolution = resolveDrumStyle(style);
+        expect(result.metadata.style).toBe(resolution.resolved);
+        expect(result.metadata.requested_style)
+          .toBe(resolution.supported ? undefined : style);
         expect(result.feedback).toBeDefined();
       }, MOCKED_TEST_TIMEOUT);
     });

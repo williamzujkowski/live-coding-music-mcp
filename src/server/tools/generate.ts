@@ -13,6 +13,7 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
+import { DRUM_STYLES, resolveDrumStyle } from '../../services/StyleRegistry.js';
 
 const SESSION_ID_PROP = {
   session_id: {
@@ -136,9 +137,15 @@ async function doPolyrhythm(args: any, ctx: ToolContext, sid?: string): Promise<
 async function doDrums(args: any, ctx: ToolContext, sid?: string): Promise<string> {
   InputValidator.validateStringLength(args.style, 'style', 100, false);
   if (args.complexity !== undefined) InputValidator.validateNormalizedValue(args.complexity, 'complexity');
+  // Say which style actually produced the notes. An unknown genre falls
+  // back to techno, and echoing the request back made that invisible (#279).
+  const resolution = resolveDrumStyle(args.style);
   const drums = ctx.generator.generateDrumPattern(args.style, args.complexity || 0.5);
   await appendOrSet(drums, ctx, sid);
-  return `Generated ${args.style} drums`;
+  return resolution.supported
+    ? `Generated ${resolution.resolved} drums`
+    : `No drum pattern for style "${args.style}" — generated ${resolution.resolved} drums instead. ` +
+      `Styles with their own drums: ${DRUM_STYLES.join(', ')}.`;
 }
 
 async function doBassline(args: any, ctx: ToolContext, sid?: string): Promise<string> {
