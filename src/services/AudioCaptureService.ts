@@ -66,6 +66,23 @@ export class AudioCaptureService {
    * @param page - Playwright page instance to inject into
    * @throws {Error} When injection fails
    */
+  /**
+   * The page this service's recorder was injected into.
+   *
+   * A service is bound to one page: `injectRecorder` defines
+   * `window.strudelAudioCapture` there, and every later call evaluates
+   * against it. Callers that cache services must be able to tell whether
+   * a cached one still matches the page they are about to use — a session
+   * recreated under the same id, or a browser recovered by `init`, gets a
+   * NEW page, and the old recorder does not exist on it (#264).
+   */
+  private injectedPage: Page | null = null;
+
+  /** Whether this service's recorder is live on the given page. */
+  isInjectedInto(page: Page): boolean {
+    return this.injectedPage === page;
+  }
+
   async injectRecorder(page: Page): Promise<void> {
     /* istanbul ignore next -- browser-injected IIFE, covered by integration tests */
     await page.evaluate(/* istanbul ignore next */ () => {
@@ -223,6 +240,7 @@ export class AudioCaptureService {
       (window as any).strudelAudioCapture.connect();
     });
 
+    this.injectedPage = page;
     this.logger.debug('Audio capture injected');
   }
 

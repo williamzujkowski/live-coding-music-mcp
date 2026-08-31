@@ -51,6 +51,14 @@ export class SessionManager {
   /** Strudel REPL URL; `strudel_url` in config.json (#227). */
   private readonly strudelUrl: string;
 
+  /**
+   * Called after a session is removed, however it was removed.
+   *
+   * Lets the owner drop state it keys by session id without having to
+   * intercept every teardown path.
+   */
+  onSessionDestroyed?: (id: string) => void;
+
   constructor(
     headless: boolean = false,
     audioAnalysisConfig?: AudioAnalysisConfig,
@@ -221,6 +229,18 @@ export class SessionManager {
     }
 
     this.sessions.delete(id);
+
+    // Tell the owner, whichever path got us here. The server keeps its
+    // own per-session maps (history bundles, capture services), and those
+    // used to be cleared only by the session({action:'destroy'}) tool
+    // handler — so idle eviction and destroyAll leaked them, and a
+    // session recreated under the same id inherited a dead recorder and
+    // a previous session's undo stack (#264).
+    try {
+      this.onSessionDestroyed?.(id);
+    } catch (error: any) {
+      this.logger.warn(`Session destroy callback failed for '${id}': ${error.message}`);
+    }
 
     // If this was the default session, reset to 'default'
     if (this.defaultSessionId === id) {
