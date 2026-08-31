@@ -440,13 +440,22 @@ const result = await recovery.executeWithRetry(
 );
 ```
 
-**This example is aspirational, not descriptive.** `executeWithRetry` has
-zero production callers. The only path into `ErrorRecovery` from live code
-is `handlePatternWrite` (`StrudelController.ts:643`) plus `getErrorStats`
-for diagnostics — eight of its ten public methods, including the circuit
-breaker and the network-retry helper, are never invoked outside tests.
-Note also that `ErrorRecovery.withRetry` — which this snippet claimed for
-several releases — has never existed at all.
+**This example is now descriptive, and this paragraph used to say the
+opposite.** It read "`executeWithRetry` has zero production callers… the
+only path into `ErrorRecovery` from live code is `handlePatternWrite`".
+Both halves are backwards, measured:
+
+| Symbol | Status |
+|---|---|
+| `executeWithRetry` | **live** — `StrudelController.ts:199`, the "Browser Init" retry added by #315 |
+| `getErrorStats` | **live** — `StrudelController.ts:1090`, reaches the `diagnostics` tool |
+| `handlePatternWrite` | **dead** — its only caller is `writePatternWithValidation`, which nothing in `src/server` calls; `writePatternSafe` goes straight to `controller.writePattern` |
+| the circuit breaker, the network-retry helper | still never invoked outside tests |
+
+`#315` added the live caller and this paragraph was not updated, so the
+file has been confidently wrong about it since. Note also that
+`ErrorRecovery.withRetry` — which this snippet claimed for several
+releases — has never existed at all.
 
 ### Tempo units
 
@@ -719,7 +728,7 @@ src/
 ├── utils/
 │   ├── Logger.ts               # Logging (22 lines)
 │   ├── PatternValidator.ts     # Validation (286 lines)
-│   ├── ErrorRecovery.ts        # Error handling (267 lines; only handlePatternWrite is reached from live code)
+│   ├── ErrorRecovery.ts        # Error handling (267 lines; executeWithRetry + getErrorStats are live, handlePatternWrite is not)
 │   ├── PerformanceMonitor.ts   # Monitoring (156 lines)
 │   ├── InputValidator.ts       # Input validation (349 lines)
 │   ├── SafePath.ts             # Filename confinement for exports (#224)
@@ -874,7 +883,7 @@ if (!this._page) throw new Error('Error');
 ```
 
 **Error Recovery:**
-- `ErrorRecovery` exists for retries, but only `handlePatternWrite` is wired up; `executeWithRetry`, the circuit breaker and the network-retry helper have no production callers
+- `ErrorRecovery` is wired up through `executeWithRetry` (browser init, #315) and `getErrorStats` (diagnostics). `handlePatternWrite`, the circuit breaker and the network-retry helper have no production callers
 - Exponential backoff for browser operations
 - Circuit breakers for external resources (Strudel.cc)
 

@@ -70,13 +70,20 @@ describe('recovered failures survive the recovery (#286)', () => {
   });
 
   it('reports instrumented operations even before anything runs', () => {
-    expect(new ErrorRecovery().getErrorStats()).toHaveProperty('Pattern Write');
+    // 'Browser Init', not 'Pattern Write': the seeded row names the
+    // operation that actually runs. `handlePatternWrite` is reached only
+    // from `writePatternWithValidation`, which nothing in `src/server`
+    // calls, so its row was permanently zero for dead code while the
+    // live retry path had no row at all (#445).
+    expect(new ErrorRecovery().getErrorStats()).toHaveProperty('Browser Init');
   });
 
   it('the three outcomes are mutually distinguishable', async () => {
     const outcome = async (fn: (p: string) => Promise<string>) => {
       const r = new ErrorRecovery();
       try { await r.handlePatternWrite(fn, 's("bd*4").gain(2)'); } catch { /* expected */ }
+      // Recorded on demand under the operation's own name; only the
+      // seeding list changed (#445).
       const s = r.getErrorStats()['Pattern Write'];
       return `${s.count}/${s.recovered}`;
     };

@@ -221,8 +221,12 @@ describe('ErrorRecovery', () => {
       // `{}` meant both "healthy" and "nothing is instrumented", and an
       // operator could not tell which. Instrumented operations now
       // always appear, with explicit zeros (#286).
+      // 'Browser Init', not 'Pattern Write': the seeded row names the
+      // operation that actually runs. `handlePatternWrite` is reachable
+      // only from `writePatternWithValidation`, which nothing in
+      // `src/server` calls (#445).
       const stats = recovery.getErrorStats();
-      expect(stats['Pattern Write']).toEqual({
+      expect(stats['Browser Init']).toEqual({
         count: 0, lastError: null, recovered: 0, lastRecovery: null,
       });
     });
