@@ -49,6 +49,12 @@ jobs:
           RUNS: ${{ github.event.inputs.runs || '50' }}
           GATE: ${{ github.event.inputs.gate || 'true' }}
         run: |
+          # Without pipefail the pipeline's status is tee's, which is
+          # always 0 — so `--gate`'s exit(1) could never fail this job.
+          # The nightly run reported success for weeks while the gate was
+          # inert, which is the same shape as test:sandbox existing and
+          # never being run (#376).
+          set -o pipefail
           mkdir -p benchmarks/results
           ARGS="--runs=${RUNS}"
           if [ "${GATE}" = "true" ]; then
