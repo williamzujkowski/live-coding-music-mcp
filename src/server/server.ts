@@ -149,6 +149,8 @@ export class StrudelMCPServer {
     this.sessionManager = new SessionManager(config.headless, audioAnalysisConfig, config.strudelUrl);
     // Covers every teardown path — the destroy tool, idle eviction, and
     // destroyAll — rather than only the one the tool handler knew about.
+    // destroyAll fired none of these until #423; the claim above this
+    // line predated the code by some months.
     this.sessionManager.onSessionDestroyed = (id: string): void => {
       this.historyBundles.delete(id);
       this.audioCaptureServices.delete(id);
