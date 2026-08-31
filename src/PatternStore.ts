@@ -94,6 +94,8 @@ export class PatternStore {
 
     const filename = this.sanitizeFilename(name) + '.json';
     const filepath = path.join(this.basePath, filename);
+    // One file, one cache entry. See the note on setCacheWithLRU below.
+    const cacheKey = this.sanitizeFilename(name);
 
     const data: PatternData = {
       name,
@@ -102,22 +104,43 @@ export class PatternStore {
       timestamp: new Date().toISOString(),
     };
 
-    // Update cache with LRU eviction
-    this.setCacheWithLRU(name, data);
-    this.listCache = null; // Invalidate list cache
-
-    // Write file asynchronously
+    // Write first, cache second.
+    //
+    // The cache used to be written before the file, so a rejected write
+    // left a pattern cached that was never persisted and `load` served
+    // it as though it had been. A 255-character name reaches here — it
+    // passes InputValidator's 255 limit and `sanitizeFilename` measures
+    // the stem without `.json` — and then fails ENAMETOOLONG on the
+    // 260-byte component (#428).
     await fs.writeFile(filepath, JSON.stringify(data, null, 2));
+
+    // Keyed by the FILE's name, not the caller's.
+    //
+    // The cache was keyed by the raw name while the file is keyed by the
+    // sanitized one, so two names that sanitize alike had one file and
+    // two cache entries. Measured:
+    //
+    //   save("My-Jam", "VERSION-ONE"); save("my-jam", "VERSION-TWO")
+    //   files on disk: ["my-jam.json"]  disk content: VERSION-TWO
+    //   load("My-Jam") -> VERSION-ONE   load("my-jam") -> VERSION-TWO
+    //
+    // Two answers for one file, and the stale one never expires — this
+    // cache has no TTL.
+    this.setCacheWithLRU(cacheKey, data);
+    this.listCache = null; // Invalidate list cache
   }
 
   async load(name: string): Promise<PatternData | null> {
+    // Keyed by the file, not the caller's spelling of it (#428).
+    const cacheKey = this.sanitizeFilename(name);
+
     // Check cache first with LRU update
-    const cached = this.getCacheWithLRU(name);
+    const cached = this.getCacheWithLRU(cacheKey);
     if (cached) {
       return cached;
     }
 
-    const filename = this.sanitizeFilename(name) + '.json';
+    const filename = cacheKey + '.json';
     const filepath = path.join(this.basePath, filename);
 
     try {
@@ -125,7 +148,7 @@ export class PatternStore {
       const pattern = JSON.parse(data);
 
       // Update cache with LRU eviction
-      this.setCacheWithLRU(name, pattern);
+      this.setCacheWithLRU(cacheKey, pattern);
 
       return pattern;
     } catch (error) {
