@@ -1322,11 +1322,15 @@ describe('StrudelController', () => {
     });
 
     test('should handle verification returning null', async () => {
-      let callCount = 0;
-      mockPage.evaluate = jest.fn().mockImplementation(() => {
-        callCount++;
-        if (callCount <= 1) return Promise.resolve(true); // Write succeeds
-        return Promise.resolve(null); // Verification returns null
+      // Keyed on what the evaluate DOES, not on call order. writePattern
+      // now clears the page's flux buffer first (#374), so "call 1 is
+      // the write" stopped being true and the write got the null meant
+      // for verification.
+      mockPage.evaluate = jest.fn().mockImplementation((fn: unknown) => {
+        const source = String(fn);
+        if (source.includes('takeFluxSamples')) return Promise.resolve(undefined);
+        if (source.includes('dispatch')) return Promise.resolve(true); // the write
+        return Promise.resolve(null); // verification returns null
       });
 
       // Should not throw, just use input pattern for cache

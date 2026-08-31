@@ -244,7 +244,7 @@ export class StrudelController {
     // this the first tempo reading after a change describes the pattern
     // before it: playing dnb at 174 and then house at 125, the first
     // house reading came back 174 (#366).
-    this.analyzer.resetTempoHistory();
+    await this.analyzer.resetTempoHistory(this._page);
 
     // Retry logic for timing edge cases
     const maxRetries = 3;
@@ -487,7 +487,7 @@ export class StrudelController {
     // Onsets from before a stop belong to a finished performance. Kept,
     // they put a multi-second silence in the middle of the next tempo
     // reading's intervals (#366).
-    this.analyzer.resetTempoHistory();
+    await this.analyzer.resetTempoHistory(this._page);
     return 'Stopped';
   }
 

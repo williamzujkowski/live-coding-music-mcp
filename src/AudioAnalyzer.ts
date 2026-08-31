@@ -659,9 +659,29 @@ export class AudioAnalyzer {
    * reading must describe the next performance, not average it with the
    * last one.
    */
-  resetTempoHistory(): void {
+  async resetTempoHistory(page?: Page): Promise<void> {
     this._onsetHistory = [];
     this.resetOnsetDetection();
+
+    // The PAGE keeps its own flux buffer, and clearing only the Node
+    // side left up to ten seconds of the previous pattern's samples
+    // waiting to be drained into the fresh history on the next call.
+    // Cross-model review found this: the reset looked complete because
+    // everything it could see was cleared, and the contamination lived
+    // one process away (#374).
+    //
+    // Draining and discarding reuses the existing accessor rather than
+    // adding a second way to empty the same array.
+    if (page !== undefined) {
+      try {
+        await page.evaluate(/* istanbul ignore next */ () => {
+          (window as any).strudelAudioAnalyzer?.takeFluxSamples?.();
+        });
+      } catch {
+        // The page may be gone — a reset that cannot reach it has
+        // nothing to contaminate anyway.
+      }
+    }
   }
 
   isOnset(flux: number): boolean {

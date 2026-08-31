@@ -455,10 +455,15 @@ describe('E2E Browser Integration Tests', () => {
       const originalEvaluate = mockPage.evaluate;
       let callCount = 0;
 
+      // Fails the first WRITE, not the first evaluate. writePattern now
+      // clears the page's flux buffer before writing (#374), so counting
+      // raw evaluate calls made this mock swallow its own failure on a
+      // call that has nothing to do with writing.
       mockPage.evaluate = jest.fn(async (...args: any[]) => {
-        callCount++;
-        if (callCount === 1) {
-          throw new Error('Temporary failure');
+        const isWrite = String(args[0]).includes('strudelMirror');
+        if (isWrite) {
+          callCount++;
+          if (callCount === 1) throw new Error('Temporary failure');
         }
         return originalEvaluate.apply(mockPage, args);
       });
