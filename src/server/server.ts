@@ -93,6 +93,8 @@ export class StrudelMCPServer {
    * sessions no longer conflict.
    */
   private audioCaptureServices: Map<string, AudioCaptureService> = new Map();
+  /** In-flight recorder injections, so concurrent calls share one (#423). */
+  private captureServiceBuilds: Map<string, Promise<AudioCaptureService>> = new Map();
   private midiExportService: MIDIExportService;
   private audioExportService: AudioExportService;
   private midiImportService: MIDIImportService;
@@ -476,20 +478,35 @@ export class StrudelMCPServer {
 
         if (controller !== undefined) {
           const current = await controller.getCurrentPattern();
-          const bundle = this.getHistoryBundle(sid ?? 'default');
-          bundle.undoStack.push(current);
 
-          this.historyIdCounter++;
-          bundle.historyStack.push({
-            id: this.historyIdCounter,
-            pattern: current,
-            timestamp: new Date(),
-            action: args?.mode ?? 'write',
-          });
+          // A destroy can land during that await. `getHistoryBundle`
+          // creates lazily, so it would then build a fresh bundle for a
+          // session that no longer exists — a permanent map entry the
+          // destroy callback has already run past (#423).
+          const destroyedMidRead =
+            sid !== undefined && this.sessionManager.getSession(sid) === undefined;
+          if (destroyedMidRead) {
+            this.logger.warn(
+              `Session '${sid}' was destroyed while snapshotting; skipping history.`,
+            );
+          }
 
-          if (bundle.undoStack.length > this.MAX_HISTORY) bundle.undoStack.shift();
-          if (bundle.historyStack.length > this.MAX_HISTORY) bundle.historyStack.shift();
-          bundle.redoStack.length = 0;
+          const bundle = destroyedMidRead ? null : this.getHistoryBundle(sid ?? 'default');
+          bundle?.undoStack.push(current);
+
+          if (bundle !== null) {
+            this.historyIdCounter++;
+            bundle.historyStack.push({
+              id: this.historyIdCounter,
+              pattern: current,
+              timestamp: new Date(),
+              action: args?.mode ?? 'write',
+            });
+
+            if (bundle.undoStack.length > this.MAX_HISTORY) bundle.undoStack.shift();
+            if (bundle.historyStack.length > this.MAX_HISTORY) bundle.historyStack.shift();
+            bundle.redoStack.length = 0;
+          }
         }
       }
     }
@@ -722,17 +739,46 @@ export class StrudelMCPServer {
     // service that cannot answer keeps the old reuse-the-cache
     // behaviour, so this can only ever add a re-injection that was
     // needed, never drop one that was working.
-    let service = this.audioCaptureServices.get(key);
+    const service = this.audioCaptureServices.get(key);
     // Awaited: the check asks the page whether the recorder is still
     // there, because a Playwright `Page` outlives the JS realm it points
     // at and a reload wipes the recorder while identity still matches
     // (#437).
-    if (!service || (await service.isInjectedInto?.(page)) === false) {
-      service = new AudioCaptureService();
-      await service.injectRecorder(page);
-      this.audioCaptureServices.set(key, service);
+    if (service && (await service.isInjectedInto?.(page)) !== false) {
+      return service;
     }
-    return service;
+
+    // Single-flight, like `SessionManager.ensureBrowser` (#263).
+    //
+    // This was check-then-act: two concurrent `audio_capture` calls on
+    // one uncached session both missed, both constructed, both awaited
+    // `injectRecorder`, and the last `set` won. `injectRecorder` assigns
+    // `window.strudelAudioCapture` unconditionally, so the second
+    // injection WIPED a capture the first had started, and the orphaned
+    // service still reported itself injected (#423).
+    const existing = this.captureServiceBuilds.get(key);
+    if (existing !== undefined) return await existing;
+
+    const build = (async (): Promise<AudioCaptureService> => {
+      const fresh = new AudioCaptureService();
+      await fresh.injectRecorder(page);
+      // A destroy landing during the await deleted a key that was not
+      // there yet; re-inserting here would resurrect a service for a
+      // dead session. The caller still gets its recorder — the page it
+      // asked about is the page it got — but nothing is cached for an
+      // id that no longer exists.
+      if (key === 'default' || this.sessionManager.getSession(key) !== undefined) {
+        this.audioCaptureServices.set(key, fresh);
+      }
+      return fresh;
+    })();
+
+    this.captureServiceBuilds.set(key, build);
+    try {
+      return await build;
+    } finally {
+      this.captureServiceBuilds.delete(key);
+    }
   }
 
   async run() {
