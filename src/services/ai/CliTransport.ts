@@ -192,6 +192,18 @@ function runCli(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      // Release the pipes.
+      //
+      // Settling on 'exit' rather than 'close' is deliberate (see below),
+      // but it means the child's stdout and stderr can still be open when
+      // this resolves — and an open pipe is an open handle. Under Jest
+      // that surfaces as "a worker process has failed to exit gracefully"
+      // on any parallel run large enough to reuse a worker: measured, 18
+      // suites plus this one warns where 18 plus any other suite does not
+      // (#362). Nothing needs the streams after this point; everything
+      // they carried is already in `stdout`/`stderr`.
+      child.stdout.destroy();
+      child.stderr.destroy();
       resolve({
         stdout,
         stderr: overflowed
