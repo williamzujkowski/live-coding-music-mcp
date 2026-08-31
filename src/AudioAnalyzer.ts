@@ -99,6 +99,26 @@ export class AudioAnalyzer {
   private readonly FLUX_NOISE_FLOOR = 0.004;
   private readonly MAX_HISTORY_LENGTH = 100;
 
+  /**
+   * How long after a detected transient further frames are treated as
+   * part of it rather than as new onsets.
+   *
+   * 50ms is below anything musical: 16th notes at 200 BPM are 75ms
+   * apart, and 32nds are rare enough that resolving them matters less
+   * than not shattering every kick into four.
+   */
+  private static readonly ONSET_REFRACTORY_MS = 50;
+
+  /**
+   * Below this, `detectTempo` reports no tempo instead of a number.
+   *
+   * A BPM with confidence 0.00 is not a weak measurement, it is the
+   * tempo prior's centre with a measurement's face on. Reporting zero
+   * lets a caller tell "I could not hear a pulse" from "the pulse is
+   * 120", which is the distinction #366 turned on.
+   */
+  private static readonly MIN_TEMPO_CONFIDENCE = 0.1;
+
   // Per-instance analyser config (wired through from config.audio_analysis
   // in config.json). #195.
   private readonly fftSize: number;
@@ -486,11 +506,49 @@ export class AudioAnalyzer {
    */
   onsetsFromFlux(samples: { t: number; flux: number }[]): OnsetObservation[] {
     this.resetOnsetDetection();
-    const onsets: OnsetObservation[] = [];
+    const candidates: OnsetObservation[] = [];
     for (const sample of samples) {
-      if (this.isOnset(sample.flux)) onsets.push({ t: sample.t, strength: sample.flux });
+      if (this.isOnset(sample.flux)) candidates.push({ t: sample.t, strength: sample.flux });
     }
-    return onsets;
+    return AudioAnalyzer.collapseToPeaks(candidates);
+  }
+
+  /**
+   * Collapses a run of adjacent detections into the one transient it is.
+   *
+   * A drum hit is not instantaneous. Its flux stays above the adaptive
+   * threshold for several consecutive 20ms frames, and without this every
+   * frame of it became a separate "onset" — measured on real playback,
+   * the median inter-onset interval was 20ms, exactly one sampling step,
+   * for dnb, techno and house alike. An envelope of solid blocks has no
+   * periodicity to find, the autocorrelation came out flat, and the
+   * tempo prior answered on its own: 120 BPM for every pattern, at
+   * confidence 0.00 (#366).
+   *
+   * Keeps the loudest frame of each run, which is also the one whose
+   * strength should weight the correlation.
+   *
+   * @param candidates - Every frame that crossed the threshold, in order
+   * @param refractoryMs - Frames closer than this belong to one transient
+   * @returns One observation per transient
+   */
+  static collapseToPeaks(
+    candidates: readonly OnsetObservation[],
+    refractoryMs = AudioAnalyzer.ONSET_REFRACTORY_MS
+  ): OnsetObservation[] {
+    const peaks: OnsetObservation[] = [];
+    for (const candidate of candidates) {
+      const previous = peaks[peaks.length - 1];
+      if (previous !== undefined && candidate.t - previous.t < refractoryMs) {
+        // Same transient. Keep the louder frame, and its time with it —
+        // the peak is a better estimate of when the hit landed than the
+        // first frame that happened to cross.
+        if (candidate.strength > previous.strength) peaks[peaks.length - 1] = candidate;
+        continue;
+      }
+      peaks.push(candidate);
+    }
+    return peaks;
   }
 
   isOnset(flux: number): boolean {
@@ -1041,9 +1099,23 @@ export class AudioAnalyzer {
         const variance = this.calculateVariance(intervals);
         const mean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
         const cv = mean > 0 ? Math.sqrt(variance) / mean : 1;
+        const confidence = Math.min(1, Math.max(0, 1 - cv * 1.5));
+
+        // Below the floor, say nothing rather than say 120.
+        //
+        // The correlation always has a highest lag, and the tempo prior
+        // is centred on 120 — so when the onsets carry no periodicity
+        // the answer is the prior's centre, dressed as a measurement.
+        // Measured on real playback before #366's onset fix: 120 BPM for
+        // dnb, techno and house alike, every run, at confidence 0.00.
+        // The code already knew; nothing was reading it.
+        if (confidence < AudioAnalyzer.MIN_TEMPO_CONFIDENCE) {
+          return { bpm: 0, confidence, method: 'autocorrelation' };
+        }
+
         return {
           bpm,
-          confidence: Math.min(1, Math.max(0, 1 - cv * 1.5)),
+          confidence,
           method: 'autocorrelation',
           alternatives: AudioAnalyzer.tempoOctaves(bpm),
         };

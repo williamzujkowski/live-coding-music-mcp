@@ -545,11 +545,26 @@ new density cases through `IsolatedStrudelEngine` too.
     spread over a kernel one sampling step wide to absorb that. Before
     it, only tempos whose period was a whole number of samples read
     correctly (120 from 500ms, 100 from 600ms) and the rest did not.
+  - One transient produces one onset. A drum hit stays above the
+    threshold for several consecutive frames, and every frame used to
+    become its own onset — measured against real playback, the median
+    inter-onset interval was 20ms, exactly one sampling step, for dnb,
+    techno and house alike (#366).
+  - A reading with no pulse behind it reports `bpm: 0`, not the tempo
+    prior's centre. The correlation always has a highest lag; when the
+    onsets carry no periodicity that lag is whatever the 120 BPM prior
+    likes, and it used to be returned looking exactly like a
+    measurement.
   - Verified on synthetic flux across ten tempo/subdivision combinations
     (`TempoSamplingJitter.test.ts`), all within 5%. That is arithmetic,
     not audio: it says nothing about how a real mix's spectrum behaves,
     and the browser band stays wide (40-200) until measured against real
     playback.
+  - **Accuracy against real audio is currently unmeasurable.** Every
+    shipped example declares a `bpm` it never sets (#367), so they all
+    play at Strudel's default and there is no pattern in the repo whose
+    real tempo is known. Do not compare a detected tempo against an
+    example's metadata; it means nothing until #367 lands.
 - Key detection uses Krumhansl-Schmuckler with Pearson correlation and no
   mode boosts (#320). It recovers all 24 canonical profiles exactly, but
   it depends on chroma resolution: at the shipped `fft_size: 2048`
