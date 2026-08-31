@@ -33,7 +33,7 @@ export async function waitForStrudelReady(page: Page, timeoutMs = 5000): Promise
   await page.waitForSelector('.cm-content', { timeout: 8000 });
   try {
     await page.waitForFunction(
-      () => Boolean((window as any).strudelMirror?.editor?.dispatch),
+      /* istanbul ignore next */ () => Boolean((window as any).strudelMirror?.editor?.dispatch),
       { timeout: timeoutMs }
     );
   } catch {
@@ -220,7 +220,7 @@ export class StrudelController {
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       // Use strudelMirror API (correct approach for strudel.cc)
-      success = await this._page.evaluate((newPattern) => {
+      success = await this._page.evaluate(/* istanbul ignore next */ (newPattern) => {
         const sm = (window as any).strudelMirror;
         if (sm?.editor?.dispatch) {
           const view = sm.editor;
@@ -247,7 +247,7 @@ export class StrudelController {
     }
 
     // Verify the write by reading back from browser (fixes cache sync issues)
-    const verified = await this._page.evaluate(() => {
+    const verified = await this._page.evaluate(/* istanbul ignore next */ () => {
       const sm = (window as any).strudelMirror;
       // Use code property or editor state
       if (sm?.code) return sm.code;
@@ -281,7 +281,7 @@ export class StrudelController {
       return this.editorCache;
     }
 
-    const pattern = await this._page.evaluate(() => {
+    const pattern = await this._page.evaluate(/* istanbul ignore next */ () => {
       const sm = (window as any).strudelMirror;
       // Use code property or editor state
       if (sm?.code) return sm.code;
@@ -308,7 +308,7 @@ export class StrudelController {
   private async readPlaybackState(): Promise<boolean> {
     if (!this._page) return false;
     try {
-      return await this._page.evaluate(() => {
+      return await this._page.evaluate(/* istanbul ignore next */ () => {
         const sm = (window as any).strudelMirror;
         return Boolean(sm?.repl?.state?.started ?? sm?.repl?.scheduler?.started);
       });
@@ -355,7 +355,7 @@ export class StrudelController {
       // AudioContext is already resumed, so drive strudelMirror directly.
       // Ctrl+Enter is a CodeMirror keymap binding and only fires when the
       // editor holds focus — see the comment on stop() (#218).
-      await this._page.evaluate(() => {
+      await this._page.evaluate(/* istanbul ignore next */ () => {
         (window as any).strudelMirror?.evaluate?.();
       });
     }
@@ -392,7 +392,7 @@ export class StrudelController {
     // playing (#218). Verified against live strudel.cc: after a keyboard
     // stop without focus, repl.state.started stayed true; after
     // strudelMirror.stop() it went false.
-    await this._page.evaluate(() => {
+    await this._page.evaluate(/* istanbul ignore next */ () => {
       (window as any).strudelMirror?.stop?.();
     });
 
@@ -430,7 +430,7 @@ export class StrudelController {
 
     const startTime = Date.now();
     while (Date.now() - startTime < timeoutMs) {
-      const isConnected = await this._page.evaluate(() => {
+      const isConnected = await this._page.evaluate(/* istanbul ignore next */ () => {
         return (window as any).strudelAudioAnalyzer?.isConnected || false;
       });
 
@@ -910,12 +910,12 @@ export class StrudelController {
     if (this._page) {
       try {
         // Check that strudelMirror API is available
-        diagnostics.editorReady = await this._page.evaluate(() => {
+        diagnostics.editorReady = await this._page.evaluate(/* istanbul ignore next */ () => {
           const sm = (window as any).strudelMirror;
           return sm?.editor?.dispatch !== undefined;
         });
 
-        diagnostics.audioConnected = await this._page.evaluate(() => {
+        diagnostics.audioConnected = await this._page.evaluate(/* istanbul ignore next */ () => {
           return (window as any).strudelAudioAnalyzer?.isConnected || false;
         });
       } catch (error) {

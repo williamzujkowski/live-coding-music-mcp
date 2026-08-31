@@ -11,15 +11,19 @@ import { StrudelController } from '../../StrudelController';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Skip browser tests when running with coverage to avoid instrumentation conflicts
-// Jest injects coverage variables like cov_* which don't exist in browser context
-const isRunningCoverage = process.env.COVERAGE === 'true' ||
-                          process.env.npm_lifecycle_event?.includes('coverage') ||
-                          process.argv.some(arg => arg.includes('--coverage')) ||
-                          typeof (global as any).__coverage__ !== 'undefined';
-const describeOrSkip = isRunningCoverage ? describe.skip : describe;
+// This suite used to skip itself under coverage: istanbul instruments
+// every function in src/, including the ones handed to page.evaluate,
+// and `cov_*` does not exist in browser context. The failure never
+// surfaced as a ReferenceError — waitForFunction swallows it and polls
+// until timeout, so it looked like strudel.cc being slow.
+//
+// The cost was 31 tests that never ran under `npm test` (which is
+// `jest --coverage`), and coverage figures that silently excluded the
+// whole browser tier. Every page.evaluate/waitForFunction argument in
+// src/ now carries `/* istanbul ignore next */`, which is the targeted
+// fix, and PageEvaluateNameWrapping.test.ts enforces it (#256).
 
-describeOrSkip('Browser Validation: Example Patterns', () => {
+describe('Browser Validation: Example Patterns', () => {
   let controller: StrudelController;
   const examplesDir = path.join(__dirname, '../../../patterns/examples');
   const isCI = process.env.CI === 'true';
