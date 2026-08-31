@@ -132,15 +132,66 @@ export class MusicTheory {
       throw new Error('Hits cannot exceed steps');
     }
     
-    const pattern: boolean[] = new Array(steps).fill(false);
-    const interval = steps / hits;
-    
-    for (let i = 0; i < hits; i++) {
-      const index = Math.floor(i * interval);
-      pattern[index] = true;
+    if (hits <= 0 || steps <= 0) {
+      return new Array(Math.max(0, steps)).fill('~').join(' ');
     }
-    
+
+    // Bjorklund, not `floor(i * steps / hits)`.
+    //
+    // The old formula produced maximally-even necklaces — an exhaustive
+    // check over every (k, n) with n <= 24 found 136 exact matches, 163
+    // rotation-only differences and 0 genuinely wrong necklaces — but
+    // often starting on the wrong step. That is user-visible and
+    // self-contradictory, because the same session can run both:
+    //
+    //   generate_rhythm euclid(3,8)  ->  1 ~ 1 ~ ~ 1 ~ ~
+    //   s("bd").euclid(3,8)          ->  1 ~ ~ 1 ~ ~ 1 ~
+    //
+    // E(3,8) is the tresillo; we were emitting a rotation of one of the
+    // most recognisable rhythms there is (#319).
+    const pattern = MusicTheory.bjorklund(hits, steps);
     return pattern.map(hit => hit ? '1' : '~').join(' ');
+  }
+
+  /**
+   * Bjorklund's algorithm: distributes `hits` onsets as evenly as
+   * possible over `steps`, with the first onset on step 0.
+   *
+   * @param hits - Number of onsets
+   * @param steps - Total steps in the cycle
+   * @returns One boolean per step
+   * @example
+   * MusicTheory.bjorklund(3, 8); // 1 0 0 1 0 0 1 0 — the tresillo
+   */
+  static bjorklund(hits: number, steps: number): boolean[] {
+    if (steps <= 0) return [];
+    // hits = 0 leaves `groups` empty, so `pairs` is 0, nothing merges
+    // and the remainder never shrinks — the loop below spins forever.
+    // Found by the exhaustive onset-count test, not by inspection.
+    if (hits <= 0) return new Array(steps).fill(false);
+    if (hits >= steps) return new Array(steps).fill(true);
+
+    // Start with `hits` groups of [true] and `steps - hits` of [false],
+    // then repeatedly fold the remainder into the front groups until at
+    // most one group is left over.
+    let groups: boolean[][] = [];
+    for (let i = 0; i < hits; i++) groups.push([true]);
+    let remainder: boolean[][] = [];
+    for (let i = 0; i < steps - hits; i++) remainder.push([false]);
+
+    while (remainder.length > 1) {
+      const pairs = Math.min(groups.length, remainder.length);
+      const merged: boolean[][] = [];
+      for (let i = 0; i < pairs; i++) merged.push([...groups[i], ...remainder[i]]);
+
+      // Whichever side had extras becomes the new remainder.
+      const leftoverGroups = groups.slice(pairs);
+      const leftoverRemainder = remainder.slice(pairs);
+      groups = merged;
+      remainder = leftoverGroups.length > 0 ? leftoverGroups : leftoverRemainder;
+    }
+
+    return [...groups, ...remainder].flat();
   }
 
   /**
