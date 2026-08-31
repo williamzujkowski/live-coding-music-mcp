@@ -976,9 +976,12 @@ describe('StrudelMCPServer', () => {
       test('should handle pattern not found', async () => {
         mockStore.load.mockResolvedValue(null);
 
-        const result = await (server as any).executeTool('pattern_store', { action: 'load', name: 'nonexistent' });
+        const result: any = await (server as any).executeTool('pattern_store', { action: 'load', name: 'nonexistent' });
 
-        expect(result).toContain('not found');
+        // Nothing was loaded, so this must not read as a success (#293).
+        expect(result.ok).toBe(false);
+        expect(result.errorCategory).toBe('business');
+        expect(result.message).toContain('not found');
       });
     });
 
@@ -1525,7 +1528,8 @@ describe('StrudelMCPServer', () => {
           id: 99999
         });
 
-        expect(result).toContain('not found');
+        expect((result as any).ok).toBe(false);
+        expect((result as any).message).toContain('not found');
       });
 
       test('restore_history should require initialization', async () => {

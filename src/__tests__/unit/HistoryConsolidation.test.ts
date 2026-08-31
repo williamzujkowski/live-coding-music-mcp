@@ -147,8 +147,11 @@ describe('history consolidation (#145)', () => {
 
     it('reports missing id', async () => {
       const { ctx } = makeCtx();
-      const result = await execute('history', { action: 'restore', id: 999 }, ctx);
-      expect(result).toContain('#999 not found');
+      const result: any = await execute('history', { action: 'restore', id: 999 }, ctx);
+      // Nothing was restored, so this must not read as a success (#293).
+      expect(result.ok).toBe(false);
+      expect(result.errorCategory).toBe('business');
+      expect(result.message).toContain('#999 not found');
     });
   });
 
