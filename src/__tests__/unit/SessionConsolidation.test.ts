@@ -64,8 +64,12 @@ describe('session consolidation (#158)', () => {
     const { ctx } = makeCtx();
     await execute('session', { action: 'create', session_id: 'C' }, ctx);
     const result = (await execute('session', { action: 'list' }, ctx)) as any;
-    expect(result.count).toBe(1);
-    expect(result.sessions[0].id).toBe('C');
+    // session(list) now returns an envelope so a zero-session listing
+    // can be flagged `empty` rather than looking like a populated one (#288).
+    expect(result.ok).toBe(true);
+    expect(result.empty).toBeUndefined();
+    expect(result.data.count).toBe(1);
+    expect(result.data.sessions[0].id).toBe('C');
   });
 
   it('session(action=switch) sets default session', async () => {

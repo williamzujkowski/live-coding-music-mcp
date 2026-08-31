@@ -128,7 +128,10 @@ describe('analyze consolidation (#146)', () => {
       const { ctx, controller } = makeCtx();
       (controller.detectTempo as jest.Mock).mockResolvedValueOnce({ bpm: 0, confidence: 0 });
       const result = (await execute('analyze', { include: ['tempo'] }, ctx)) as any;
-      expect(result.tempo.bpm).toBe(0);
+      // `bpm: 0` read as a measured value — zero beats per minute.
+      // Nothing was detected, so the field is null and says so (#288).
+      expect(result.tempo.bpm).toBeNull();
+      expect(result.tempo.detected).toBe(false);
       expect(result.tempo.message).toContain('No tempo detected');
     });
 
@@ -136,7 +139,8 @@ describe('analyze consolidation (#146)', () => {
       const { ctx, controller } = makeCtx();
       (controller.detectKey as jest.Mock).mockResolvedValueOnce({ key: 'X', scale: 'major', confidence: 0.05 });
       const result = (await execute('analyze', { include: ['key'] }, ctx)) as any;
-      expect(result.key.key).toBe('Unknown');
+      expect(result.key.key).toBeNull();
+      expect(result.key.detected).toBe(false);
     });
   });
 });

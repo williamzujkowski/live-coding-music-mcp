@@ -14,6 +14,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
+import { empty, ok } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 
 const SESSION_ID_PROP = {
@@ -132,8 +133,14 @@ async function getTempo(controller: any): Promise<unknown> {
   try {
     const tempoAnalysis = await controller.detectTempo();
     if (!tempoAnalysis || tempoAnalysis.bpm === 0) {
+      // The measurement ran and detected nothing. `bpm: 0` read as a
+      // measured value — zero beats per minute — so null plus an
+      // explicit flag (#288). No envelope here: getTempo is a
+      // sub-result composed into analyze's object, and an envelope
+      // nested inside a data payload is not the contract.
       return {
-        bpm: 0,
+        bpm: null,
+        detected: false,
         confidence: 0,
         message: 'No tempo detected. Ensure audio is playing and has a clear rhythmic pattern.',
       };
@@ -146,7 +153,14 @@ async function getTempo(controller: any): Promise<unknown> {
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { bpm: 0, confidence: 0, error: message || 'Tempo detection failed' };
+    // Detection threw, so there is no measurement — same reason the
+    // no-detection branch above uses null rather than 0 (#288).
+    return {
+      bpm: null,
+      detected: false,
+      confidence: 0,
+      error: message || 'Tempo detection failed',
+    };
   }
 }
 
@@ -155,8 +169,9 @@ async function getKey(controller: any): Promise<unknown> {
     const keyAnalysis = await controller.detectKey();
     if (!keyAnalysis || keyAnalysis.confidence < 0.1) {
       return {
-        key: 'Unknown',
-        scale: 'unknown',
+        key: null,
+        scale: null,
+        detected: false,
         confidence: 0,
         message: 'No clear key detected. Ensure audio is playing and has tonal content.',
       };
@@ -177,7 +192,13 @@ async function getKey(controller: any): Promise<unknown> {
     return result;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { key: 'Unknown', scale: 'unknown', confidence: 0, error: message || 'Key detection failed' };
+    return {
+      key: null,
+      scale: null,
+      detected: false,
+      confidence: 0,
+      error: message || 'Key detection failed',
+    };
   }
 }
 
@@ -299,7 +320,11 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       }
       try {
         const events = ctx.strudelEngine.queryEvents(args.pattern, startCycle, endCycle);
-        return {
+        // A silent pattern is a valid-empty query, not a failed one —
+        // and not the same as a pattern with events, which is what a
+        // plain ok() made it look like (#288).
+        const wrap = events.length === 0 ? empty : ok;
+        return wrap({
           count: events.length,
           range: { start: startCycle, end: endCycle },
           events: events.map((e: any) => ({
@@ -308,7 +333,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
             end: e.end,
             duration: e.end - e.start,
           })),
-        };
+        });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         return {

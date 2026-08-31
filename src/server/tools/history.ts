@@ -12,6 +12,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
+import { empty } from './types.js';
 
 const SESSION_ID_PROP = {
   session_id: {
@@ -102,7 +103,10 @@ function summarizeDiff(a: string, b: string): {
 async function doUndo(ctx: ToolContext, sid?: string): Promise<unknown> {
   const { undoStack, redoStack, maxHistory } = ctx.getHistory(sid);
   if (!sid && !ctx.isInitialized()) return 'Browser not initialized. Run init first.';
-  if (undoStack.length === 0) return 'Nothing to undo';
+  // A valid-empty, not a failure: the call worked, there was simply
+  // nothing on the stack. `empty()` lets an agent tell that apart from
+  // a rich result without parsing the prose (#288).
+  if (undoStack.length === 0) return empty('Nothing to undo');
   const controller = ctx.getController(sid);
 
   const current = await controller.getCurrentPattern();
@@ -117,7 +121,7 @@ async function doUndo(ctx: ToolContext, sid?: string): Promise<unknown> {
 async function doRedo(ctx: ToolContext, sid?: string): Promise<unknown> {
   const { undoStack, redoStack, maxHistory } = ctx.getHistory(sid);
   if (!sid && !ctx.isInitialized()) return 'Browser not initialized. Run init first.';
-  if (redoStack.length === 0) return 'Nothing to redo';
+  if (redoStack.length === 0) return empty('Nothing to redo');
   const controller = ctx.getController(sid);
 
   const current = await controller.getCurrentPattern();
@@ -132,7 +136,14 @@ async function doRedo(ctx: ToolContext, sid?: string): Promise<unknown> {
 function doList(args: any, ctx: ToolContext, sid?: string): unknown {
   const { historyStack } = ctx.getHistory(sid);
   if (historyStack.length === 0) {
-    return 'No pattern history yet. Make some edits to build history.';
+    // Same record shape as the populated branch below, so a caller can
+    // read `entries` unconditionally instead of branching on a string.
+    return empty({
+      count: 0,
+      showing: 0,
+      entries: [],
+      message: 'No pattern history yet. Make some edits to build history.',
+    });
   }
   const limit = args?.limit || 10;
   const recent = historyStack.slice(-limit).reverse();

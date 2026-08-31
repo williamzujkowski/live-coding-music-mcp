@@ -72,8 +72,11 @@ describe('history consolidation (#145)', () => {
 
     it('returns "Nothing to undo" when stack empty', async () => {
       const { ctx } = makeCtx();
-      const result = await execute('history', { action: 'undo' }, ctx);
-      expect(result).toBe('Nothing to undo');
+      const result: any = await execute('history', { action: 'undo' }, ctx);
+      // Valid-empty, not a failure: the call worked, the stack was bare (#288).
+      expect(result.ok).toBe(true);
+      expect(result.empty).toBe(true);
+      expect(result.data).toBe('Nothing to undo');
     });
 
     it('returns init error when default session not up', async () => {
@@ -95,8 +98,10 @@ describe('history consolidation (#145)', () => {
 
     it('returns "Nothing to redo" when stack empty', async () => {
       const { ctx } = makeCtx();
-      const result = await execute('history', { action: 'redo' }, ctx);
-      expect(result).toBe('Nothing to redo');
+      const result: any = await execute('history', { action: 'redo' }, ctx);
+      expect(result.ok).toBe(true);
+      expect(result.empty).toBe(true);
+      expect(result.data).toBe('Nothing to redo');
     });
   });
 
@@ -120,8 +125,13 @@ describe('history consolidation (#145)', () => {
 
     it('returns clean message when empty', async () => {
       const { ctx } = makeCtx();
-      const result = await execute('history', { action: 'list' }, ctx);
-      expect(result).toContain('No pattern history yet');
+      const result: any = await execute('history', { action: 'list' }, ctx);
+      expect(result.empty).toBe(true);
+      // Same record shape as the populated branch, so callers can read
+      // `entries` without branching on a string (#288).
+      expect(result.data.entries).toEqual([]);
+      expect(result.data.count).toBe(0);
+      expect(result.data.message).toContain('No pattern history yet');
     });
   });
 

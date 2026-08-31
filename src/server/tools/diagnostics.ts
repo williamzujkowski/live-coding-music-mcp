@@ -13,6 +13,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
+import { empty } from './types.js';
 
 const SESSION_ID_PROP = {
   session_id: {
@@ -75,13 +76,13 @@ async function getFullDiagnostics(ctx: ToolContext, sid?: string): Promise<unkno
   return await ctx.getController(sid).getDiagnostics();
 }
 
-function getErrors(ctx: ToolContext, sid?: string): string {
+function getErrors(ctx: ToolContext, sid?: string): unknown {
   const controller = ctx.getController(sid);
   const errors = controller.getConsoleErrors();
   const warnings = controller.getConsoleWarnings();
 
   if (errors.length === 0 && warnings.length === 0) {
-    return 'No errors or warnings captured.';
+    return empty('No errors or warnings captured.');
   }
 
   let result = '';

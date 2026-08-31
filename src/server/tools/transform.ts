@@ -11,7 +11,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
-import { withStashField, withStashNotice } from './types.js';
+import { empty, withStashField, withStashNotice } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 
 interface EnergyConfig {
@@ -302,7 +302,9 @@ async function opEffectRemove(args: any, ctx: ToolContext, sid?: string): Promis
   InputValidator.validateIdentifier(args.effect, 'effect');
   const p = await ctx.getCurrentPatternSafe(sid);
   const stripped = stripEffectCalls(p, args.effect);
-  if (stripped === p) return `No ${args.effect} effect found to remove`;
+  // The strip ran and matched nothing. That is a valid-empty result,
+  // not a failure and not a plain success (#288).
+  if (stripped === p) return empty(`No ${args.effect} effect found to remove`);
   const written = await ctx.writePatternSafe(stripped, sid);
   return withStashNotice(`Removed ${args.effect} effect`, written);
 }
