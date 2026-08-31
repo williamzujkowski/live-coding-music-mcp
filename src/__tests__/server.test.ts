@@ -947,7 +947,9 @@ describe('StrudelMCPServer', () => {
         expect(mockStore.save).toHaveBeenCalledWith(
           'my-pattern',
           's("bd*4")',
-          ['techno', 'drums']
+          ['techno', 'drums'],
+          // Explicit, and off unless the caller asks (#428).
+          { overwrite: false }
         );
         expect(result).toContain('Pattern saved as "my-pattern"');
       });

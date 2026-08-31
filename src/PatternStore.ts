@@ -89,13 +89,58 @@ export class PatternStore {
     }
   }
 
-  async save(name: string, content: string, tags: string[] = []): Promise<void> {
+  /**
+   * Writes a pattern, refusing to silently destroy a different one.
+   *
+   * `sanitizeFilename` is many-to-one and always has been: `Track 1`,
+   * `TRACK 1` and `Track#1` all land on `track_1.json`, `drums/kick` and
+   * `synth/kick` both land on `kick.json`, and any two all-non-ASCII
+   * names collapse together. That mapping stays — names with spaces and
+   * capitals are natural for music, and rejecting them would break every
+   * pattern already saved.
+   *
+   * What changes is that a collision is no longer silent. Measured
+   * before this guard:
+   *
+   *     save("My-Jam", "VERSION-ONE"); save("my-jam", "VERSION-TWO")
+   *     -> one file, VERSION-ONE gone, both saves reported success
+   *
+   * Re-saving under the SAME original name is an ordinary update and is
+   * not a collision — refusing that would break every edit of an
+   * existing pattern.
+   *
+   * @param name - Pattern name as the caller spells it
+   * @param content - Pattern source
+   * @param tags - Tags to attach
+   * @param options.overwrite - Replace a different pattern on the same
+   *   filename. Deliberately explicit: the loss is not recoverable.
+   * @throws {ValidationError} When the filename is taken by a pattern
+   *   saved under a different name and `overwrite` is not set
+   */
+  async save(
+    name: string,
+    content: string,
+    tags: string[] = [],
+    options: { overwrite?: boolean } = {},
+  ): Promise<void> {
     await this.ensureDirectory();
 
     const filename = this.sanitizeFilename(name) + '.json';
     const filepath = path.join(this.basePath, filename);
     // One file, one cache entry. See the note on setCacheWithLRU below.
     const cacheKey = this.sanitizeFilename(name);
+
+    if (options.overwrite !== true) {
+      const existing = await this.readIfPresent(filepath);
+      if (existing !== null && existing.name !== name) {
+        throw new ValidationError(
+          `Cannot save "${name}": the name "${existing.name}" already uses the file ` +
+          `${filename}. Names are lowercased and stripped of punctuation, so these ` +
+          `collide. Choose a name that differs by more than case or punctuation, or ` +
+          `pass overwrite: true to replace "${existing.name}" — which cannot be undone.`
+        );
+      }
+    }
 
     const data: PatternData = {
       name,
@@ -128,6 +173,22 @@ export class PatternStore {
     // cache has no TTL.
     this.setCacheWithLRU(cacheKey, data);
     this.listCache = null; // Invalidate list cache
+  }
+
+  /**
+   * The pattern in a file, or null when it is absent or unreadable.
+   *
+   * An unreadable file is treated as absent on purpose: refusing a save
+   * because something in the directory cannot be parsed would make one
+   * corrupt file block writes, which is the mistake #426 fixed for
+   * reads.
+   */
+  private async readIfPresent(filepath: string): Promise<PatternData | null> {
+    try {
+      return asPatternData(JSON.parse(await fs.readFile(filepath, 'utf-8')));
+    } catch {
+      return null;
+    }
   }
 
   async load(name: string): Promise<PatternData | null> {
