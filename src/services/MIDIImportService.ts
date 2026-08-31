@@ -191,7 +191,17 @@ export class MIDIImportService {
     try {
       midi = new Midi(buffer);
     } catch (e: any) {
-      throw new Error(`Failed to parse MIDI buffer: ${e?.message ?? e}`);
+      // Describe the file, not the exception. Interpolating the library's
+      // error produced "Cannot read properties of undefined (reading
+      // 'forEach')" for a truncated header — which reads as a server
+      // crash, and a caller cannot act on a TypeError from a parser's
+      // internals (#280). The underlying text is kept at the end for
+      // anyone debugging, after the part that says what to do.
+      const detail = String(e?.message ?? e);
+      throw new Error(
+        'Invalid MIDI file: could not be parsed. It may be truncated, or not a ' +
+        `MIDI file at all — a valid one begins with the bytes "MThd". (${detail})`
+      );
     }
 
     if (midi.tracks.length > MAX_TRACKS) {

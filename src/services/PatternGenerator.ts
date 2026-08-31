@@ -1,4 +1,5 @@
 import { MusicTheory } from './MusicTheory.js';
+import { STYLE_ALIASES, resolveDrumStyle } from './StyleRegistry.js';
 
 export class PatternGenerator {
   private theory = new MusicTheory();
@@ -124,26 +125,7 @@ export class PatternGenerator {
     };
 
     // Handle aliases
-    const styleMap: Record<string, string> = {
-      'liquid_dnb': 'intelligent_dnb',
-      'atmospheric_dnb': 'intelligent_dnb',
-      'intelligent': 'intelligent_dnb',
-      'liquid': 'intelligent_dnb',
-      'atmospheric': 'intelligent_dnb',
-      'bukem': 'intelligent_dnb',
-      'triphop': 'trip_hop',
-      'portishead': 'trip_hop',
-      'massive_attack': 'trip_hop',
-      'flying_lotus': 'trip_hop',
-      'boombap': 'boom_bap',
-      'golden_era': 'boom_bap',
-      'premier': 'boom_bap',
-      'alchemist': 'boom_bap',
-      'daringer': 'boom_bap',
-      'hitboy': 'boom_bap'
-    };
-
-    const resolvedStyle = styleMap[style.toLowerCase()] || style.toLowerCase();
+    const resolvedStyle = STYLE_ALIASES[style.toLowerCase()] ?? style.toLowerCase();
     const stylePatterns = patterns[resolvedStyle] || patterns.techno;
     const index = Math.min(Math.floor(complexity * stylePatterns.length), stylePatterns.length - 1);
     return stylePatterns[index];
@@ -199,21 +181,7 @@ export class PatternGenerator {
     };
 
     // Handle aliases
-    const styleMap: Record<string, string> = {
-      'liquid_dnb': 'intelligent_dnb',
-      'atmospheric_dnb': 'intelligent_dnb',
-      'intelligent': 'intelligent_dnb',
-      'liquid': 'intelligent_dnb',
-      'bukem': 'intelligent_dnb',
-      'triphop': 'trip_hop',
-      'portishead': 'trip_hop',
-      'massive_attack': 'trip_hop',
-      'boombap': 'boom_bap',
-      'golden_era': 'boom_bap',
-      'premier': 'boom_bap'
-    };
-
-    const resolvedStyle = styleMap[style.toLowerCase()] || style.toLowerCase();
+    const resolvedStyle = STYLE_ALIASES[style.toLowerCase()] ?? style.toLowerCase();
     return patterns[resolvedStyle] || patterns.techno;
   }
 
@@ -279,26 +247,7 @@ export class PatternGenerator {
    */
   generateCompletePattern(style: string, key: string = 'C', bpm: number = 120): string {
     // Handle aliases and special genres
-    const styleMap: Record<string, string> = {
-      'liquid_dnb': 'intelligent_dnb',
-      'atmospheric_dnb': 'intelligent_dnb',
-      'intelligent': 'intelligent_dnb',
-      'liquid': 'intelligent_dnb',
-      'atmospheric': 'intelligent_dnb',
-      'bukem': 'intelligent_dnb',
-      'triphop': 'trip_hop',
-      'portishead': 'trip_hop',
-      'massive_attack': 'trip_hop',
-      'flying_lotus': 'trip_hop',
-      'boombap': 'boom_bap',
-      'golden_era': 'boom_bap',
-      'premier': 'boom_bap',
-      'alchemist': 'boom_bap',
-      'daringer': 'boom_bap',
-      'hitboy': 'boom_bap'
-    };
-
-    const resolvedStyle = styleMap[style.toLowerCase()] || style.toLowerCase();
+    const resolvedStyle = STYLE_ALIASES[style.toLowerCase()] ?? style.toLowerCase();
 
     // Use specialized generators for new genres
     switch (resolvedStyle) {
@@ -322,7 +271,16 @@ export class PatternGenerator {
     const progression = this.theory.generateChordProgression(key, chordStyle as any);
     const chords = this.generateChords(progression, resolvedStyle === 'ambient' ? 'pad' : 'stab');
     
-    return `// ${resolvedStyle} pattern in ${key} at ${bpm} BPM
+    // The header names what the drums actually are. `resolvedStyle` is
+    // only alias-resolved, so an unknown genre stamped its own name over
+    // a techno pattern (#279).
+    const drumStyle = resolveDrumStyle(resolvedStyle);
+    const header = drumStyle.supported
+      ? `// ${drumStyle.resolved} pattern in ${key} at ${bpm} BPM`
+      : `// ${drumStyle.resolved} pattern in ${key} at ${bpm} BPM` +
+        ` (no drums defined for "${resolvedStyle}")`;
+
+    return `${header}
 setcpm(${bpm})
 
 stack(

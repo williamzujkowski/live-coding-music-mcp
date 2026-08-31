@@ -8,6 +8,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { CreativeFeedback } from '../../services/GeminiService.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
+import { DRUM_STYLES, resolveDrumStyle } from '../../services/StyleRegistry.js';
 
 const SESSION_ID_PROP = {
   session_id: {
@@ -41,7 +42,7 @@ export const tools: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        style: { type: 'string', description: 'Genre: techno, house, dnb, ambient, trap, jungle, jazz, experimental' },
+        style: { type: 'string', description: 'Genre: techno, house, dnb, breakbeat, trap, jungle, ambient, experimental, intelligent_dnb, trip_hop, boom_bap. Anything else (jazz included) gets techno drums, and the response says so.' },
         tempo: { type: 'number', description: 'BPM (default: genre-appropriate)' },
         key: { type: 'string', description: 'Musical key (default: C)' },
         auto_play: { type: 'boolean', description: 'Start playback immediately (default: true)' },
@@ -120,6 +121,11 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       }
       const controller = ctx.getController(sid);
 
+      // What the caller asked for is not always what they get: an
+      // unknown genre falls back to techno drums. It used to do that
+      // silently while metadata.style echoed the request, so an agent
+      // asking for vaporwave was told it received vaporwave (#279).
+      const resolution = resolveDrumStyle(args.style);
       const tempo = args.tempo || defaultTempo(args.style);
       const key = args.key || 'C';
       const pattern = ctx.generator.generateCompletePattern(args.style, key, tempo);
@@ -134,17 +140,33 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       const response: {
         success: boolean;
         pattern: string;
-        metadata: { style: string; bpm: number; key: string };
+        metadata: {
+          style: string;
+          bpm: number;
+          key: string;
+          /** Present only when the requested style had no drums of its own. */
+          requested_style?: string;
+          style_substituted?: boolean;
+        };
         status: string;
         message: string;
         feedback?: CreativeFeedback;
       } = {
         success: true,
         pattern: pattern.substring(0, 200) + (pattern.length > 200 ? '...' : ''),
-        metadata: { style: args.style, bpm: tempo, key },
+        metadata: { style: resolution.resolved, bpm: tempo, key },
         status: shouldPlay ? 'playing' : 'ready',
-        message: `Created ${args.style} pattern in ${key}${shouldPlay ? ' - now playing' : ''}`,
+        message: resolution.supported
+          ? `Created ${resolution.resolved} pattern in ${key}${shouldPlay ? ' - now playing' : ''}`
+          : `No drum pattern for style "${args.style}" — used ${resolution.resolved} instead. ` +
+            `Created pattern in ${key}${shouldPlay ? ' - now playing' : ''}. ` +
+            `Styles with their own drums: ${DRUM_STYLES.join(', ')}.`,
       };
+
+      if (!resolution.supported) {
+        response.metadata.requested_style = args.style;
+        response.metadata.style_substituted = true;
+      }
 
       if (args.get_feedback) {
         if (ctx.geminiService.isAvailable()) {
