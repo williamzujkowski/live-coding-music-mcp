@@ -107,7 +107,7 @@ export class AudioAnalyzer {
    * apart, and 32nds are rare enough that resolving them matters less
    * than not shattering every kick into four.
    */
-  private static readonly ONSET_REFRACTORY_MS = 50;
+  static readonly ONSET_REFRACTORY_MS = 50;
 
   /**
    * Below this, `detectTempo` reports no tempo instead of a number.
@@ -533,8 +533,17 @@ export class AudioAnalyzer {
    * @example
    * analyzer.onsetsFromFlux([{ t: 0, flux: 0.01 }, { t: 20, flux: 0.4 }]);
    */
-  onsetsFromFlux(samples: { t: number; flux: number }[]): OnsetObservation[] {
-    this.resetOnsetDetection();
+  onsetsFromFlux(
+    samples: { t: number; flux: number }[],
+    continueStream = false
+  ): OnsetObservation[] {
+    // Resetting between buffers of ONE performance makes every boundary
+    // a discontinuity: the first samples of each buffer fall back to the
+    // fixed threshold instead of the adaptive one the stream had already
+    // learned. Detecting the same audio whole and in 5s pieces then
+    // gives different onsets, which is #370. A genuinely new capture
+    // still resets — via resetTempoHistory, on pattern change and stop.
+    if (!continueStream) this.resetOnsetDetection();
     const candidates: OnsetObservation[] = [];
     for (const sample of samples) {
       if (this.isOnset(sample.flux)) candidates.push({ t: sample.t, strength: sample.flux });
@@ -598,7 +607,21 @@ export class AudioAnalyzer {
       this._onsetHistory = [];
     }
 
-    this._onsetHistory.push(...detected);
+    // A transient that straddles a buffer boundary arrives as the tail of
+    // one detection and the head of the next. `collapseToPeaks` merges
+    // within a single call and cannot see across one, so one kick counts
+    // twice, every buffer.
+    //
+    // Collapsing `[last kept onset, ...incoming]` rather than special-
+    // casing the first element is what makes this EXACTLY the same
+    // operation the whole-series path performs. A hand-rolled boundary
+    // merge got it nearly right and dropped one onset in 45: it decided
+    // the first incoming onset, then pushed the rest unchanged, so an
+    // onset that became adjacent to the retained peak was never
+    // reconsidered.
+    const previous = this._onsetHistory.pop();
+    const joined = previous === undefined ? detected : [previous, ...detected];
+    this._onsetHistory.push(...AudioAnalyzer.collapseToPeaks(joined));
 
     const latest = this._onsetHistory[this._onsetHistory.length - 1];
     if (latest !== undefined) {
@@ -883,7 +906,9 @@ export class AudioAnalyzer {
       // onset decision to the whole series (#322).
       const buffered = await this.takeBufferedFlux(page);
       if (buffered.length >= 8) {
-        const detected = this.onsetsFromFlux(buffered);
+        // Continuing the same stream: the previous buffer's threshold
+        // state is what makes this buffer's first samples comparable.
+        const detected = this.onsetsFromFlux(buffered, this._onsetHistory.length > 0);
         this.mergeOnsetHistory(detected);
         return this.tempoFromOnsets([...this._onsetHistory]);
       }

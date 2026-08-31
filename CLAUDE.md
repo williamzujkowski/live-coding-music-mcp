@@ -569,21 +569,27 @@ new density cases through `IsolatedStrudelEngine` too.
     which is how an agent listens, and not the same as rewriting the
     pattern before every read:
 
-    | example | declared | read |
-    |---|---|---|
-    | House (classic) | 125 | 125, 125, 125, 125 |
-    | Driving techno | 130 | 130, 130, 130, 130 |
-    | Modern trap | 140 | 141, 141, 141, 141 |
-    | Drum & bass (classic) | 174 | 117, 115, 117, 115 |
-    | Amen break | 165 | 83, 83, 83, 83 |
-    | Ambient pad / Jazz | 70 / 120 | no tempo reported |
+    | example | declared | run A | run B |
+    |---|---|---|---|
+    | House (classic) | 125 | 125, 125, 125, 125 | 125, 125, 125, 125 |
+    | Driving techno | 130 | 130, 130, 130, 130 | 130, 130, 130, 130 |
+    | Modern trap | 140 | 141, 141, 141, 141 | 141, 141, 141, 70 |
+    | Drum & bass (classic) | 174 | 117, 115, 117, 115 | 115, 115, 115, 174 |
+    | Amen break | 165 | 83, 83, 83, 83 | 83, 83, 132, 130 |
+    | Ambient pad / Jazz | 70 / 120 | no tempo | no tempo |
 
-    Stable everywhere — the 82 BPM spread #352 reported is gone. Three
-    of five percussive examples are accurate; the amen break reads
-    consistent half-time, which is a defensible hearing of it; dnb reads
-    two-thirds of its tempo, which is not (#370). The two non-percussive
-    examples report no tempo rather than guessing, which is the right
-    answer for a pad with a three-second attack.
+    **Two runs, because one was misleading.** I first recorded run A
+    alone and wrote "stable everywhere". Run B shows trap flipping to
+    half-time on its fourth poll and the amen break moving between 83 and
+    130 — so the readings are stable for house and techno, mostly stable
+    for trap, and not stable for dnb or the amen break. The 82 BPM spread
+    #352 reported is gone; a residual octave flip is not.
+
+    Accurate: house and techno, exactly, every time. Trap, apart from the
+    occasional half-time. Wrong: dnb reads roughly two-thirds of its
+    tempo (#370), and the amen break sits between half-time and 130. The
+    two non-percussive examples report no tempo rather than guessing,
+    which is the right answer for a pad with a three-second attack.
 - Key detection uses Krumhansl-Schmuckler with Pearson correlation and no
   mode boosts (#320). It recovers all 24 canonical profiles exactly, but
   it depends on chroma resolution: at the shipped `fft_size: 2048`
