@@ -1,7 +1,7 @@
 {
   "name": "Drum & bass (classic)",
   "genre": "dnb",
-  "pattern": "stack(\n  \"[bd ~ ~ bd] [~ ~ ~ bd] [~ bd bd ~] [~ ~ ~ bd]\",\n  \"[~ ~ ~ ~] [sd ~ ~ ~] [~ ~ ~ ~] [sd ~ ~ ~]\",\n  \"[hh ~ hh ~] [hh ~ hh ~] [hh ~ hh ~] [hh ~ hh ~]\"\n).s().slow(2)",
+  "pattern": "setcpm(174/2)\nstack(\n  \"[bd ~ ~ bd] [~ ~ ~ bd] [~ bd bd ~] [~ ~ ~ bd]\",\n  \"[~ ~ ~ ~] [sd ~ ~ ~] [~ ~ ~ ~] [sd ~ ~ ~]\",\n  \"[hh ~ hh ~] [hh ~ hh ~] [hh ~ hh ~] [hh ~ hh ~]\"\n).s().slow(2)",
   "bpm": 174,
   "key": "C",
   "description": "Two-step drum and bass: syncopated kick, snare on 2 and 4, 8th-note hats.",

@@ -1,11 +1,11 @@
 {
   "name": "Ambient pad",
   "genre": "ambient",
-  "pattern": "stack(\n  note(\"<C Am F G>\").s(\"sine\").attack(2).release(4).room(0.9).gain(0.4),\n  note(\"<c4 a3 f3 g3>\").s(\"triangle\").attack(1.5).release(3).room(0.8).gain(0.25),\n  note(\"c2\").s(\"sine\").attack(3).release(6).gain(0.3)\n).slow(4)",
+  "pattern": "setcpm(70/1)\nstack(\n  note(\"<C Am F G>\").s(\"sine\").attack(2).release(4).room(0.9).gain(0.4),\n  note(\"<c4 a3 f3 g3>\").s(\"triangle\").attack(1.5).release(3).room(0.8).gain(0.25),\n  note(\"c2\").s(\"sine\").attack(3).release(6).gain(0.3)\n).slow(4)",
   "bpm": 70,
   "key": "C major",
   "progression": "C - Am - F - G (I - vi - IV - V)",
-  "description": "No percussion. Long-attack pads over a sustained C pedal, so the chroma is dominated by harmony rather than transients \u2014 the case key detection should handle best and tempo detection should decline to answer.",
+  "description": "No percussion. Long-attack pads over a sustained C pedal, so the chroma is dominated by harmony rather than transients — the case key detection should handle best and tempo detection should decline to answer.",
   "tags": [
     "ambient",
     "pad",
@@ -16,7 +16,7 @@
   "source": {
     "license": "AGPL-3.0-or-later",
     "origin": "written for this repository",
-    "note": "No licensed source exists for this genre \u2014 Strudel's drum corpus has no techno, trap, ambient or jazz entries, and the community collections are unlicensed. Written by hand; the harmony is stated explicitly in `key` and `progression` so it can be checked against music theory rather than against this project's own analyzer."
+    "note": "No licensed source exists for this genre — Strudel's drum corpus has no techno, trap, ambient or jazz entries, and the community collections are unlicensed. Written by hand; the harmony is stated explicitly in `key` and `progression` so it can be checked against music theory rather than against this project's own analyzer."
   },
   "timestamp": "2026-08-31T00:00:00.000Z"
 }

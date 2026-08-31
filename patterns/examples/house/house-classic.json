@@ -1,7 +1,7 @@
 {
   "name": "House (classic)",
   "genre": "house",
-  "pattern": "stack(\n  \"[bd ~ ~ ~] [bd ~ ~ ~] [bd ~ ~ ~] [bd ~ ~ ~]\",\n  \"[~ ~ ~ ~] [sd ~ ~ ~] [~ ~ ~ ~] [sd ~ ~ ~]\",\n  \"[hh hh hh hh] [hh hh hh hh] [hh hh hh hh] [hh hh hh hh]\",\n  \"[cy ~ ~ ~] [~ ~ ~ ~] [~ ~ ~ ~] [~ ~ ~ ~]\",\n  \"[~ ~ oh ~] [~ ~ oh ~] [~ ~ oh ~] [~ ~ oh ~]\"\n).s().slow(2)",
+  "pattern": "setcpm(125/2)\nstack(\n  \"[bd ~ ~ ~] [bd ~ ~ ~] [bd ~ ~ ~] [bd ~ ~ ~]\",\n  \"[~ ~ ~ ~] [sd ~ ~ ~] [~ ~ ~ ~] [sd ~ ~ ~]\",\n  \"[hh hh hh hh] [hh hh hh hh] [hh hh hh hh] [hh hh hh hh]\",\n  \"[cy ~ ~ ~] [~ ~ ~ ~] [~ ~ ~ ~] [~ ~ ~ ~]\",\n  \"[~ ~ oh ~] [~ ~ oh ~] [~ ~ oh ~] [~ ~ oh ~]\"\n).s().slow(2)",
   "bpm": 125,
   "key": "C",
   "description": "Four-on-the-floor house grid: kick every beat, snare on 2 and 4, straight 16th hats, open hat on the off-beat.",
