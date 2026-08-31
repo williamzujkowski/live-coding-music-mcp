@@ -33,7 +33,7 @@ import { sessionModule } from './tools/session.js';
 import { captureModule } from './tools/capture.js';
 import { aiModule } from './tools/ai.js';
 import { composeModule } from './tools/compose.js';
-import { TEMPO_BY_STYLE, DRUM_STYLES, BASS_STYLES, STYLE_ALIASES } from '../services/StyleRegistry.js';
+import { TEMPO_BY_STYLE } from '../services/StyleRegistry.js';
 
 export interface ResourceContext {
   store: PatternStore;
