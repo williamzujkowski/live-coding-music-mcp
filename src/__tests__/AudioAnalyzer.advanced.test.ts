@@ -89,7 +89,16 @@ const mockAudioData = {
 
   gMajor: {
     // G major: G A B C D E F#
-    chromaVector: [0.7, 0.1, 0.2, 0.75, 0.2, 0.1, 0.8, 0.85, 0.1, 0.2, 0.1, 0.3],
+    //
+    // Corrected. The old vector contradicted this comment: B — the
+    // third of G major — was 0.1, the weakest of all twelve, while D#
+    // was 0.75 despite not being in the key at all. It reads like an
+    // index slip (D is 2, D# is 3). Detection answered "G" anyway, but
+    // only because the loudest pitch class got a 1.075 boost; scored on
+    // its merits the vector is not G major, and Pearson said so (#320).
+    //
+    // Index order: C C# D D# E F F# G G# A A# B
+    chromaVector: [0.4, 0.1, 0.75, 0.1, 0.3, 0.1, 0.35, 0.9, 0.1, 0.3, 0.1, 0.7],
     peakFrequencies: [196.00, 246.94, 293.66, 392.00],
     tonic: 'G',
     scaleType: 'major'
@@ -377,6 +386,26 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
 
   describe('Key Detection', () => {
     describe('Known Keys', () => {
+      /**
+       * The fixtures here are TRIAD chromas — cMajor is C/E/G strong with
+       * B the lowest of all twelve. A bare triad does not determine mode:
+       * major, mixolydian and lydian share the same triad, and what
+       * separates them is exactly the degrees these fixtures leave near
+       * zero. Pearson reports that ambiguity honestly.
+       *
+       * These tests used to assert the mode exactly, and passed only
+       * because of a `major *= 1.03` boost — which was itself the bug
+       * (#320): its sibling `dorian *= 1.015` was larger than the margin
+       * between minor and dorian and flipped every minor key to dorian.
+       *
+       * So they now assert what a triad actually supports — the tonic,
+       * and a mode from the right family. The exact-mode claim is tested
+       * where it belongs, against the canonical Krumhansl-Schmuckler
+       * profiles, in KeyDetectionPearson.test.ts.
+       */
+      const MAJOR_FAMILY = ['major', 'mixolydian', 'lydian'];
+      const MINOR_FAMILY = ['minor', 'dorian', 'phrygian', 'aeolian'];
+
       test('should detect C major correctly', async () => {
         mockPage = createMockPageWithAnalysis(mockAudioData.cMajor);
         await analyzer.inject(mockPage as unknown as Page);
@@ -385,8 +414,8 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
 
         expect(analysis).toBeDefined();
         expect(analysis?.key).toBe('C');
-        expect(analysis?.scale).toBe('major');
-        expect(analysis?.confidence).toBeGreaterThan(0.7);
+        expect(MAJOR_FAMILY).toContain(analysis?.scale);
+        expect(analysis?.confidence).toBeGreaterThan(0.4);
       });
 
       test('should detect A minor correctly', async () => {
@@ -397,8 +426,8 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
 
         expect(analysis).toBeDefined();
         expect(analysis?.key).toBe('A');
-        expect(analysis?.scale).toBe('minor');
-        expect(analysis?.confidence).toBeGreaterThan(0.7);
+        expect(MINOR_FAMILY).toContain(analysis?.scale);
+        expect(analysis?.confidence).toBeGreaterThan(0.4);
       });
 
       test('should detect G major correctly', async () => {
@@ -409,8 +438,8 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
 
         expect(analysis).toBeDefined();
         expect(analysis?.key).toBe('G');
-        expect(analysis?.scale).toBe('major');
-        expect(analysis?.confidence).toBeGreaterThan(0.7);
+        expect(MAJOR_FAMILY).toContain(analysis?.scale);
+        expect(analysis?.confidence).toBeGreaterThan(0.4);
       });
 
       test('should detect modal scales (D dorian)', async () => {
@@ -440,13 +469,37 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
         expect(analysis?.confidence).toBeLessThanOrEqual(1);
       });
 
+      /**
+       * Confidence changed meaning in #320 and these thresholds move
+       * with it. It used to be 0.75 x a cosine similarity, which is
+       * >= 0.9 for essentially any non-negative chroma — a flat,
+       * zero-information vector scored 0.787, so "high confidence"
+       * meant almost nothing. It is now 0.6 x Pearson correlation plus
+       * 0.4 x separation from the runner-up, so a flat chroma scores 0
+       * and the scale is compressed. What matters is the ORDERING, and
+       * that is what these now assert.
+       */
       test('should provide high confidence for clear key', async () => {
         mockPage = createMockPageWithAnalysis(mockAudioData.cMajor);
         await analyzer.inject(mockPage as unknown as Page);
 
         const analysis = await analyzer.detectKey(mockPage as unknown as Page);
 
-        expect(analysis?.confidence).toBeGreaterThan(0.8);
+        expect(analysis?.confidence).toBeGreaterThan(0.5);
+      });
+
+      test('a clear key is more confident than an ambiguous one', async () => {
+        mockPage = createMockPageWithAnalysis(mockAudioData.cMajor);
+        await analyzer.inject(mockPage as unknown as Page);
+        const clear = await analyzer.detectKey(mockPage as unknown as Page);
+
+        mockPage = createMockPageWithAnalysis(mockAudioData.ambiguous);
+        await analyzer.inject(mockPage as unknown as Page);
+        const ambiguous = await analyzer.detectKey(mockPage as unknown as Page);
+
+        // The ordering is the claim worth making; the absolute numbers
+        // are an artefact of the weighting.
+        expect(clear?.confidence).toBeGreaterThan(ambiguous?.confidence ?? 1);
       });
 
       test('should provide lower confidence for ambiguous key', async () => {
@@ -455,8 +508,6 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
 
         const analysis = await analyzer.detectKey(mockPage as unknown as Page);
 
-        // Ambiguous should have moderate confidence
-        expect(analysis?.confidence).toBeGreaterThan(0.5);
         expect(analysis?.confidence).toBeLessThan(0.85);
       });
     });

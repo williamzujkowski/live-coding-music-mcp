@@ -634,6 +634,25 @@ export class AudioAnalyzer {
       return { key: 'C', scale: 'major', confidence: 0.1 };
     }
 
+    return this.detectKeyFromChroma(chroma);
+  }
+
+
+  /**
+   * Scores a chroma vector against every key/scale profile.
+   *
+   * Extracted from `detectKey` so it can be tested at all. The scoring
+   * used to be inline in a method that needs a live Playwright page, so
+   * nothing could feed it a known chroma and check the answer — which
+   * is how it came to return "dorian" for all twelve canonical minor
+   * profiles without anyone noticing (#320).
+   *
+   * @param chroma - 12-element pitch class profile, any scale
+   * @returns Best key/scale with confidence and alternatives
+   * @example
+   * analyzer.detectKeyFromChroma(KRUMHANSL_MINOR); // C minor
+   */
+  detectKeyFromChroma(chroma: number[]): KeyAnalysis {
     // Correlate with all key/scale combinations
     const scores: Array<{ key: string; scale: string; score: number }> = [];
 
@@ -657,8 +676,17 @@ export class AudioAnalyzer {
           rotatedChroma[i] = chroma[(i + tonic) % 12];
         }
 
-        // Use cosine similarity for correlation
-        const correlation = this.cosineSimilarity(rotatedChroma, profile);
+        // Pearson, which is what Krumhansl-Schmuckler is defined with.
+        //
+        // Cosine was used instead, and `pearsonCorrelation` sat right
+        // beside it, implemented and unit-tested and never called.
+        // Cosine is not mean-centered, so all 24 scores bunch near 1:
+        // for a C-major input the full range was 0.804-1.000, a spread
+        // of 0.196, where Pearson gives -0.683-1.000. The top-1-vs-top-2
+        // gap under cosine was 0.0048 — smaller than the mode boosts
+        // below, which is how those boosts came to decide every
+        // answer (#320).
+        const correlation = this.pearsonCorrelation(rotatedChroma, profile);
 
         scores.push({
           key: this.PITCH_CLASSES[tonic],
@@ -673,44 +701,65 @@ export class AudioAnalyzer {
     chromaWithIndices.sort((a, b) => b.value - a.value);
     const topPitches = chromaWithIndices.slice(0, 3).map(x => this.PITCH_CLASSES[x.index]);
 
-    // Apply bias boosts to resolve ambiguous cases
+    // The mode boosts are gone.
+    //
+    // `dorian *= 1.015` was larger than the margin cosine left between
+    // minor and dorian (0.0078), so it flipped EVERY minor key: fed the
+    // exact canonical K-S minor profile for all 12 minor keys, detection
+    // answered "dorian" 12 out of 12 — right tonic, wrong mode, every
+    // time. A thumb on the scale heavier than the scale itself is not a
+    // tie-breaker, it is the decision (#320).
+    //
+    // The tonic boost stays, reduced and applied only to the single
+    // loudest pitch class rather than the top three (boosting all three
+    // by the same 1.075 meant it discriminated nothing between them).
+    // Pearson's spread is wide enough that a nudge this size can only
+    // break a genuine near-tie.
+    const TONIC_NUDGE = 1.02;
     for (const s of scores) {
-      // Boost keys that match one of the top 3 loudest pitches
-      // (any of these could plausibly be the tonic)
-      const pitchBoost = topPitches.indexOf(s.key);
-      if (pitchBoost >= 0) {
-        // Slightly favor 2nd pitch to handle dominant/mediant being louder than tonic
-        const boosts = [1.075, 1.075, 1.075];
-        s.score *= boosts[pitchBoost];
-      }
-      // Boost for common scales
-      if (s.scale === 'major') {
-        s.score *= 1.03;  // 3% boost for major scales (most common)
-      } else if (s.scale === 'dorian') {
-        s.score *= 1.015;  // 1.5% boost for dorian (common modal scale)
+      if (s.key === topPitches[0]) {
+        s.score *= TONIC_NUDGE;
       }
     }
 
     // Sort by score (after applying biases)
     scores.sort((a, b) => b.score - a.score);
 
-    // Calculate confidence
     const best = scores[0];
     const secondBest = scores[1];
-    // Confidence based on score strength (cosine similarity 0-1) and separation
-    // Increased separation weight to better differentiate close matches
-    const strength = best.score;
-    const separation = Math.min(1, Math.max(0, (best.score - secondBest.score) * 10));
-    const confidence = Math.min(1, strength * 0.75 + separation * 0.25);
+
+    // Confidence is about discrimination, not similarity.
+    //
+    // It used to be 0.75 * the raw cosine score, which is >= 0.9 for
+    // essentially any non-negative chroma — a flat, zero-information
+    // input returned confidence 0.787. Pearson on a flat chroma is 0
+    // (no correlation with anything), so `strength` now collapses on
+    // exactly the inputs that carry no information, and `separation`
+    // asks whether the winner actually beat the runner-up.
+    const STRENGTH_WEIGHT = 0.6;
+    const SEPARATION_WEIGHT = 0.4;
+    const strength = Math.max(0, best.score);
+    const separation = Math.min(1, Math.max(0, (best.score - secondBest.score) * 5));
+    const confidence = Math.min(
+      1,
+      Math.max(0, strength * STRENGTH_WEIGHT + separation * SEPARATION_WEIGHT),
+    );
 
     return {
       key: best.key,
       scale: best.scale as any,
       confidence,
+      // Alternatives are scored the same WAY as the headline, not just
+      // clamped to the same range. Reporting their raw correlation put
+      // them on a different scale entirely — an A-minor input answered
+      // with confidence 0.801 while listing "A dorian 0.926" beneath
+      // it, an alternative apparently more confident than the answer.
+      // A non-winner earns no separation term, by definition: it did
+      // not separate from anything (#320).
       alternatives: scores.slice(1, 4).map(s => ({
         key: s.key,
         scale: s.scale,
-        confidence: Math.max(0, s.score)
+        confidence: Math.min(1, Math.max(0, s.score) * STRENGTH_WEIGHT)
       }))
     };
   }
