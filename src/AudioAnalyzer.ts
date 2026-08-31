@@ -161,6 +161,60 @@ export class AudioAnalyzer {
          */
         sampleRate: 44100,
 
+        /**
+         * Rolling flux samples, timestamped, collected continuously.
+         *
+         * detectTempo used to sample the spectrum ONCE per call and push
+         * at most one onset, and four are needed before a BPM is
+         * reported — so the inter-onset intervals were the gaps between
+         * TOOL CALLS and the answer was a function of how often the
+         * agent polled (#322).
+         *
+         * The page records raw flux here; the ONSET DECISION stays on
+         * the server, so the adaptive detector is not duplicated into a
+         * copy that would drift.
+         */
+        fluxSamples: [] as { t: number; flux: number }[],
+        fluxTimer: null as ReturnType<typeof setInterval> | null,
+        previousMagnitudes: null as number[] | null,
+        MAX_FLUX_SAMPLES: 512,
+
+        /** Starts continuous flux sampling. Idempotent. */
+        startFluxTracking(intervalMs: number) {
+          if (this.fluxTimer !== null) return;
+          this.fluxTimer = setInterval(() => {
+            if (!this.analyser || !this.dataArray) return;
+            this.analyser.getByteFrequencyData(this.dataArray as Uint8Array);
+            const current = Array.from(this.dataArray as Uint8Array);
+            if (this.previousMagnitudes) {
+              let flux = 0;
+              for (let i = 0; i < current.length; i++) {
+                const diff = current[i] - (this.previousMagnitudes as number[])[i];
+                if (diff > 0) flux += diff;
+              }
+              this.fluxSamples.push({
+                t: Date.now(),
+                flux: flux / current.length / 255,
+              });
+              if (this.fluxSamples.length > this.MAX_FLUX_SAMPLES) this.fluxSamples.shift();
+            }
+            this.previousMagnitudes = current;
+          }, intervalMs);
+        },
+
+        stopFluxTracking() {
+          if (this.fluxTimer !== null) {
+            clearInterval(this.fluxTimer);
+            this.fluxTimer = null;
+          }
+        },
+
+        takeFluxSamples() {
+          const samples = this.fluxSamples;
+          this.fluxSamples = [];
+          return samples;
+        },
+
         connect() {
           const originalGainConnect = GainNode.prototype.connect as any;
           let intercepted = false;
@@ -182,6 +236,9 @@ export class AudioAnalyzer {
               const result = originalGainConnect.apply(this, args);
               originalGainConnect.call(this, (window as any).strudelAudioAnalyzer.analyser);
               (window as any).strudelAudioAnalyzer.isConnected = true;
+              // Sample every 20ms — fine enough to resolve 16ths at
+              // 200 BPM (75ms apart) without flooding the buffer.
+              (window as any).strudelAudioAnalyzer.startFluxTracking(20);
 
               return result;
             }
@@ -377,6 +434,29 @@ export class AudioAnalyzer {
    * @example
    * // A steady 0.05 background with a 0.2 spike: only the spike fires.
    */
+  /**
+   * Turns a timestamped flux series into onset timestamps.
+   *
+   * The page samples flux continuously; this applies the same adaptive
+   * decision to the whole series at once. Keeping the decision here
+   * rather than in the injected script means the detector is not
+   * duplicated into a browser copy that would drift from this one — the
+   * failure mode #341 found in the style resource (#322).
+   *
+   * @param samples - Timestamped flux values, oldest first
+   * @returns Timestamps at which an onset was detected
+   * @example
+   * analyzer.onsetsFromFlux([{ t: 0, flux: 0.01 }, { t: 20, flux: 0.4 }]);
+   */
+  onsetsFromFlux(samples: { t: number; flux: number }[]): number[] {
+    this.resetOnsetDetection();
+    const onsets: number[] = [];
+    for (const sample of samples) {
+      if (this.isOnset(sample.flux)) onsets.push(sample.t);
+    }
+    return onsets;
+  }
+
   isOnset(flux: number): boolean {
     const history = this._fluxHistory;
     history.push(flux);
@@ -625,7 +705,24 @@ export class AudioAnalyzer {
         onsets = [...this._onsetHistory];
       }
     } else {
-      // No analyze function, use real-time detection
+      // Prefer the page's continuous buffer.
+      //
+      // Sampling once per call gave at most one onset per tool call, so
+      // the intervals measured were the gaps between CALLS. The page
+      // samples every 20ms; this reads what it collected and applies the
+      // onset decision to the whole series (#322).
+      const buffered = await this.takeBufferedFlux(page);
+      if (buffered.length >= 8) {
+        const detected = this.onsetsFromFlux(buffered);
+        this._onsetHistory.push(...detected);
+        while (this._onsetHistory.length > this.MAX_HISTORY_LENGTH) {
+          this._onsetHistory.shift();
+        }
+        return this.tempoFromOnsets([...this._onsetHistory]);
+      }
+
+      // Fall back to the single-sample path when the page has no buffer
+      // — an older injected script, or a capture that just started.
       if (!analyzer.dataArray) {
         throw new Error('Invalid audio data');
       }
@@ -642,6 +739,76 @@ export class AudioAnalyzer {
       onsets = [...this._onsetHistory];
     }
 
+    return this.tempoFromOnsets(onsets);
+  }
+
+  /**
+   * Halves or doubles a tempo until it lands in the musical range.
+   *
+   * Out-of-range readings used to be discarded outright, which threw
+   * away recoverable answers: 174 BPM drum & bass with onsets on 8ths
+   * reads as 348 and returned bpm 0, on 16ths as 696 and returned 0,
+   * and a 70 BPM tune whose onsets land on half notes reads as 35 and
+   * returned 0. Onset detection lands on whatever subdivision is
+   * loudest, so this is the common case, not the edge case (#322).
+   *
+   * @param bpm - Raw tempo from the median inter-onset interval
+   * @returns A tempo within [40, 200], or null if it cannot be folded there
+   * @example
+   * AudioAnalyzer.foldIntoTempoRange(348); // 174
+   * AudioAnalyzer.foldIntoTempoRange(35);  // 70
+   */
+  static foldIntoTempoRange(bpm: number): number | null {
+    if (!Number.isFinite(bpm) || bpm <= 0) return null;
+
+    const MIN = 40;
+    const MAX = 200;
+    let folded = bpm;
+
+    // Three octaves each way. That covers every real case — onsets on
+    // 8ths is one octave, on 16ths is two — while refusing to invent a
+    // tempo from noise: 5000 BPM means onsets 12ms apart, and folding
+    // that five times to a plausible-looking 156 would be a fabrication,
+    // not a measurement.
+    const MAX_OCTAVES = 3;
+    for (let i = 0; i < MAX_OCTAVES && folded > MAX; i++) folded /= 2;
+    for (let i = 0; i < MAX_OCTAVES && folded < MIN; i++) folded *= 2;
+
+    return folded >= MIN && folded <= MAX ? folded : null;
+  }
+
+  // ============================================================================
+  // KEY DETECTION
+  // ============================================================================
+
+
+  /**
+   * Reads and clears the page's continuous flux buffer.
+   *
+   * @param page - Playwright page with the analyser injected
+   * @returns Timestamped flux samples, oldest first
+   */
+  private async takeBufferedFlux(page: Page): Promise<{ t: number; flux: number }[]> {
+    try {
+      const samples = await page.evaluate(/* istanbul ignore next */ () => {
+        const a = (window as any).strudelAudioAnalyzer;
+        return typeof a?.takeFluxSamples === 'function' ? a.takeFluxSamples() : [];
+      });
+      return Array.isArray(samples) ? samples : [];
+    } catch {
+      // An older injected script, or a page that went away mid-call.
+      // The caller falls back to single-sample detection.
+      return [];
+    }
+  }
+
+  /**
+   * Derives a tempo from onset timestamps.
+   *
+   * @param onsets - Onset times in milliseconds, oldest first
+   * @returns Tempo analysis, or bpm 0 when there is not enough to go on
+   */
+  tempoFromOnsets(onsets: number[]): TempoAnalysis {
     // Need at least 4 onsets for reliable tempo detection
     if (onsets.length < 4) {
       return { bpm: 0, confidence: 0, method: 'onset' };
@@ -695,45 +862,6 @@ export class AudioAnalyzer {
       method: 'onset'
     };
   }
-
-  /**
-   * Halves or doubles a tempo until it lands in the musical range.
-   *
-   * Out-of-range readings used to be discarded outright, which threw
-   * away recoverable answers: 174 BPM drum & bass with onsets on 8ths
-   * reads as 348 and returned bpm 0, on 16ths as 696 and returned 0,
-   * and a 70 BPM tune whose onsets land on half notes reads as 35 and
-   * returned 0. Onset detection lands on whatever subdivision is
-   * loudest, so this is the common case, not the edge case (#322).
-   *
-   * @param bpm - Raw tempo from the median inter-onset interval
-   * @returns A tempo within [40, 200], or null if it cannot be folded there
-   * @example
-   * AudioAnalyzer.foldIntoTempoRange(348); // 174
-   * AudioAnalyzer.foldIntoTempoRange(35);  // 70
-   */
-  static foldIntoTempoRange(bpm: number): number | null {
-    if (!Number.isFinite(bpm) || bpm <= 0) return null;
-
-    const MIN = 40;
-    const MAX = 200;
-    let folded = bpm;
-
-    // Three octaves each way. That covers every real case — onsets on
-    // 8ths is one octave, on 16ths is two — while refusing to invent a
-    // tempo from noise: 5000 BPM means onsets 12ms apart, and folding
-    // that five times to a plausible-looking 156 would be a fabrication,
-    // not a measurement.
-    const MAX_OCTAVES = 3;
-    for (let i = 0; i < MAX_OCTAVES && folded > MAX; i++) folded /= 2;
-    for (let i = 0; i < MAX_OCTAVES && folded < MIN; i++) folded *= 2;
-
-    return folded >= MIN && folded <= MAX ? folded : null;
-  }
-
-  // ============================================================================
-  // KEY DETECTION
-  // ============================================================================
 
   /**
    * Detect musical key using Krumhansl-Schmuckler algorithm
