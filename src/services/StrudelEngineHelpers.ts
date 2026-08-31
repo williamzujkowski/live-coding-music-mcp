@@ -144,7 +144,20 @@ export function checkCommonIssues(
  * "set to default".
  */
 export function extractBpm(code: string): number | undefined {
-  const match = code.match(/setcpm\s*\(\s*(\d+(?:\.\d+)?)\s*\)/);
+  // `setcpm(130/4)` is the canonical way to write "130 BPM in 4/4", and
+  // two of the shipped longform examples use exactly that form. The old
+  // regex required a bare literal, so both reported no BPM at all.
+  // Case-insensitive too: setCpm(120) returned undefined (#341).
+  const divided = code.match(/setcpm\s*\(\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*\)/i);
+  if (divided) {
+    const numerator = Number.parseFloat(divided[1]);
+    const denominator = Number.parseFloat(divided[2]);
+    // The numerator is the BPM the author meant; the divisor is the
+    // beats-per-cycle conversion.
+    if (Number.isFinite(numerator) && denominator > 0) return numerator;
+  }
+
+  const match = code.match(/setcpm\s*\(\s*(\d+(?:\.\d+)?)\s*\)/i);
   return match ? parseFloat(match[1]) : undefined;
 }
 
@@ -172,6 +185,21 @@ export function extractFunctionsUsed(code: string): string[] {
  * with truly dense patterns reaching 1.0. Changing them shifts every
  * downstream "complexity" report — bump cautiously.
  */
+/**
+ * Code length at which the length term reaches its maximum.
+ *
+ * The term was `codeLength / 500` UNCAPPED while the other four factors
+ * were all `Math.min(..., 1)`. Any pattern past ~1700 characters
+ * therefore pinned the whole score to 1.0 regardless of what was in it,
+ * and the shipped corpus spans 388 to 7216 characters — an 18x range
+ * that scored identically. The docstring promised "typical patterns
+ * around 0.3-0.7 with truly dense patterns reaching 1.0" (#341).
+ *
+ * 2000 puts the shipped examples across a usable spread rather than
+ * bunched at either end.
+ */
+const LENGTH_SATURATION = 2000;
+
 export function calculateComplexity(
   input: ComplexityInput,
   eventCount?: number,
@@ -179,7 +207,7 @@ export function calculateComplexity(
   if (eventCount === undefined) {
     return Math.min(
       (input.functionsUsed.length / 10) * 0.5 +
-      (input.codeLength / 500) * 0.3 +
+      Math.min(input.codeLength / LENGTH_SATURATION, 1) * 0.3 +
       (input.isStack ? 0.2 : 0),
       1,
     );
@@ -190,7 +218,7 @@ export function calculateComplexity(
     Math.min(input.uniqueValues.length / 8, 1) * 0.2,
     Math.min(input.functionsUsed.length / 10, 1) * 0.3,
     input.isStack ? 0.1 : 0,
-    (input.codeLength / 500) * 0.1,
+    Math.min(input.codeLength / LENGTH_SATURATION, 1) * 0.1,
   ];
   return Math.min(factors.reduce((a, b) => a + b, 0), 1);
 }

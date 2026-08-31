@@ -293,9 +293,14 @@ describe('calculateComplexity', () => {
     expect(result).toBeCloseTo(0.1, 5);
   });
 
-  it('weights code length at up to ~0.1 for 500-char patterns', () => {
-    const result = calculateComplexity({ ...minimal, codeLength: 500 }, 0);
-    expect(result).toBeCloseTo(0.1, 5);
+  it('weights code length, saturating at LENGTH_SATURATION characters', () => {
+    // The denominator was 500 and UNCAPPED, so anything past ~1700
+    // characters pinned the whole score to 1.0 — and the shipped corpus
+    // runs to 7216. Now /2000 and capped (#341).
+    expect(calculateComplexity({ ...minimal, codeLength: 500 }, 0)).toBeCloseTo(0.025, 5);
+    expect(calculateComplexity({ ...minimal, codeLength: 2000 }, 0)).toBeCloseTo(0.1, 5);
+    // Past saturation it stops growing rather than running away.
+    expect(calculateComplexity({ ...minimal, codeLength: 8000 }, 0)).toBeCloseTo(0.1, 5);
   });
 
   it('uses the simpler estimate when eventCount is undefined', () => {
@@ -305,8 +310,12 @@ describe('calculateComplexity', () => {
       isStack: true,
       codeLength: 500,
     });
-    // 0.5 (functions) + 0.3 (length) + 0.2 (stack) = 1.0
-    expect(result).toBeCloseTo(1.0, 5);
+    // 0.5 (functions) + 0.075 (length: 500/2000 * 0.3) + 0.2 (stack).
+    //
+    // This used to read "0.5 + 0.3 + 0.2 = 1.0" — a 500-character
+    // pattern with ten functions and a stack scoring maximum complexity,
+    // which is the saturation problem in miniature (#341).
+    expect(result).toBeCloseTo(0.775, 5);
   });
 
   it('fallback path ignores uniqueValues entirely', () => {

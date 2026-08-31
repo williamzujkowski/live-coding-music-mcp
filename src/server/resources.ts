@@ -33,6 +33,7 @@ import { sessionModule } from './tools/session.js';
 import { captureModule } from './tools/capture.js';
 import { aiModule } from './tools/ai.js';
 import { composeModule } from './tools/compose.js';
+import { TEMPO_BY_STYLE } from '../services/StyleRegistry.js';
 
 export interface ResourceContext {
   store: PatternStore;
@@ -84,23 +85,16 @@ export function isResourceUri(uri: string): boolean {
  * compose.ts:TEMPO_BY_STYLE — both grow together when a new genre
  * lands. Future cleanup (#120 aftermath): single source of truth.
  */
-const STYLE_DEFAULTS: Record<string, number> = {
-  techno: 130,
-  house: 125,
-  dnb: 174,
-  ambient: 80,
-  trap: 140,
-  jungle: 160,
-  jazz: 110,
-  experimental: 120,
-  dubstep: 140,
-  trance: 138,
-  breakbeat: 130,
-  garage: 130,
-  electro: 128,
-  downtempo: 90,
-  idm: 115,
-};
+// The style list is no longer duplicated here.
+//
+// This was a hand-maintained copy, and it had drifted: it omitted
+// intelligent_dnb, trip_hop and boom_bap — the only three genres with
+// BOTH dedicated drums and a dedicated bassline — plus acid, dub and
+// funk. An agent using this resource to discover what the generator
+// accepts would never find trip_hop. The comment above it claimed it
+// was "kept in sync with compose.ts:TEMPO_BY_STYLE", but that table
+// moved to StyleRegistry and nothing guarded the copy (#341).
+const STYLE_DEFAULTS: Record<string, number> = TEMPO_BY_STYLE;
 
 const TOOL_MODULES = [
   editorModule,
