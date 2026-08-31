@@ -46,12 +46,19 @@
  *
  * ## Residual
  *
- * Sampling cannot be sound against arbitrary non-uniform density. A
- * pattern dense only inside a gap between every probe window, at every
- * ladder step, reaches the sparse path and can still exhaust the heap.
- * Since #307 that is a contained failure — an error envelope and a
- * respawned child — rather than a dead server. Stated rather than
- * implied away.
+ * Sampling cannot be sound against arbitrary non-uniform density. Three
+ * shapes get past this, all of them contained since #307 as an error
+ * envelope and a respawned child rather than a dead server:
+ *
+ *   - density confined to a gap between every window, at every rung;
+ *   - a burst so dense that growing a window into it from an adjacent
+ *     rest is itself fatal, since growth is what discovers it;
+ *   - clustered events sitting exactly on a slice boundary, which the
+ *     phase offset deliberately steps away from.
+ *
+ * The last is the price of decorrelating from the cycle, and it is worth
+ * paying: without the offset, EVERY window on a multi-cycle range shares
+ * one phase, and a leading rest hides a pattern from all of them.
  */
 
 /** A hap, reduced to the only field this needs. */
@@ -84,6 +91,8 @@ export type ProbeVerdict =
        * silent pattern unless you already know events were in there.
        */
       observedOnsets: number;
+      /** How many separate windows saw anything. */
+      windowsWithOnsets: number;
     };
 
 export interface DensityProbeOptions {
@@ -208,10 +217,27 @@ export function probeEventDensity(
 
   let queries = 0;
   let observedOnsets = 0;
-  /** Onsets and window width accumulated across every offset's chosen sample. */
+  /** Onsets and window width accumulated across every BELIEVABLE sample. */
   let sampledOnsets = 0;
   let sampledSpan = 0;
-  if (span <= 0 || offsets < 1) return { kind: 'proceed', queries, observedOnsets };
+  /**
+   * Every onset seen in a decision sample, believable or not.
+   *
+   * Windows are disjoint, so this is a LOWER BOUND on the events inside
+   * the requested range — evidence rather than arithmetic. It is the only
+   * thing that catches clustered events: eight chords of ten thousand
+   * layers hold 80,000 events and describe no density at all, so the
+   * distinctness gate rejects every sample and the projection has nothing
+   * to work with. Counting still works. (Found by cross-model review
+   * after my first attempt refused to accumulate unbelievable samples and
+   * let exactly this through.)
+   */
+  let countedFloor = 0;
+  /** How many windows contributed anything. Used to sanity-check an empty result. */
+  let windowsWithOnsets = 0;
+  if (span <= 0 || offsets < 1) {
+    return { kind: 'proceed', queries, observedOnsets, windowsWithOnsets: 0 };
+  }
 
   const step = span / offsets;
 
@@ -287,13 +313,25 @@ export function probeEventDensity(
           kind: 'refuse',
           projected,
           sampleCount: onsets.length,
-          spanFraction: fraction,
+          // The width actually queried, which is not the rung once
+          // MAX_PROBE_CYCLES clamps it.
+          spanFraction: probeSpan / span,
         };
       }
 
       // A sample big enough to trust — or the biggest this offset will
       // ever produce. Either way, record it and move to the next offset.
       if (onsets.length >= sampleTarget || !canGrow) {
+        countedFloor += onsets.length;
+        if (onsets.length > 0) windowsWithOnsets++;
+        if (countedFloor > cap) {
+          return {
+            kind: 'refuse',
+            projected: countedFloor,
+            sampleCount: countedFloor,
+            spanFraction: probeSpan / span,
+          };
+        }
         if (believable || !canGrow) {
           sampledOnsets += onsets.length;
           sampledSpan += probeSpan;
@@ -323,5 +361,5 @@ export function probeEventDensity(
     }
   }
 
-  return { kind: 'proceed', queries, observedOnsets };
+  return { kind: 'proceed', queries, observedOnsets, windowsWithOnsets };
 }

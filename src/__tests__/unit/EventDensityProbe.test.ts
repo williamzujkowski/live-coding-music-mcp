@@ -120,13 +120,42 @@ describe('probeEventDensity (#360)', () => {
     expect(probeEventDensity(counted, 0, 1, { maxEvents: CAP }).kind).toBe('proceed');
     // It had to look at a window big enough to hold a real sample.
     expect(Math.max(...calls)).toBeGreaterThanOrEqual(1e-2);
-    // And the growth must be driven by the sample being too SMALL, not
-    // merely by it being empty — a density that already yields onsets at
-    // the middle rung still has to grow. Without this the test passed
-    // with the sample-target logic reverted (found by cross-model
-    // review).
-    const midRungSample = calls.filter(width => Math.abs(width - 1e-6) < 1e-10);
-    expect(midRungSample.length).toBeGreaterThan(0);
+  });
+
+  it('grows past a NON-EMPTY sample that is still too small to trust', () => {
+    // The stronger version of the test above, which cross-model review
+    // pointed out was weaker than it read: at 40,000 events per cycle the
+    // middle rungs are simply EMPTY, so that test only shows the probe
+    // walking past nothing. Here the 1e-4 window holds 12 onsets — real,
+    // and still too few to extrapolate from — so growth has to be driven
+    // by the sample being small rather than absent.
+    const widths: number[] = [];
+    const counted = (begin: number, end: number): ProbeHap[] => {
+      widths.push(end - begin);
+      return evenlySpaced(120_000)(begin, end);
+    };
+    const verdict = probeEventDensity(counted, 0, 1, { maxEvents: CAP });
+    expect(verdict.kind).toBe('refuse');
+    // The 1e-4 rung was sampled and was not empty, and it grew anyway.
+    expect(widths.some(w => Math.abs(w - 1e-4) < 1e-9)).toBe(true);
+    expect(evenlySpaced(120_000)(0, 1e-4).length).toBeGreaterThan(0);
+    expect(Math.max(...widths)).toBeGreaterThanOrEqual(1e-2);
+  });
+
+  it('refuses clustered events by counting them, with no density to project', () => {
+    // Eight chords of ten thousand layers hold 80,000 events and describe
+    // no density at all — every sample fails the distinctness gate, so
+    // the projection has nothing to work with. Counting still works, and
+    // without it this returned `proceed` and materialized the lot.
+    // Every window sees ten thousand onsets at ONE instant: a large
+    // count with no spread, which is exactly the shape the distinctness
+    // gate refuses to extrapolate from.
+    const chordPerSlice: (b: number, e: number) => ProbeHap[] = (begin) =>
+      Array.from({ length: 10_000 }, () => ({ whole: { begin: { valueOf: () => begin } } }));
+    const verdict = probeEventDensity(chordPerSlice, 0, 1, { maxEvents: CAP });
+    expect(verdict.kind).toBe('refuse');
+    if (verdict.kind !== 'refuse') return;
+    expect(verdict.projected).toBeGreaterThan(CAP);
   });
 
   it('spends few queries and stops as soon as it has an answer', () => {

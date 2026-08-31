@@ -441,7 +441,7 @@ export class StrudelEngine {
       // or a span-conditional transform) could show a stray onset in a
       // probe and legitimately none over the whole range. Requiring a
       // real sample keeps that from being reported as a crash.
-      if (verdict.observedOnsets >= 32 && haps.length === 0) {
+      if (verdict.observedOnsets >= 32 && verdict.windowsWithOnsets >= 2 && haps.length === 0) {
         throw new Error(
           'The pattern produced no events, but sampling it found some — the query ' +
           'failed inside Strudel rather than returning an empty result. A very large ' +
