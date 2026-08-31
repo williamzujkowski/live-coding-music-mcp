@@ -58,6 +58,40 @@ const BANNED_PROPERTIES = new Set([
 ]);
 
 /**
+ * Names a binding may not introduce, however it is declared.
+ *
+ * `collectDeclaredNames` is scope-blind on purpose — it builds one
+ * whole-file set, so a name declared anywhere makes bare references to
+ * it legal everywhere. That is fine for `const kick = ...`, and it was
+ * a hole for anything the sandbox deliberately withholds:
+ *
+ *     function bypass(Reflect) {}   // never called
+ *     Reflect.get(...)              // now a legal identifier
+ *
+ * Measured: with that dead parameter present, bare `Reflect`, `Object`,
+ * `globalThis`, `Function` and `eval` all became referenceable, and each
+ * resolves at runtime to the vm context's real intrinsic — not to the
+ * unused parameter. `SAFE_GLOBALS` omits `Object` and `Reflect`
+ * deliberately; a parameter name was undoing that decision.
+ *
+ * The same rule `BANNED_PROPERTIES` already gets: a binding named after
+ * something withheld does not make it available. Proper lexical scoping
+ * would be the general fix; this closes the measured hole without
+ * rewriting the checker into a scope analyser.
+ *
+ * No demonstrated escape came out of it — `Function` and `eval` inside
+ * the context are dead under `codeGeneration: { strings: false }`, and
+ * `process` and `require` are absent — but this is the layer whose job
+ * is to stop the attempt, and failing to build a chain is not proof
+ * that none exists.
+ */
+const BANNED_BINDINGS = new Set([
+  'Object', 'Reflect', 'Proxy', 'Function', 'eval',
+  'globalThis', 'global', 'process', 'require', 'module', 'exports',
+  'import', 'WeakRef', 'FinalizationRegistry', 'Symbol', 'Promise',
+]);
+
+/**
  * Globals a pattern may legitimately reference beyond the Strudel context.
  *
  * Deliberately excludes `Object` and `Reflect` — both walk prototype
@@ -142,9 +176,12 @@ function collectDeclaredNames(ast: any): Set<string> {
     if (!node || typeof node.type !== 'string') return;
     switch (node.type) {
       case 'Identifier':
-        // A binding named after a banned property would otherwise make
-        // later bare references to it legal.
-        if (!BANNED_PROPERTIES.has(node.name)) declared.add(node.name);
+        // A binding named after a banned property — or after a global
+        // the sandbox withholds — would otherwise make later bare
+        // references to it legal anywhere in the file.
+        if (!BANNED_PROPERTIES.has(node.name) && !BANNED_BINDINGS.has(node.name)) {
+          declared.add(node.name);
+        }
         break;
       case 'ObjectPattern':
         for (const prop of node.properties ?? []) {

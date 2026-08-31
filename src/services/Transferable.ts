@@ -85,6 +85,20 @@ export function toTransferable(value: unknown, depth = 0, budget = { nodes: 0 })
     // over. Descriptors for the same reason as below.
     const out: unknown[] = [];
     for (let i = 0; i < value.length; i++) {
+      // Charged before the descriptor is even looked at. A hole and a
+      // getter both used to `continue` without recursing, and the node
+      // budget is only charged inside `toTransferable` — so a sparse
+      // array cost nothing against it. `const a = []; a.length = 5e7`
+      // is cheap to build and walked all 50 million holes, pushing a
+      // null for each, past a 2-million-node bound whose whole purpose
+      // is to refuse exactly that (#408).
+      if (++budget.nodes > MAX_TRANSFER_NODES) {
+        throw new TransferError(
+          `Result exceeds the ${String(MAX_TRANSFER_NODES)}-value transfer limit. ` +
+            'Narrow the query or simplify the pattern.'
+        );
+      }
+
       const descriptor = Object.getOwnPropertyDescriptor(value, i);
       if (descriptor === undefined) {
         out.push(null);

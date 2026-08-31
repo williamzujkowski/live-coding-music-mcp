@@ -98,3 +98,51 @@ describe('toTransferable', () => {
     expect(() => toTransferable(huge)).toThrow(TransferError);
   });
 });
+
+/**
+ * A sparse array must be charged against the node budget (#408).
+ *
+ * The array branch skipped holes and getters with `out.push(null);
+ * continue;`, and the budget is only charged inside `toTransferable` —
+ * so neither cost anything. `const a = []; a.length = 5e7` is cheap to
+ * build in V8's sparse representation and walked all fifty million
+ * holes, pushing a null for each, straight past a two-million-node
+ * bound that exists to refuse exactly that shape.
+ *
+ * The child's heap cap and the parent's deadline still caught it
+ * eventually, so this was never a containment breach — it defeated the
+ * fast, precise refusal this module is for.
+ */
+describe('the node budget covers holes and getters (#408)', () => {
+  it('refuses a huge sparse array instead of walking it', () => {
+    const sparse: unknown[] = [];
+    sparse.length = 5_000_000;
+
+    const started = Date.now();
+    expect(() => toTransferable(sparse)).toThrow(/transfer limit/);
+    // Refused on budget, not after materialising five million nulls.
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('refuses an array of getters on the same grounds', () => {
+    const withGetters: unknown[] = [];
+    for (let i = 0; i < 10; i++) {
+      Object.defineProperty(withGetters, i, {
+        get: () => { throw new Error('a getter must never be invoked'); },
+        enumerable: true,
+        configurable: true,
+      });
+    }
+    withGetters.length = 5_000_000;
+
+    expect(() => toTransferable(withGetters)).toThrow(/transfer limit/);
+  });
+
+  it('still carries an ordinary array through', () => {
+    expect(toTransferable([1, 'two', { three: 3 }])).toEqual([1, 'two', { three: 3 }]);
+    // A small sparse array is legal and becomes nulls, as before.
+    const small: unknown[] = [1];
+    small.length = 3;
+    expect(toTransferable(small)).toEqual([1, null, null]);
+  });
+});
