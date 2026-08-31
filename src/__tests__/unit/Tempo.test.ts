@@ -132,3 +132,61 @@ describe('MIDI import declares the tempo of the file it read (#397)', () => {
     expect(steps.filter(s => s !== '~')).toHaveLength(BEATS_PER_BAR);
   });
 });
+
+describe('export_midi carries the pattern tempo through (#399)', () => {
+  const { MIDIExportService } = require('../../services/MIDIExportService') as
+    typeof import('../../services/MIDIExportService');
+  const { MIDIImportService } = require('../../services/MIDIImportService') as
+    typeof import('../../services/MIDIImportService');
+  const { execute } = require('../../server/tools/capture') as
+    typeof import('../../server/tools/capture');
+
+  function ctxWith(pattern: string) {
+    return {
+      midiExportService: new MIDIExportService(),
+      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+      isInitialized: () => true,
+      getCurrentPatternSafe: async () => pattern,
+    } as unknown as import('../../server/tools/types').ToolContext;
+  }
+
+  it('the handler defaults to the tempo the pattern declares', async () => {
+    // The default was a flat 120. Driven through the handler, because
+    // the default lives there and a service-level test would pass it a
+    // bpm and never exercise the line that was wrong.
+    const r = (await execute(
+      'export_midi', { format: 'base64' }, ctxWith('setcpm(174/4)\ns("bd*4")'),
+    )) as { success: boolean; bpm: number };
+    expect(r.success).toBe(true);
+    expect(r.bpm).toBe(174);
+  });
+
+  it('an explicit bpm still wins', async () => {
+    const r = (await execute(
+      'export_midi', { format: 'base64', bpm: 90 }, ctxWith('setcpm(174/4)\ns("bd*4")'),
+    )) as { success: boolean; bpm: number };
+    expect(r.bpm).toBe(90);
+  });
+
+  it('falls back to 120 when the pattern declares no tempo', async () => {
+    const r = (await execute(
+      'export_midi', { format: 'base64' }, ctxWith('s("bd*4")'),
+    )) as { success: boolean; bpm: number };
+    expect(r.bpm).toBe(120);
+  });
+
+  it('survives an export/import round trip', () => {
+    // `export_midi` defaulted to a flat 120, so this round trip used to
+    // return 120 whatever went in. Asserted end to end because the bug
+    // was between two services that each looked right alone.
+    const pattern = 'setcpm(174/4)\nstack(\n  s("bd*4")\n)';
+    const bpm = declaredBpm(pattern);
+    expect(bpm).toBe(174);
+
+    const exported = new MIDIExportService().exportToBase64(pattern, { bpm, bars: 4 });
+    expect(exported.success).toBe(true);
+    const back = new MIDIImportService().convertBuffer(Buffer.from(exported.output!, 'base64'));
+    expect(back.summary.bpm).toBe(174);
+    expect(playedBpm(back.pattern)).toBeCloseTo(174, 6);
+  });
+});

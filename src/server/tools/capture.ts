@@ -16,6 +16,8 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { categorizeError, err } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
+import { declaredBpm } from '../../utils/Tempo.js';
+
 
 // AudioCaptureService lifecycle lives on the server; we fetch a shared
 // instance via ctx.getAudioCaptureService() so tests can mock the class
@@ -90,7 +92,7 @@ export const tools: Tool[] = [
       properties: {
         filename: { type: 'string', description: 'Output filename (optional, default: pattern.mid)' },
         duration: { type: 'number', description: 'Export duration in bars (default: 4)' },
-        bpm: { type: 'number', description: 'Tempo in BPM (default: 120)' },
+        bpm: { type: 'number', description: "Tempo in BPM (default: the pattern's own tempo, or 120 if it declares none)" },
         format: { type: 'string', enum: ['file', 'base64'], description: 'Output format: file or base64 (default: base64)' },
         ...SESSION_ID_PROP,
       },
@@ -250,7 +252,11 @@ async function exportMidi(
     return err('business', 'No pattern to export. Write a pattern first.');
   }
 
-  const exportOptions = { bpm: bpm || 120, bars: bars || 4 };
+  // The pattern's own tempo, unless the caller asked for a different
+  // one. This used to be a flat `bpm || 120`, so exporting a 174 BPM
+  // pattern wrote a 120 BPM file and a round trip silently rewrote the
+  // tempo — the same guarantee #336 protects for the bar (#399).
+  const exportOptions = { bpm: bpm ?? declaredBpm(pattern) ?? 120, bars: bars ?? 4 };
   const outputFormat = format || 'base64';
 
   if (outputFormat === 'file') {
