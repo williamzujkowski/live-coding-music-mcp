@@ -108,7 +108,12 @@ describe('findBrowserOnlyCall', () => {
 
 describe('the registry itself', () => {
   it('covers every function verified to fail locally', () => {
-    for (const name of ['setcpm', 'setCps', 'hush', 'samples', 'pianoroll', 'scope', 'initHydra', 'midi', 'osc']) {
+    // 'setCps' was in this list, and in the registry, and in neither
+    // Strudel nor reality — the map entry was mis-cased, so the test
+    // was written from the map rather than from Strudel and passed
+    // while `setcps(...)` produced the exact typo message the registry
+    // exists to prevent (#355).
+    for (const name of ['setcpm', 'setcps', 'hush', 'samples', 'pianoroll', 'scope', 'initHydra', 'midi', 'osc', 'useRNG', 'piano']) {
       expect(BROWSER_ONLY_FUNCTIONS.has(name)).toBe(true);
     }
   });
