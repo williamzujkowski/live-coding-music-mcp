@@ -56,7 +56,7 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 - **Result envelope** on every `tools/call`: clients branch on `{ ok, errorCategory, isRetryable }` instead of parsing free-text.
 
 ### Testing & CI status
-- **1903 passing tests** across unit, integration, and example-validation suites; 51 skipped under `npm test` (browser and other Playwright-gated cases). Note `npx jest` without `--coverage` reports a different skip count — see [#246](https://github.com/williamzujkowski/live-coding-music-mcp/issues/246).
+- **1903 passing tests** across unit, integration, and example-validation suites; 51 skipped under `npm test` (browser and other Playwright-gated cases).
 - **86.89% statement coverage / 77.3% branch coverage** (90.56% functions, 87.47% lines).
 - **Lint blocking in CI**: 0 errors, 190 warnings (mostly `any` in test mocks).
 - **OIDC trusted publishing** to npm with SLSA build provenance attestation on every release.
@@ -642,7 +642,7 @@ Unknown top-level keys are logged as warnings at startup rather than silently ig
 
 ## Architecture
 
-The server is a thin MCP dispatcher (`src/server/server.ts`, ~520 lines) over twelve per-domain tool modules (`src/server/tools/*.ts`), eight services (MusicTheory, PatternGenerator, SessionManager, AudioCaptureService, GeminiService, MIDIExportService, MIDIImportService, StrudelEngine), two controllers (StrudelController for Playwright, AudioAnalyzer for Web Audio API), and a JSON-on-disk PatternStore. Browser automation drives the editor on strudel.cc through `window.strudelMirror.editor.dispatch(...)` rather than keyboard simulation — about 80% faster.
+The server is a thin MCP dispatcher (`src/server/server.ts`, ~520 lines) over twelve per-domain tool modules (`src/server/tools/*.ts`), ten services (MusicTheory, PatternGenerator, SessionManager, AudioCaptureService, AudioExportService, GeminiService, MIDIExportService, MIDIImportService, StrudelEngine, PatternSandbox) plus a provider-agnostic AI transport layer (`src/services/ai/`), two controllers (StrudelController for Playwright, AudioAnalyzer for Web Audio API), and a JSON-on-disk PatternStore. Browser automation drives the editor on strudel.cc through `window.strudelMirror.editor.dispatch(...)` rather than keyboard simulation — about 80% faster.
 
 For the full breakdown — component diagram, per-component responsibilities, directory layout, data flow, and optimization strategies — see **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
