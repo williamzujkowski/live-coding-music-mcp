@@ -14,6 +14,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
+import { categorizeError, err } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 
 // AudioCaptureService lifecycle lives on the server; we fetch a shared
@@ -136,7 +137,7 @@ async function startAudioCapture(
   try {
     const service = await ctx.getAudioCaptureService(sid);
     if (service.isCapturing()) {
-      return { success: false, message: 'Audio capture already in progress. Stop it first.' };
+      return err('business', 'Audio capture already in progress. Stop it first.');
     }
     await service.startCapture(ctx.getController(sid).page!, { format });
     return {
@@ -146,7 +147,7 @@ async function startAudioCapture(
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { success: false, message: `Failed to start audio capture: ${message}` };
+    return err(categorizeError(error), `Failed to start audio capture: ${message}`);
   }
 }
 
@@ -154,7 +155,7 @@ async function stopAudioCapture(ctx: ToolContext, sid?: string): Promise<unknown
   try {
     const service = await ctx.getAudioCaptureService(sid);
     if (!service.isCapturing()) {
-      return { success: false, message: 'No audio capture in progress. Start capture first.' };
+      return err('business', 'No audio capture in progress. Start capture first.');
     }
     const result = await service.stopCapture(ctx.getController(sid).page!);
     const buf = await result.blob.arrayBuffer();
@@ -167,20 +168,24 @@ async function stopAudioCapture(ctx: ToolContext, sid?: string): Promise<unknown
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { success: false, message: `Failed to stop audio capture: ${message}` };
+    return err(categorizeError(error), `Failed to stop audio capture: ${message}`);
   }
 }
 
 async function captureAudioSample(duration: number | undefined, ctx: ToolContext, sid?: string): Promise<unknown> {
   const durationMs = duration || 5000;
   if (durationMs < 100 || durationMs > 60000) {
-    return { success: false, message: 'Duration must be between 100ms and 60000ms (1 minute)' };
+    // Validation, not business: the caller passed a number outside the
+    // allowed range, and no amount of setup changes that. My codemod
+    // guessed `business` from the absence of a nearby catch, which is
+    // the same guessing-by-shape this work exists to remove.
+    return err('validation', 'Duration must be between 100ms and 60000ms (1 minute)');
   }
 
   try {
     const service = await ctx.getAudioCaptureService(sid);
     if (service.isCapturing()) {
-      return { success: false, message: 'Audio capture already in progress. Stop it first.' };
+      return err('business', 'Audio capture already in progress. Stop it first.');
     }
     const result = await service.captureForDuration(ctx.getController(sid).page!, durationMs);
     const buf = await result.blob.arrayBuffer();
@@ -193,7 +198,7 @@ async function captureAudioSample(duration: number | undefined, ctx: ToolContext
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { success: false, message: `Failed to capture audio sample: ${message}` };
+    return err(categorizeError(error), `Failed to capture audio sample: ${message}`);
   }
 }
 
@@ -223,7 +228,7 @@ async function exportAudio(args: any, ctx: ToolContext, sid?: string): Promise<u
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    return { success: false, message: `Audio export failed: ${message}` };
+    return err(categorizeError(error), `Audio export failed: ${message}`);
   }
 }
 
@@ -237,12 +242,12 @@ async function exportMidi(
 ): Promise<unknown> {
   if (bpm !== undefined) InputValidator.validateBPM(bpm);
   if (bars !== undefined && (bars < 1 || bars > 128)) {
-    return { success: false, message: 'Bars must be between 1 and 128' };
+    return err('validation', 'Bars must be between 1 and 128');
   }
 
   const pattern = await ctx.getCurrentPatternSafe(sid);
   if (!pattern || pattern.trim().length === 0) {
-    return { success: false, message: 'No pattern to export. Write a pattern first.' };
+    return err('business', 'No pattern to export. Write a pattern first.');
   }
 
   const exportOptions = { bpm: bpm || 120, bars: bars || 4 };

@@ -11,7 +11,9 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
-import { empty, withStashField } from './types.js';
+import { empty, err, withStashField } from './types.js';
+import type { ErrEnvelope } from './types.js';
+import { AiRateLimitError } from '../../services/ai/AiTransport.js';
 import type { CreativeFeedback, AudioFeedback } from '../../services/GeminiService.js';
 import type { AudioMeasurements } from '../../services/ai/AudioMeasurements.js';
 import { Logger } from '../../utils/Logger.js';
@@ -95,7 +97,10 @@ async function getPatternFeedback(
   style: string | undefined,
   ctx: ToolContext,
   sid?: string,
-): Promise<FeedbackResult> {
+// Returns an envelope for a rate limit rather than a FeedbackResult:
+// that is the one failure here a caller can act on by waiting, and the
+// envelope is how retryability is expressed (#392).
+): Promise<FeedbackResult | ErrEnvelope> {
   if (!ctx.geminiService.isAvailable()) {
     return {
       gemini_available: false,
@@ -115,8 +120,12 @@ async function getPatternFeedback(
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('Pattern feedback failed', { error: message });
-    if (message?.includes('rate limit') || message?.includes('Rate limit')) {
-      return { gemini_available: true, error: message };
+    // By type, not by phrase. `AiRateLimitError` is what the limiter
+    // throws; matching the words meant a reworded message would fall
+    // through to "Pattern analysis failed" and lose the one thing a
+    // caller can act on — that waiting works (#380, #392).
+    if (error instanceof AiRateLimitError) {
+      return err('transient', message, { isRetryable: true });
     }
     result.error = `Pattern analysis failed: ${message}`;
   }

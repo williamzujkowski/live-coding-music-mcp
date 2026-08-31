@@ -39,7 +39,7 @@
 
 import { fork, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { BusinessError, ValidationError } from '../utils/CategorisedError.js';
+import { BusinessError, TransientError, ValidationError } from '../utils/CategorisedError.js';
 
 /** How the child died, when it died. */
 export type RunnerFailureKind = 'oom' | 'timeout' | 'crash' | 'spawn';
@@ -187,7 +187,7 @@ export class IsolatedEngineRunner {
           id?: number;
           ok?: boolean;
           result?: unknown;
-          error?: { message?: string; name?: string; category?: 'validation' | 'business' };
+          error?: { message?: string; name?: string; category?: 'validation' | 'business' | 'transient' };
         } | null;
         if (!message || message.id !== id) return;
         this.answeredSinceSpawn = true;
@@ -208,6 +208,7 @@ export class IsolatedEngineRunner {
         const rebuilt =
           message.error?.category === 'validation' ? new ValidationError(detail)
           : message.error?.category === 'business' ? new BusinessError(detail)
+          : message.error?.category === 'transient' ? new TransientError(detail)
           : new Error(detail);
         if (message.error?.name !== undefined && message.error.category === undefined) {
           rebuilt.name = message.error.name;

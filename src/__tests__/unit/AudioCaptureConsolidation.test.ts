@@ -68,8 +68,12 @@ describe('audio_capture consolidation (#155)', () => {
 
   it('audio_capture(action=sample) rejects out-of-range duration', async () => {
     const { ctx } = makeCtx();
+    // The envelope, not `{ success: false }`. capture.ts now preserves
+    // the category — a duration outside the allowed range is the
+    // caller's to fix, and it was reaching them as `internal` (#392).
     const result = (await execute('audio_capture', { action: 'sample', duration: 50 }, ctx)) as any;
-    expect(result.success).toBe(false);
+    expect(result.ok).toBe(false);
+    expect(result.errorCategory).toBe('validation');
   });
 
   it('throws on invalid action', async () => {
@@ -83,6 +87,13 @@ describe('audio_capture consolidation (#155)', () => {
     // case routes through and returns a structured object rather than throwing.
     const ctxWithMidi = { ...ctx, midiExportService: { exportToBase64: jest.fn(() => ({ success: false, error: 'no notes', output: '', noteCount: 0, bars: 4, bpm: 120 })) } } as any;
     const result = (await execute('export_midi', {}, ctxWithMidi)) as any;
-    expect(result.success).toBe(false);
+    // This never reached the mocked service: the context has no current
+    // pattern, so it stops at "No pattern to export". The old assertion
+    // (`result.success === false`) passed anyway, because that branch
+    // ALSO returned `{ success: false }` — a test green on a path it did
+    // not mean to take. Asserting what it actually exercises (#392).
+    expect(result.ok).toBe(false);
+    expect(result.errorCategory).toBe('business');
+    expect(result.message).toContain('No pattern to export');
   });
 });
