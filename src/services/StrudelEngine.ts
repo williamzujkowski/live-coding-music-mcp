@@ -436,7 +436,12 @@ export class StrudelEngine {
       // "Maximum call stack size exceeded" and an EMPTY array, and
       // reporting that as a successful zero-event result tells an agent
       // its working pattern produces nothing (the #276 mistake again).
-      if (verdict.observedOnsets > 0 && haps.length === 0) {
+      // A stricter bar than "saw anything": a pattern whose sub-arc
+      // behaviour genuinely differs from its full-arc behaviour (a mask
+      // or a span-conditional transform) could show a stray onset in a
+      // probe and legitimately none over the whole range. Requiring a
+      // real sample keeps that from being reported as a crash.
+      if (verdict.observedOnsets >= 32 && haps.length === 0) {
         throw new Error(
           'The pattern produced no events, but sampling it found some — the query ' +
           'failed inside Strudel rather than returning an empty result. A very large ' +

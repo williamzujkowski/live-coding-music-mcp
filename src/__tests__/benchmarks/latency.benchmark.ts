@@ -56,12 +56,12 @@ const TARGETS: Target[] = [
   { name: 'localEngine.coldStart', targetP95Ms: 500, runs: 3 },
   { name: 'localEngine.warmCall', targetP95Ms: 5, runs: 40 },
   // #360's density guard probes 8 windows across the requested range at
-  // 3 span scales, so query_pattern_events pays ~24 queryArc calls where
-  // it used to pay one. That is a real regression on this path — ~1ms to
-  // ~55ms — and it buys refusing two patterns that previously exhausted
-  // the heap. Gated so the cost stays where it was measured rather than
-  // drifting.
-  { name: 'localEngine.queryEvents', targetP95Ms: 90, runs: 30 },
+  // 4 span scales, so query_pattern_events pays up to 32 queryArc calls
+  // where it used to pay one. That is a real regression on this path —
+  // ~1ms to ~28ms — and it buys refusing patterns that previously
+  // exhausted the heap. Gated so the cost stays where it was measured
+  // rather than drifting.
+  { name: 'localEngine.queryEvents', targetP95Ms: 50, runs: 30 },
 ];
 
 const GATE_MULTIPLIER = 1.5;

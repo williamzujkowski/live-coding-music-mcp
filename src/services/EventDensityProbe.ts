@@ -110,7 +110,7 @@ export interface DensityProbeOptions {
  * query_pattern_events, a diagnostic, and not on the write path.
  */
 export const DEFAULT_OFFSETS = 8;
-export const DEFAULT_MIN_DISTINCT_ONSETS = 32;
+export const DEFAULT_MIN_DISTINCT_ONSETS = 16;
 
 /**
  * Onsets a window should hold before its density is believed.
@@ -148,7 +148,41 @@ export const OBVIOUSLY_HUGE_MULTIPLE = 10;
  * the guard this replaced died. From there, three orders of magnitude a
  * step reaches a usable sample for anything the cap cares about.
  */
-export const DEFAULT_LADDER: readonly number[] = [1e-8, 1e-5, 1e-2];
+export const DEFAULT_LADDER: readonly number[] = [1e-8, 1e-6, 1e-4, 1e-2];
+
+/**
+ * Fractional part of the golden ratio, used to offset each window within
+ * its own slice.
+ *
+ * Evenly spaced windows are not enough, and the failure is not subtle.
+ * `query_pattern_events` accepts up to 16 cycles; with 8 windows across
+ * 16 cycles every window starts on a whole cycle — the SAME PHASE, eight
+ * times. So a pattern with a leading rest hides from all of them:
+ *
+ *   s("~ bd*200000") over 0..1   -> refused
+ *   s("~ bd*200000") over 0..4   -> OUT OF HEAP
+ *   s("~ bd*200000") over 0..16  -> OUT OF HEAP
+ *
+ * Musical patterns repeat per cycle, so any window placement that is
+ * commensurate with the cycle samples one phase repeatedly and calls it
+ * coverage. An irrational step decorrelates the phases while keeping one
+ * window per slice, which pure golden-ratio placement would not — that
+ * leaves whole slices empty.
+ */
+const GOLDEN_FRACTION = 0.618033988749895;
+
+/**
+ * Hard ceiling on a probe window, in cycles, whatever the range.
+ *
+ * Ladder rungs are fractions of the requested range, and the range may be
+ * 16 cycles — so the top rung would be 0.16 cycles wide, and a window
+ * that starts in a rest and grows across the boundary into a dense region
+ * materializes in proportion to how far it reaches. Capping the absolute
+ * width bounds that exposure by 16x on the widest ranges without
+ * changing any verdict: density is per cycle, so a smaller window
+ * measures it just as well.
+ */
+const MAX_PROBE_CYCLES = 0.01;
 
 /**
  * Decides whether querying `[start, end)` is safe.
@@ -174,27 +208,33 @@ export function probeEventDensity(
 
   let queries = 0;
   let observedOnsets = 0;
+  /** Onsets and window width accumulated across every offset's chosen sample. */
+  let sampledOnsets = 0;
+  let sampledSpan = 0;
   if (span <= 0 || offsets < 1) return { kind: 'proceed', queries, observedOnsets };
 
   const step = span / offsets;
 
   for (let i = 0; i < offsets; i++) {
-    const windowStart = start + i * step;
+    // Where in this slice the window sits. Irrational in the cycle, so
+    // eight windows sample eight different phases rather than the same
+    // one eight times — see GOLDEN_FRACTION.
+    const phase = (i * GOLDEN_FRACTION) % 1;
 
     for (let rung = 0; rung < ladder.length; rung++) {
       const fraction = ladder[rung];
-      const probeSpan = span * fraction;
+      const probeSpan = Math.min(span * fraction, MAX_PROBE_CYCLES);
       if (probeSpan <= 0) continue;
-      // Never wider than this offset's own slice, or the windows overlap
-      // and the floor stops being a floor.
-      if (probeSpan > step) break;
+
+      // Slid within its own slice, and never so far that the window runs
+      // past the slice's end — which would put the last one past `end`.
+      const windowStart = start + i * step + phase * (step - probeSpan);
 
       // Whether there is anywhere left to grow. The largest sample this
       // offset can produce still has to be USED — discarding it because
       // it fell short of the target is how a pattern at 120,000 events
       // per cycle walked straight past the guard.
-      const nextFraction = ladder[rung + 1];
-      const canGrow = nextFraction !== undefined && span * nextFraction <= step;
+      const canGrow = rung + 1 < ladder.length;
 
       const windowEnd = windowStart + probeSpan;
       const haps = queryArc(windowStart, windowEnd);
@@ -211,12 +251,37 @@ export function probeEventDensity(
 
       observedOnsets = Math.max(observedOnsets, onsets.length);
 
-      const projected = Math.round(onsets.length / fraction);
+      // Counted, not projected. Every one of these onsets is inside the
+      // requested range, so seeing cap-many in a single window proves the
+      // range holds at least that many — no extrapolation, and no
+      // distinctness gate to pass.
+      //
+      // This is the hole cross-model review (agy) found: a pattern with
+      // thousands of layers starting together clears the sample target
+      // while failing the distinctness gate, and fell out of the ladder
+      // without a verdict. Simultaneous events say nothing about DENSITY,
+      // but they are still events, and there can be too many of them.
+      if (onsets.length >= cap) {
+        return {
+          kind: 'refuse',
+          projected: onsets.length,
+          sampleCount: onsets.length,
+          spanFraction: probeSpan / span,
+        };
+      }
+
+      // From the actual window width, not the nominal rung: the two
+      // differ once MAX_PROBE_CYCLES bites, and using the rung would
+      // under-project by the same factor.
+      const projected = Math.round((onsets.length * span) / probeSpan);
       const distinct = new Set(onsets).size;
+      // Enough separate moments for the count to describe a rate rather
+      // than a chord. See minDistinctOnsets.
       const believable = distinct >= minDistinct;
 
       // Obviously huge: refuse on a small sample rather than grow the
-      // window into the heap.
+      // window into the heap. Only this shortcut acts on one window;
+      // everything nearer the cap is decided in aggregate below.
       if (believable && projected > cap * OBVIOUSLY_HUGE_MULTIPLE) {
         return {
           kind: 'refuse',
@@ -227,13 +292,34 @@ export function probeEventDensity(
       }
 
       // A sample big enough to trust — or the biggest this offset will
-      // ever produce. Either way, decide on it.
+      // ever produce. Either way, record it and move to the next offset.
       if (onsets.length >= sampleTarget || !canGrow) {
-        if (believable && projected > cap) {
-          return { kind: 'refuse', projected, sampleCount: onsets.length, spanFraction: fraction };
+        if (believable || !canGrow) {
+          sampledOnsets += onsets.length;
+          sampledSpan += probeSpan;
         }
         break;
       }
+    }
+  }
+
+  // Averaged across every window, not taken from the densest one.
+  //
+  // The max is right for the obvious cases and wrong for the borderline:
+  // measured, a window at t=0 of `s("bd*40000")` sees twice the cycle's
+  // average density, so projecting from it gives 80,000 against a 50,000
+  // cap and refuses a pattern holding 40,001 events. Averaging over
+  // windows spread across the range is what makes the near-cap verdict
+  // trustworthy; the shortcut above still handles anything wildly over.
+  if (sampledSpan > 0) {
+    const projected = Math.round((sampledOnsets * span) / sampledSpan);
+    if (projected > cap) {
+      return {
+        kind: 'refuse',
+        projected,
+        sampleCount: sampledOnsets,
+        spanFraction: sampledSpan / span,
+      };
     }
   }
 

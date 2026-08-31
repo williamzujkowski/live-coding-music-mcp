@@ -490,27 +490,42 @@ s("~ bd*200000") -> OUT OF HEAP.  One leading rest, and the probe saw
                     nothing, projected nothing, refused nothing.
 ```
 
-`EventDensityProbe` samples 8 windows spread across the range at 3 span
-scales, growing until a window holds a real sample. Two rules matter:
+`EventDensityProbe` samples 8 windows spread across the range at 4 span
+scales, growing until a window holds a real sample. Four rules matter,
+and each one was a bug first:
 
 - **A projection needs a sample.** `s("bd").slow(64)` returns one hap at
   any span, because events legitimately begin at t=0; extrapolating from
   it projects 10^12 events and refuses an ordinary pattern. So a window
-  must hold 32 *distinct onset times* before its density is believed —
+  must hold 16 *distinct onset times* before its density is believed —
   distinct, because a stack of N layers starting together is one moment
   observed N times.
+- **Windows must not align with the cycle.** Evenly spaced windows over a
+  16-cycle range all start on whole cycles — the same phase, eight times
+  — so `s("~ bd*200000")` was refused over `0..1` and exhausted the heap
+  over `0..4`. Each window is slid within its slice by an irrational
+  fraction of it.
+- **The near-cap verdict is an average, not a maximum.** A window at t=0
+  of `s("bd*40000")` sees twice the cycle's average density and projects
+  80,000 against a 50,000 cap — a false refusal. Only the
+  wildly-over-the-cap shortcut acts on a single window.
 - **Refusing at the cap is wrong.** The caller counts materialized haps
   and enforces the cap exactly, for free. The probe only refuses what is
   too big to *materialize*.
 
 **Resolution, not a guarantee.** A dense region narrower than 1/8 of the
-range and sitting between two windows is not seen. Since #307 that
-degrades to an error envelope and a respawned child rather than a dead
-server. `verify-sandbox.ts` deliberately uses such a pattern to prove the
-containment still holds.
+range and sitting between two windows is not seen; nor is one so dense
+that growing a window into it from an adjacent rest is itself fatal.
+Since #307 both degrade to an error envelope and a respawned child rather
+than a dead server. `verify-sandbox.ts` deliberately uses such a pattern
+to prove the containment still holds.
 
-Cost: `query_pattern_events` went from ~1ms to ~55ms warm (24 `queryArc`
-calls where there was one). Gated in `latency.benchmark.ts`.
+Cost: `query_pattern_events` went from ~1ms to ~28ms warm (up to 32
+`queryArc` calls where there was one). Gated in `latency.benchmark.ts`.
+
+Note `verify-sandbox.ts` runs the engine **in-process with no heap cap**,
+so it cannot see a probe that OOMs only under the child's limit. Check
+new density cases through `IsolatedStrudelEngine` too.
 
 ### Current Limitations
 - Multi-session is supported (#108, v3.0.0): each `session_id` gets its own browser page, undo/redo/history, and audio capture. Max 5 concurrent sessions, 30-min idle eviction. Browser process is still shared across sessions (one Chromium, multiple contexts).

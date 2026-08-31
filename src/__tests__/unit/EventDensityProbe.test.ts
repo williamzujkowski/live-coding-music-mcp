@@ -103,7 +103,8 @@ describe('probeEventDensity (#360)', () => {
     expect(verdict.kind).toBe('refuse');
     if (verdict.kind !== 'refuse') return;
     expect(verdict.projected).toBeGreaterThan(CAP);
-    expect(verdict.spanFraction).toBe(1e-2);
+    // Aggregate across every window, not one of them: 8 windows of 1e-2.
+    expect(verdict.spanFraction).toBeCloseTo(0.08, 6);
   });
 
   it('grows the window rather than trusting a small sample near the cap', () => {
@@ -119,6 +120,13 @@ describe('probeEventDensity (#360)', () => {
     expect(probeEventDensity(counted, 0, 1, { maxEvents: CAP }).kind).toBe('proceed');
     // It had to look at a window big enough to hold a real sample.
     expect(Math.max(...calls)).toBeGreaterThanOrEqual(1e-2);
+    // And the growth must be driven by the sample being too SMALL, not
+    // merely by it being empty — a density that already yields onsets at
+    // the middle rung still has to grow. Without this the test passed
+    // with the sample-target logic reverted (found by cross-model
+    // review).
+    const midRungSample = calls.filter(width => Math.abs(width - 1e-6) < 1e-10);
+    expect(midRungSample.length).toBeGreaterThan(0);
   });
 
   it('spends few queries and stops as soon as it has an answer', () => {
@@ -128,18 +136,20 @@ describe('probeEventDensity (#360)', () => {
       return evenlySpaced(1e10)(begin, end);
     };
     probeEventDensity(counted, 0, 1, { maxEvents: CAP });
-    // 8 offsets at the smallest span, then the first offset of the next.
-    expect(calls.length).toBeLessThanOrEqual(9);
+    // Exactly one. A pattern this dense is refusable from the first
+    // window at the first rung, and `<= 9` was vacuous — it passed
+    // whatever the offset loop did (found by cross-model review).
+    expect(calls.length).toBe(1);
   });
 
   it('bounds the work on a sparse pattern', () => {
     const verdict = probeEventDensity(evenlySpaced(4), 0, 1, { maxEvents: CAP });
     expect(verdict.kind).toBe('proceed');
     if (verdict.kind !== 'proceed') return;
-    // 3 ladder steps x 8 offsets. If this grows, the sparse path — which
+    // 4 ladder steps x 8 offsets. If this grows, the sparse path — which
     // is every ordinary pattern — got slower, and that cost is paid on
     // every query_pattern_events call.
-    expect(verdict.queries).toBeLessThanOrEqual(24);
+    expect(verdict.queries).toBeLessThanOrEqual(32);
   });
 
   it('never probes outside the requested range', () => {
@@ -154,6 +164,21 @@ describe('probeEventDensity (#360)', () => {
       expect(begin).toBeGreaterThanOrEqual(4);
       expect(end).toBeLessThanOrEqual(8);
     }
+  });
+
+  it('refuses on counted events when they all start together', () => {
+    // Thousands of layers at the same instant clear the sample target
+    // but fail the distinctness gate — they describe a chord, not a
+    // rate. They are still events, and cap-many of them inside the range
+    // is proof enough without any extrapolation.
+    const chord: (b: number, e: number) => ProbeHap[] = (begin, end) =>
+      begin <= 0 && end > 0
+        ? Array.from({ length: CAP + 1 }, () => ({ whole: { begin: { valueOf: () => 0 } } }))
+        : [];
+    const verdict = probeEventDensity(chord, 0, 1, { maxEvents: CAP });
+    expect(verdict.kind).toBe('refuse');
+    if (verdict.kind !== 'refuse') return;
+    expect(verdict.projected).toBe(CAP + 1);
   });
 
   it('proceeds on a degenerate range instead of dividing by zero', () => {
