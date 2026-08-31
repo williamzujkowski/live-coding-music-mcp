@@ -51,6 +51,13 @@ describe('analyzeAudio disarms its timeout (#404)', () => {
 
     try {
       const service = new GeminiService('test-key');
+      // Both stubbed, and the auth one matters: `analyzeAudio`
+      // authenticates before it arms anything, so on a machine with no
+      // API key and no logged-in CLI it throws first and the timer is
+      // never reached. That passed here and failed in CI, which is the
+      // test depending on the host rather than on the code.
+      (service as unknown as { ensureAuthentication: () => Promise<void> }).ensureAuthentication =
+        async () => {};
       // Answer at once, so the deadline is the loser of every race.
       (service as unknown as { callGeminiAPI: () => Promise<string> }).callGeminiAPI =
         async () => '{"overall": "fine", "suggestions": []}';
