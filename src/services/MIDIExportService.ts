@@ -350,7 +350,19 @@ export class MIDIExportService {
     }
 
     const notes: NoteEvent[] = [];
-    let currentTime = 0;
+    // Lanes layer; they do not follow one another.
+    //
+    // `currentTime += BEATS_PER_BAR` after each match meant lane 2
+    // started a bar AFTER lane 1, so stack(note(a), note(b)) exported
+    // as a then b instead of a over b — parallelism destroyed at export,
+    // before import had a chance to preserve it (#335).
+    //
+    // Every lane therefore starts at bar 0. That is right for stack(),
+    // which is how Strudel expresses simultaneity, and for a single
+    // pattern. It is NOT right for cat()/seq(), which this regex-based
+    // parser does not recognise as sequential either way — those were
+    // already flattened before this change.
+    const laneStart = 0;
 
     // Extract note() function calls
     // Matches: note("c4 e4 g4"), note("c4", "e4"), note(`c4`)
@@ -359,21 +371,26 @@ export class MIDIExportService {
 
     while ((noteMatch = noteRegex.exec(pattern)) !== null) {
       const noteContent = noteMatch[1];
-      const parsedNotes = this.parseNoteString(noteContent, currentTime);
+      const parsedNotes = this.parseNoteString(noteContent, laneStart);
       notes.push(...parsedNotes);
-      currentTime += parsedNotes.length > 0 ? BEATS_PER_BAR : 0;
     }
 
     // Extract n() function calls (Strudel shorthand)
-    const nRegex = /\bn\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/gi;
+    //
+    // The lookbehind keeps this from also matching the `.n(...)` in
+    // `s("piano").n("0 1 2")`, which the pass below already handles.
+    // Both fired on the same text, so every note in that form was
+    // counted twice: s("bd").n("0 1 2") produced 6 notes, not 3 — and
+    // that is the exact form the code's own comment advertises as
+    // supported (#335).
+    const nRegex = /(?<![)\w$.])\bn\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/gi;
     let nMatch;
 
     while ((nMatch = nRegex.exec(pattern)) !== null) {
       const noteContent = nMatch[1];
       // n() uses MIDI numbers directly
-      const parsedNotes = this.parseNoteString(noteContent, currentTime, true);
+      const parsedNotes = this.parseNoteString(noteContent, laneStart, true);
       notes.push(...parsedNotes);
-      currentTime += parsedNotes.length > 0 ? BEATS_PER_BAR : 0;
     }
 
     // Extract chord patterns
@@ -382,9 +399,8 @@ export class MIDIExportService {
 
     while ((chordMatch = chordRegex.exec(pattern)) !== null) {
       const chordContent = chordMatch[1];
-      const parsedChords = this.parseChordString(chordContent, currentTime);
+      const parsedChords = this.parseChordString(chordContent, laneStart);
       notes.push(...parsedChords);
-      currentTime += parsedChords.length > 0 ? BEATS_PER_BAR : 0;
     }
 
     // Drum lanes: s("bd*4"), sound("bd sd"), etc.
@@ -394,14 +410,15 @@ export class MIDIExportService {
     // import-only, and import's own output could not be re-exported
     // (#335). Only lanes whose tokens are all recognised drum samples
     // are taken; s("piano") is left to the .n() pass below.
-    const drumRegex = /\b(?:s|sound)\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/gi;
+    // The lookahead skips `s("bd").n(...)`, which the .n() pass owns:
+    // in Strudel that is one lane selecting sample variants, not a kick
+    // plus three notes. Without it both passes claimed the same text
+    // and s("bd").n("0 1 2") exported 4 notes for 3 events (#335).
+    const drumRegex = /\b(?:s|sound)\s*\(\s*["'`]([^"'`]+)["'`]\s*\)(?!\s*\.\s*n\s*\()/gi;
     let drumMatch;
     while ((drumMatch = drumRegex.exec(pattern)) !== null) {
-      const parsedDrums = this.parseDrumString(drumMatch[1], currentTime);
-      if (parsedDrums.length > 0) {
-        notes.push(...parsedDrums);
-        currentTime += BEATS_PER_BAR;
-      }
+      const parsedDrums = this.parseDrumString(drumMatch[1], laneStart);
+      notes.push(...parsedDrums);
     }
 
     // Extract s() sound patterns with n() modifier for samples
@@ -411,9 +428,8 @@ export class MIDIExportService {
 
     while ((soundNMatch = soundNRegex.exec(pattern)) !== null) {
       const noteContent = soundNMatch[1];
-      const parsedNotes = this.parseNoteString(noteContent, currentTime, true);
+      const parsedNotes = this.parseNoteString(noteContent, laneStart, true);
       notes.push(...parsedNotes);
-      currentTime += parsedNotes.length > 0 ? BEATS_PER_BAR : 0;
     }
 
     // If no notes found through function parsing, try to find inline notes
