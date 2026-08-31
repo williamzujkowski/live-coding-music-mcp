@@ -222,12 +222,25 @@ export function err(
  */
 export function isFailureShaped(
   value: unknown,
-): value is { success: false; message?: unknown; error?: unknown } {
+): value is { success?: false; message?: unknown; error?: unknown } {
+  if (typeof value !== 'object' || value === null) return false;
+
+  const record = value as { success?: unknown; error?: unknown };
+
+  // An explicit success:false is unambiguous.
+  if ('success' in record && record.success === false) return true;
+
+  // A bare `{ error: '...' }` with no success flag is equally a failure,
+  // and several modules return exactly that — ai.ts and analysis.ts both
+  // do. Requiring a `success` key let those through as ok:true, which is
+  // the same bug one shape over (#274).
+  //
+  // Guarded by `success !== true` so a result that genuinely succeeded
+  // while carrying a non-fatal `error` field is left alone.
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    'success' in value &&
-    (value as { success: unknown }).success === false
+    record.success !== true &&
+    typeof record.error === 'string' &&
+    record.error.length > 0
   );
 }
 

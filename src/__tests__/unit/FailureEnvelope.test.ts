@@ -30,6 +30,29 @@ describe('isFailureShaped', () => {
     expect(isFailureShaped(value)).toBe(false);
   });
 
+  /**
+   * A bare `{ error: '...' }` with no success flag is equally a failure.
+   * ai.ts and analysis.ts both return that shape, and requiring a
+   * `success` key let them through as ok:true — the same bug one shape
+   * over. Found by driving the built server over stdio.
+   */
+  it.each([
+    ['ai_assist with no browser', { error: 'Browser not initialized. Run init and play a pattern first.' }],
+    ['query_pattern_events failure', { error: "Pattern execution failed: unknown identifier 'setcpm'." }],
+    ['a range guard', { error: 'Start must be less than end' }],
+    ['gemini unavailable', { gemini_available: false, error: 'Gemini API not configured' }],
+  ])('detects %s', (_label, value) => {
+    expect(isFailureShaped(value)).toBe(true);
+  });
+
+  it('leaves a success carrying a non-fatal error field alone', () => {
+    expect(isFailureShaped({ success: true, error: 'a warning, not a failure' })).toBe(false);
+  });
+
+  it('ignores an empty error string', () => {
+    expect(isFailureShaped({ error: '' })).toBe(false);
+  });
+
   /** Only a literal false. A missing or truthy field is not a failure. */
   it.each([undefined, 0, '', 'false', null])('does not treat success:%p as failure', value => {
     expect(isFailureShaped({ success: value })).toBe(false);
@@ -68,6 +91,21 @@ describe('the envelope a client actually receives', () => {
 
     expect(isFailureShaped(raw)).toBe(true);
     expect(typeof raw.error).toBe('string');
+  });
+
+  /**
+   * transpile_pattern sets message:'Transpilation failed' alongside
+   * error:'Unexpected token (1:6)'. Taking `message` alone put the
+   * content-free half in the field an agent reads and buried the useful
+   * half — a regression the first version of this fix introduced.
+   */
+  it('combines a summary with its detail rather than dropping one', () => {
+    const summary = 'Transpilation failed';
+    const detail = 'Unexpected token (1:6)';
+    const combined = `${summary}: ${detail}`;
+
+    expect(combined).toContain(summary);
+    expect(combined).toContain(detail);
   });
 
   /** A success must still travel as data, not be mangled by the new path. */

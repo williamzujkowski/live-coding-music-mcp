@@ -266,11 +266,22 @@ export class StrudelMCPServer {
       // shape here: it is unambiguous, and the alternative is a silent
       // wrong answer.
       if (isFailureShaped(result)) {
-        const message = typeof result.message === 'string'
+        // Prefer whichever field actually carries the diagnosis, and
+        // combine them when both say something. transpile_pattern sets
+        // message:'Transpilation failed' with error:'Unexpected token
+        // (1:6)' — taking `message` alone would put the content-free half
+        // in the field an agent reads and bury the useful half in
+        // partialResult.
+        const detail = typeof result.error === 'string' && result.error.length > 0
+          ? result.error
+          : undefined;
+        const summary = typeof result.message === 'string' && result.message.length > 0
           ? result.message
-          : typeof result.error === 'string'
-            ? result.error
-            : 'Tool reported failure without a message.';
+          : undefined;
+        const message =
+          summary !== undefined && detail !== undefined && !summary.includes(detail)
+            ? `${summary}: ${detail}`
+            : detail ?? summary ?? 'Tool reported failure without a message.';
         return err(categorizeError(new Error(message)), message, {
           // Keep what the tool produced: some of these carry useful
           // context alongside the failure.
