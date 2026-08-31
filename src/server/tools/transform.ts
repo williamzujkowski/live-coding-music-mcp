@@ -11,7 +11,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
-import { empty, withStashField, withStashNotice } from './types.js';
+import { empty, err, withStashField, withStashNotice } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 import { BEATS_PER_CYCLE } from '../../utils/Tempo.js';
 import { lookup } from '../../utils/TableLookup.js';
@@ -395,10 +395,18 @@ async function shiftMood(args: any, ctx: ToolContext, sid?: string): Promise<unk
     ? MOOD_PROFILES[mood]
     : undefined;
   if (!profile) {
-    return {
-      success: false,
-      error: `Unknown mood: ${args.target_mood}. Valid moods: ${Object.keys(MOOD_PROFILES).join(', ')}.`,
-    };
+    // `err('validation', ...)`, not a failure-shaped object.
+    //
+    // The dispatcher categorises those by running the MESSAGE through
+    // the string matcher, and "Valid moods: ..." contains none of the
+    // phrases it looks for — so a caller's typo landed in `internal`,
+    // which is the non-retryable fall-through for a fault that is not
+    // the caller's (#453). This is the audit #382 describes, at four
+    // sites it did not reach.
+    return err(
+      'validation',
+      `Unknown mood: ${args.target_mood}. Valid moods: ${Object.keys(MOOD_PROFILES).join(', ')}.`,
+    );
   }
 
   const pattern = await ctx.getCurrentPatternSafe(sid);
@@ -501,10 +509,12 @@ async function refinePattern(direction: string, ctx: ToolContext, sid?: string):
     case 'more reverb': modification = '.room(0.5)'; break;
     case 'drier':       modification = '.room(0.1)'; break;
     default:
-      return {
-        success: false,
-        error: `Unknown refinement direction: ${direction}. Supported: faster, slower, louder, quieter, brighter, darker, "more reverb", drier.`,
-      };
+      // See the mood branch above: the caller's argument, categorised
+      // `validation` rather than `internal` (#453).
+      return err(
+        'validation',
+        `Unknown refinement direction: ${direction}. Supported: faster, slower, louder, quieter, brighter, darker, "more reverb", drier.`,
+      );
   }
 
   const written = await ctx.writePatternSafe(pattern + modification, sid);

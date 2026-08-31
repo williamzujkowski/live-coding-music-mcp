@@ -36,7 +36,9 @@ describe('shape consolidation (#154)', () => {
   it('shape(dimension=mood) rejects unknown mood', async () => {
     const { ctx } = makeCtx();
     const result = (await execute('shape', { dimension: 'mood', target_mood: 'rage' }, ctx)) as any;
-    expect(result.success).toBe(false);
+    // An envelope now, carrying the caller's-fault category (#453).
+    expect(result.ok).toBe(false);
+    expect(result.errorCategory).toBe('validation');
   });
 
   it('shape(dimension=energy) applies a level', async () => {
@@ -63,7 +65,9 @@ describe('shape consolidation (#154)', () => {
   it('shape(dimension=refine) rejects unknown direction', async () => {
     const { ctx } = makeCtx();
     const result = (await execute('shape', { dimension: 'refine', direction: 'slanted' }, ctx)) as any;
-    expect(result.success).toBe(false);
+    // An envelope now, carrying the caller's-fault category (#453).
+    expect(result.ok).toBe(false);
+    expect(result.errorCategory).toBe('validation');
   });
 
   it('throws on invalid dimension', async () => {

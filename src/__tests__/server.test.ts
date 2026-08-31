@@ -1585,7 +1585,12 @@ describe('StrudelMCPServer', () => {
           id1: 99999
         });
 
-        expect(result).toContain('not found');
+        // An envelope now, not a bare string — the bare string reached
+        // clients as `{ok: true, data: "...not found."}`, the #287/#293
+        // false success (#453).
+        expect(result.ok).toBe(false);
+        expect(result.errorCategory).toBe('business');
+        expect(result.message).toContain('not found');
       });
     });
 
@@ -1908,6 +1913,9 @@ describe('StrudelMCPServer', () => {
           target_mood: 'dark'
         });
 
+        // Unchanged path: still failure-shaped, converted by the
+        // dispatcher. Only the unknown-mood and unknown-direction
+        // branches became envelopes (#453).
         expect(result.success).toBe(false);
         expect(result.error).toContain('No pattern');
       });
@@ -1969,8 +1977,10 @@ describe('StrudelMCPServer', () => {
           target_mood: 'invalid_mood'
         });
 
-        expect(result.success).toBe(false);
-        expect(result.error).toContain('Unknown mood');
+        expect(result.ok).toBe(false);
+        // `validation`, not `internal`: the caller's argument (#453).
+        expect(result.errorCategory).toBe('validation');
+        expect(result.message).toContain('Unknown mood');
       });
 
       test('shift_mood should respect auto_play=false', async () => {
@@ -2011,6 +2021,8 @@ describe('StrudelMCPServer', () => {
           intensity: 1.5
         });
 
+        // Unchanged path: the intensity check still returns a
+        // failure-shaped object (#453).
         expect(result.success).toBe(false);
         expect(result.error).toContain('between 0 and 1');
       });

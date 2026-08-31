@@ -187,13 +187,29 @@ async function doRestore(args: any, ctx: ToolContext, sid?: string): Promise<unk
 async function doCompare(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   const { historyStack } = ctx.getHistory(sid);
   const first = historyStack.find(e => e.id === args.id1);
-  if (!first) return `History entry #${args.id1} not found.`;
+  if (!first) {
+    // Bare strings reach the client as `{ok: true, data: "...not
+    // found."}` — the #287/#293 false success, still here twelve lines
+    // below the `doRestore` that fixed it for the identical condition
+    // (#453).
+    return err(
+      'business',
+      `History entry #${args.id1} not found. ` +
+      'Use history({ action: "list" }) to see available entries.',
+    );
+  }
 
   let second: string;
   let label: string;
   if (args.id2) {
     const b = historyStack.find(e => e.id === args.id2);
-    if (!b) return `History entry #${args.id2} not found.`;
+    if (!b) {
+      return err(
+        'business',
+        `History entry #${args.id2} not found. ` +
+        'Use history({ action: "list" }) to see available entries.',
+      );
+    }
     second = b.pattern;
     label = `#${args.id2}`;
   } else {
