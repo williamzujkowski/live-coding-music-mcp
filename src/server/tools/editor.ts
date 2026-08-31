@@ -8,6 +8,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
+import { withStashField } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 
 const SESSION_ID_PROP = {
@@ -134,12 +135,12 @@ async function doReplace(args: any, ctx: ToolContext, sid?: string): Promise<unk
   const replaced = replaceAll ? matches : Math.min(matches, 1);
   const remaining = matches - replaced;
 
-  await ctx.writePatternSafe(updated, sid);
+  const written = await ctx.writePatternSafe(updated, sid);
 
   // Counts are reported under BOTH settings. Previously a caller had no
   // way to learn that other occurrences survived — and these callers are
   // LLM agents, which do not reliably re-read the pattern to check (#243).
-  return {
+  return withStashField({
     success: true,
     message:
       matches === 0
@@ -149,7 +150,7 @@ async function doReplace(args: any, ctx: ToolContext, sid?: string): Promise<unk
     replaced,
     remaining,
     matches,
-  };
+  }, written);
 }
 
 async function doClear(ctx: ToolContext, sid?: string): Promise<unknown> {

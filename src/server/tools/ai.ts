@@ -11,6 +11,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
+import { withStashField } from './types.js';
 import type { CreativeFeedback, AudioFeedback } from '../../services/GeminiService.js';
 import type { AudioMeasurements } from '../../services/ai/AudioMeasurements.js';
 import { Logger } from '../../utils/Logger.js';
@@ -377,18 +378,18 @@ async function jamWith(
   const mergedPattern = mergeLayerIntoPattern(currentPattern, newLayer, layer);
 
   try {
-    await ctx.writePatternSafe(mergedPattern, sid);
+    const written = await ctx.writePatternSafe(mergedPattern, sid);
     if (autoPlay && (sid || ctx.isInitialized())) {
       await ctx.getController(sid).play();
     }
-    return {
+    return withStashField({
       success: true,
       message: `Added ${layer} layer${styleHint ? ` (${styleHint} style)` : ''} to jam with your pattern`,
       layer,
       detected: { tempo, key, existingLayers },
       newLayer,
       pattern: mergedPattern.substring(0, 300) + (mergedPattern.length > 300 ? '...' : ''),
-    };
+    }, written);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return {

@@ -186,7 +186,10 @@ describe('MCP Server Integration Tests', () => {
       });
 
       expect(patternResult).toBeTruthy();
-      expect(patternResult).toBe('Generated techno drums');
+      // No browser is up here, so the pattern is stashed rather than
+      // written. The tool used to report a plain success anyway (#285).
+      expect(patternResult).toContain('Generated techno drums');
+      expect(patternResult).toContain('not in the editor yet');
     });
 
     test('should handle unknown tool errors', async () => {
@@ -353,7 +356,8 @@ describe('MCP Server Integration Tests', () => {
         patterns: [3, 5, 7]
       });
 
-      expect(result).toBe('Generated polyrhythm');
+      expect(result).toContain('Generated polyrhythm');
+      expect(result).toContain('not in the editor yet');
     });
   });
 

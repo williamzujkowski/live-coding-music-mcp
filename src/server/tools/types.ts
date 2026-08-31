@@ -244,6 +244,73 @@ export function isFailureShaped(
   );
 }
 
+/**
+ * Prefix of the message `writePatternSafe` returns when it did *not*
+ * write — no browser session is up, so the pattern is stashed for the
+ * next init instead.
+ *
+ * Exported so `server.ts` builds the message from it and the helpers
+ * below test for it. One constant, so the producer and the consumers
+ * cannot drift apart.
+ */
+export const PATTERN_STASHED_PREFIX = 'Pattern generated (initialize Strudel to use it):';
+
+/** Whether a `writePatternSafe` result means "stashed, not written". */
+export function wasStashed(writeResult: unknown): boolean {
+  return typeof writeResult === 'string' && writeResult.startsWith(PATTERN_STASHED_PREFIX);
+}
+
+/**
+ * Appends the "not in the editor yet" caveat to a tool's success
+ * message when the write was only a stash.
+ *
+ * Nineteen call sites across five modules used to `await
+ * ctx.writePatternSafe(...)` and throw the result away, then return
+ * their own message. Two modules could actually reach the stash path:
+ * `generate.ts` (all seven `generate_part` / `music_theory` /
+ * `generate_rhythm` tools) and `storage.ts` (`action=load`). Neither
+ * gates on `isInitialized`, so both reported the pattern as applied
+ * while it sat in `pendingPattern` waiting for an init the caller had
+ * no reason to run (#285).
+ *
+ * `transform.ts`, `editor.ts` and `ai.ts` refuse outright when the
+ * default session is down, so they never mis-reported. They thread the
+ * result anyway, so the rule holds uniformly and a relaxed gate cannot
+ * silently reintroduce the bug.
+ *
+ * @param message - What the tool would say on a normal write
+ * @param writeResult - Exactly what `writePatternSafe` returned
+ * @returns The message, with the caveat appended if it applies
+ */
+export function withStashNotice(message: string, writeResult: unknown): string {
+  if (!wasStashed(writeResult)) return message;
+  return `${message}${STASH_SUFFIX}`;
+}
+
+/** The caveat, as a suffix for prose results. */
+const STASH_SUFFIX = ' — but it is not in the editor yet: no browser session is ' +
+  'running. Run `init` to open one and load it.';
+
+/** The same caveat as a standalone sentence, for structured results. */
+export const STASH_WARNING = 'The pattern is not in the editor yet: no browser ' +
+  'session is running. Run `init` to open one and load it.';
+
+/**
+ * Structured-result counterpart to `withStashNotice`: adds a `warning`
+ * field when the write was only a stash, and leaves the result
+ * untouched otherwise.
+ *
+ * @param result - What the tool would return on a normal write
+ * @param writeResult - Exactly what `writePatternSafe` returned
+ */
+export function withStashField<T extends object>(
+  result: T,
+  writeResult: unknown,
+): T & { warning?: string } {
+  if (!wasStashed(writeResult)) return result;
+  return { ...result, warning: STASH_WARNING };
+}
+
 export function categorizeError(error: unknown): ErrorCategory {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();

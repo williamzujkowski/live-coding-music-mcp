@@ -12,6 +12,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
+import { withStashNotice } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 import { DRUM_STYLES, resolveDrumStyle } from '../../services/StyleRegistry.js';
 
@@ -96,10 +97,17 @@ export const tools: Tool[] = [
 
 export const toolNames = new Set(tools.map(t => t.name));
 
-async function appendOrSet(generated: string, ctx: ToolContext, sessionId?: string): Promise<void> {
+/**
+ * Appends generated material to the current pattern and writes it back.
+ *
+ * @returns Whatever `writePatternSafe` returned — callers must pass it
+ *   to `withStashNotice` rather than discard it, because a write with
+ *   no browser up is a stash, not a write (#285).
+ */
+async function appendOrSet(generated: string, ctx: ToolContext, sessionId?: string): Promise<string> {
   const current = await ctx.getCurrentPatternSafe(sessionId);
   const combined = current ? current + '\n' + generated : generated;
-  await ctx.writePatternSafe(combined, sessionId);
+  return await ctx.writePatternSafe(combined, sessionId);
 }
 
 function doScale(args: any, ctx: ToolContext): string {
@@ -114,24 +122,24 @@ async function doChordProgression(args: any, ctx: ToolContext, sid?: string): Pr
   InputValidator.validateChordStyle(args.style);
   const progression = ctx.theory.generateChordProgression(args.key, args.style);
   const chordPattern = ctx.generator.generateChords(progression);
-  await appendOrSet(chordPattern, ctx, sid);
-  return `Generated ${args.style} progression in ${args.key}: ${progression}`;
+  const written = await appendOrSet(chordPattern, ctx, sid);
+  return withStashNotice(`Generated ${args.style} progression in ${args.key}: ${progression}`, written);
 }
 
 async function doEuclidean(args: any, ctx: ToolContext, sid?: string): Promise<string> {
   InputValidator.validateEuclidean(args.hits, args.steps);
   if (args.sound) InputValidator.validateStringLength(args.sound, 'sound', 100, false);
   const euclidean = ctx.generator.generateEuclideanPattern(args.hits, args.steps, args.sound || 'bd');
-  await appendOrSet(euclidean, ctx, sid);
-  return `Generated Euclidean rhythm (${args.hits}/${args.steps})`;
+  const written = await appendOrSet(euclidean, ctx, sid);
+  return withStashNotice(`Generated Euclidean rhythm (${args.hits}/${args.steps})`, written);
 }
 
 async function doPolyrhythm(args: any, ctx: ToolContext, sid?: string): Promise<string> {
   args.sounds.forEach((s: string) => InputValidator.validateStringLength(s, 'sound', 100, false));
   args.patterns.forEach((p: number) => InputValidator.validatePositiveInteger(p, 'pattern'));
   const poly = ctx.generator.generatePolyrhythm(args.sounds, args.patterns);
-  await appendOrSet(poly, ctx, sid);
-  return 'Generated polyrhythm';
+  const written = await appendOrSet(poly, ctx, sid);
+  return withStashNotice('Generated polyrhythm', written);
 }
 
 async function doDrums(args: any, ctx: ToolContext, sid?: string): Promise<string> {
@@ -141,19 +149,19 @@ async function doDrums(args: any, ctx: ToolContext, sid?: string): Promise<strin
   // back to techno, and echoing the request back made that invisible (#279).
   const resolution = resolveDrumStyle(args.style);
   const drums = ctx.generator.generateDrumPattern(args.style, args.complexity || 0.5);
-  await appendOrSet(drums, ctx, sid);
-  return resolution.supported
+  const written = await appendOrSet(drums, ctx, sid);
+  return withStashNotice(resolution.supported
     ? `Generated ${resolution.resolved} drums`
     : `No drum pattern for style "${args.style}" — generated ${resolution.resolved} drums instead. ` +
-      `Styles with their own drums: ${DRUM_STYLES.join(', ')}.`;
+      `Styles with their own drums: ${DRUM_STYLES.join(', ')}.`, written);
 }
 
 async function doBassline(args: any, ctx: ToolContext, sid?: string): Promise<string> {
   InputValidator.validateRootNote(args.key);
   InputValidator.validateStringLength(args.style, 'style', 100, false);
   const bass = ctx.generator.generateBassline(args.key, args.style);
-  await appendOrSet(bass, ctx, sid);
-  return `Generated ${args.style} bassline in ${args.key}`;
+  const written = await appendOrSet(bass, ctx, sid);
+  return withStashNotice(`Generated ${args.style} bassline in ${args.key}`, written);
 }
 
 async function doMelody(args: any, ctx: ToolContext, sid?: string): Promise<string> {
@@ -162,16 +170,16 @@ async function doMelody(args: any, ctx: ToolContext, sid?: string): Promise<stri
   if (args.length !== undefined) InputValidator.validatePositiveInteger(args.length, 'length');
   const scale = ctx.theory.generateScale(args.root, args.scale);
   const melody = ctx.generator.generateMelody(scale, args.length || 8);
-  await appendOrSet(melody, ctx, sid);
-  return `Generated melody in ${args.root} ${args.scale}`;
+  const written = await appendOrSet(melody, ctx, sid);
+  return withStashNotice(`Generated melody in ${args.root} ${args.scale}`, written);
 }
 
 async function doFill(args: any, ctx: ToolContext, sid?: string): Promise<string> {
   InputValidator.validateStringLength(args.style, 'style', 100, false);
   if (args.bars !== undefined) InputValidator.validatePositiveInteger(args.bars, 'bars');
   const fill = ctx.generator.generateFill(args.style, args.bars || 1);
-  await appendOrSet(fill, ctx, sid);
-  return `Generated ${args.bars || 1} bar fill`;
+  const written = await appendOrSet(fill, ctx, sid);
+  return withStashNotice(`Generated ${args.bars || 1} bar fill`, written);
 }
 
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {

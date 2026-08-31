@@ -34,7 +34,7 @@ import { captureModule } from './tools/capture.js';
 import { aiModule } from './tools/ai.js';
 import { composeModule } from './tools/compose.js';
 import type { Envelope, ToolContext, HistoryEntry } from './tools/types.js';
-import { categorizeError, err, isEnvelope, ok, isFailureShaped } from './tools/types.js';
+import { categorizeError, err, isEnvelope, ok, isFailureShaped, PATTERN_STASHED_PREFIX } from './tools/types.js';
 import { readResource, resources as mcpResources } from './resources.js';
 import { join } from 'node:path';
 import { parseServerConfig } from '../utils/ServerConfig.js';
@@ -353,7 +353,7 @@ export class StrudelMCPServer {
     if (!this.isInitialized) {
       // Default session: stash the pattern for the next init/auto-init
       this.pendingPattern = pattern;
-      return `Pattern generated (initialize Strudel to use it): ${pattern.substring(0, 50)}...`;
+      return `${PATTERN_STASHED_PREFIX} ${pattern.substring(0, 50)}...`;
     }
 
     return await this.controller.writePattern(pattern);

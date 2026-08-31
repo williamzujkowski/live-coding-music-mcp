@@ -11,6 +11,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
+import { withStashField, withStashNotice } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 
 interface EnergyConfig {
@@ -178,58 +179,58 @@ async function opTranspose(args: any, ctx: ToolContext, sid?: string): Promise<u
     throw new Error('Semitones must be an integer');
   }
   const p = await ctx.getCurrentPatternSafe(sid);
-  await ctx.writePatternSafe(transposePattern(p, args.semitones), sid);
-  return `Transposed ${args.semitones} semitones`;
+  const written = await ctx.writePatternSafe(transposePattern(p, args.semitones), sid);
+  return withStashNotice(`Transposed ${args.semitones} semitones`, written);
 }
 
 async function opReverse(ctx: ToolContext, sid?: string): Promise<unknown> {
   const p = await ctx.getCurrentPatternSafe(sid);
-  await ctx.writePatternSafe(p + '.rev', sid);
-  return 'Pattern reversed';
+  const written = await ctx.writePatternSafe(p + '.rev', sid);
+  return withStashNotice('Pattern reversed', written);
 }
 
 async function opStretch(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   InputValidator.validateGain(args.factor);
   const p = await ctx.getCurrentPatternSafe(sid);
-  await ctx.writePatternSafe(p + `.slow(${args.factor})`, sid);
-  return `Stretched by factor of ${args.factor}`;
+  const written = await ctx.writePatternSafe(p + `.slow(${args.factor})`, sid);
+  return withStashNotice(`Stretched by factor of ${args.factor}`, written);
 }
 
 async function opQuantize(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   InputValidator.validateStringLength(args.grid, 'grid', 50, false);
   const p = await ctx.getCurrentPatternSafe(sid);
-  await ctx.writePatternSafe(p + `.struct("${args.grid}")`, sid);
-  return `Quantized to ${args.grid} grid`;
+  const written = await ctx.writePatternSafe(p + `.struct("${args.grid}")`, sid);
+  return withStashNotice(`Quantized to ${args.grid} grid`, written);
 }
 
 async function opHumanize(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   if (args.amount !== undefined) InputValidator.validateNormalizedValue(args.amount, 'amount');
   const p = await ctx.getCurrentPatternSafe(sid);
   const amt = args.amount || 0.01;
-  await ctx.writePatternSafe(p + `.nudge(rand.range(-${amt}, ${amt}))`, sid);
-  return 'Added human timing';
+  const written = await ctx.writePatternSafe(p + `.nudge(rand.range(-${amt}, ${amt}))`, sid);
+  return withStashNotice('Added human timing', written);
 }
 
 async function opVary(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   const p = await ctx.getCurrentPatternSafe(sid);
   const varied = ctx.generator.generateVariation(p, args.type || 'subtle');
-  await ctx.writePatternSafe(varied, sid);
-  return `Added ${args.type || 'subtle'} variation`;
+  const written = await ctx.writePatternSafe(varied, sid);
+  return withStashNotice(`Added ${args.type || 'subtle'} variation`, written);
 }
 
 async function opSwing(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   InputValidator.validateNormalizedValue(args.amount, 'amount');
   const p = await ctx.getCurrentPatternSafe(sid);
-  await ctx.writePatternSafe(p + `.swing(${args.amount})`, sid);
-  return `Added swing: ${args.amount}`;
+  const written = await ctx.writePatternSafe(p + `.swing(${args.amount})`, sid);
+  return withStashNotice(`Added swing: ${args.amount}`, written);
 }
 
 async function opScale(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   InputValidator.validateStringLength(args.scale, 'scale', 50, false);
   InputValidator.validateRootNote(args.root);
   const p = await ctx.getCurrentPatternSafe(sid);
-  await ctx.writePatternSafe(p + `.scale("${args.root}:${args.scale}")`, sid);
-  return `Applied ${args.root} ${args.scale} scale`;
+  const written = await ctx.writePatternSafe(p + `.scale("${args.root}:${args.scale}")`, sid);
+  return withStashNotice(`Applied ${args.root} ${args.scale} scale`, written);
 }
 
 async function opEffectAdd(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
@@ -242,8 +243,8 @@ async function opEffectAdd(args: any, ctx: ToolContext, sid?: string): Promise<u
   const withEffect = args.params
     ? p + `.${args.effect}(${args.params})`
     : p + `.${args.effect}()`;
-  await ctx.writePatternSafe(withEffect, sid);
-  return `Added ${args.effect} effect`;
+  const written = await ctx.writePatternSafe(withEffect, sid);
+  return withStashNotice(`Added ${args.effect} effect`, written);
 }
 
 /**
@@ -302,8 +303,8 @@ async function opEffectRemove(args: any, ctx: ToolContext, sid?: string): Promis
   const p = await ctx.getCurrentPatternSafe(sid);
   const stripped = stripEffectCalls(p, args.effect);
   if (stripped === p) return `No ${args.effect} effect found to remove`;
-  await ctx.writePatternSafe(stripped, sid);
-  return `Removed ${args.effect} effect`;
+  const written = await ctx.writePatternSafe(stripped, sid);
+  return withStashNotice(`Removed ${args.effect} effect`, written);
 }
 
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
@@ -341,8 +342,8 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
     case 'set_tempo': {
       InputValidator.validateBPM(args.bpm);
       const p = await ctx.getCurrentPatternSafe(sid);
-      await ctx.writePatternSafe(`setcpm(${args.bpm})\n${p}`, sid);
-      return `Set tempo to ${args.bpm} BPM`;
+      const written = await ctx.writePatternSafe(`setcpm(${args.bpm})\n${p}`, sid);
+      return withStashNotice(`Set tempo to ${args.bpm} BPM`, written);
     }
 
     case 'shape': {
@@ -420,13 +421,16 @@ async function shiftMood(args: any, ctx: ToolContext, sid?: string): Promise<unk
     applied.push(`gain ${profile.gainMod > 0 ? '+' : ''}${Math.round(profile.gainMod * 100 * intensity)}%`);
   }
 
-  await ctx.writePatternSafe(result, sid);
+  const written = await ctx.writePatternSafe(result, sid);
 
   if (args.auto_play !== false && (sid || ctx.isInitialized())) {
     await ctx.getController(sid).play();
   }
 
-  return { success: true, target_mood: mood, intensity, applied_effects: applied };
+  return withStashField(
+    { success: true, target_mood: mood, intensity, applied_effects: applied },
+    written,
+  );
 }
 
 async function setEnergyLevel(level: number, ctx: ToolContext, sid?: string): Promise<unknown> {
@@ -444,10 +448,10 @@ async function setEnergyLevel(level: number, ctx: ToolContext, sid?: string): Pr
   if (config.densityAdjust) result += config.densityAdjust;
   result += `.room(${config.roomAmount})`;
 
-  await ctx.writePatternSafe(result, sid);
+  const written = await ctx.writePatternSafe(result, sid);
   if (sid || ctx.isInitialized()) await ctx.getController(sid).play();
 
-  return { success: true, level, description: config.description };
+  return withStashField({ success: true, level, description: config.description }, written);
 }
 
 async function refinePattern(direction: string, ctx: ToolContext, sid?: string): Promise<unknown> {
@@ -474,10 +478,10 @@ async function refinePattern(direction: string, ctx: ToolContext, sid?: string):
       };
   }
 
-  await ctx.writePatternSafe(pattern + modification, sid);
+  const written = await ctx.writePatternSafe(pattern + modification, sid);
   if (sid || ctx.isInitialized()) await ctx.getController(sid).play();
 
-  return { success: true, direction: dir, applied: modification };
+  return withStashField({ success: true, direction: dir, applied: modification }, written);
 }
 
 export const transformModule: ToolModule = { tools, toolNames, execute };
