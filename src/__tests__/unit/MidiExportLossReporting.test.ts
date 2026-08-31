@@ -29,24 +29,40 @@ const REALISTIC = [
 ].join('\n');
 
 describe('a lossy export reports the loss (#335)', () => {
-  it('names the tokens it skipped', () => {
+  it('names what it could not fully represent', () => {
+    // Originally asserted `unrepresented` contained 'c2*4'. #335 then
+    // implemented `*`, so c2*4 exports as four notes and is no longer a
+    // loss at all. The alternation still is — one bar cannot hold four
+    // options — so that is what the warning now names.
     const r = service().exportToBase64(REALISTIC);
     expect(r.warning).toBeDefined();
-    expect(r.unrepresented).toEqual(expect.arrayContaining(['c2*4']));
+    expect(r.partiallyExported).toEqual(
+      expect.arrayContaining([expect.stringContaining('<c3')]));
   });
 
   it('explains why, not just that', () => {
     const r = service().exportToBase64(REALISTIC);
-    expect(r.warning).toContain('mini-notation operators');
+    expect(r.warning).toMatch(/alternation|could not be exported/);
   });
 
-  it.each(['note("c4*4")', 'note("c4!2 e4")', 'note("c4@3 e4")', 'note("<c4 e4>")'])(
-    '%s is reported rather than silently dropped', pattern => {
+  it.each(['note("c4*4")', 'note("c4!2 e4")'])(
+    '%s now exports rather than being dropped', pattern => {
+      // These were the "reported rather than silently dropped" cases.
+      // #335 implemented the operators, so the right assertion is that
+      // the notes are there and nothing is claimed lost.
       const r = service().exportToBase64(pattern);
-      // Either it exported nothing and said so, or it exported some and
-      // flagged the rest. What it must not do is claim clean success.
-      const flagged = (r.warning?.length ?? 0) > 0 || r.success === false;
-      expect(flagged).toBe(true);
+      expect(r.success).toBe(true);
+      expect(r.noteCount).toBeGreaterThan(1);
+      expect(r.warning).toBeUndefined();
+    });
+
+  it.each(['note("c4@3 e4")', 'note("<c4 e4>")'])(
+    '%s exports with the loss declared', pattern => {
+      // These cannot be fully represented in one bar, so they export
+      // what they can and say what they could not.
+      const r = service().exportToBase64(pattern);
+      expect(r.success).toBe(true);
+      expect(r.warning).toBeDefined();
     });
 
   it('says nothing when nothing was lost', () => {
@@ -81,11 +97,12 @@ describe('the warning reaches the MCP caller (#335)', () => {
     // The handler builds its own response object and used to drop the
     // warning, which would have made the service-side fix inert.
     const r = await execute('export_midi', { format: 'base64' }, ctxWith(REALISTIC)) as {
-      success: boolean; message: string; unrepresented?: string[];
+      success: boolean; message: string; partiallyExported?: string[];
     };
     expect(r.success).toBe(true);
-    expect(r.message).toContain('could not be exported');
-    expect(r.unrepresented).toEqual(expect.arrayContaining(['c2*4']));
+    expect(r.message).toContain('exported with loss');
+    expect(r.partiallyExported).toEqual(
+      expect.arrayContaining([expect.stringContaining('<c3')]));
   });
 
   it('a clean export still reads cleanly', async () => {

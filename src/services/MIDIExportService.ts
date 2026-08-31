@@ -60,6 +60,8 @@ export interface MIDIExportResult {
   warning?: string;
   /** The specific tokens that could not be represented (#335). */
   unrepresented?: string[];
+  /** Tokens exported with loss — an alternation, or a dropped weight (#335). */
+  partiallyExported?: string[];
   /** Error message if failed */
   error?: string;
   /** Set when the requested filename had to be sanitized (#224). */
@@ -159,6 +161,14 @@ export class MIDIExportService {
    * reported plain success (#335).
    */
   private unrepresented = new Set<string>();
+  /**
+   * Tokens that WERE exported, but lossily — an alternation whose
+   * later options a single bar cannot hold, or a duration weight that
+   * was dropped. Distinct from `unrepresented`, because "we kept the
+   * first of four" and "we skipped it" are different things to tell a
+   * caller (#335).
+   */
+  private partial = new Set<string>();
   /** Directory file exports are confined to. */
   private readonly exportDir: string;
 
@@ -372,7 +382,8 @@ export class MIDIExportService {
    * @param source - A mini-notation string
    * @returns Tokens, with bracket groups intact
    * @example
-   * MIDIExportService.tokenize('[c4 e4] g4'); // ['[c4 e4]', 'g4']
+   * MIDIExportService.tokenize('[c4 e4] g4');  // ['[c4 e4]', 'g4']
+   * MIDIExportService.tokenize('<c4 e4> g4');  // ['<c4 e4>', 'g4']
    */
   static tokenize(source: string): string[] {
     const tokens: string[] = [];
@@ -380,8 +391,12 @@ export class MIDIExportService {
     let depth = 0;
 
     for (const char of source) {
-      if (char === '[') depth++;
-      if (char === ']') depth = Math.max(0, depth - 1);
+      // Angle brackets group too. Tracking only `[` meant `<c4 e4>` was
+      // split on the space into ["<c4", "e4>"], neither of which is a
+      // note or a recognisable alternation — so the whole token was
+      // reported unrepresentable even after expansion existed (#335).
+      if (char === '[' || char === '<') depth++;
+      if (char === ']' || char === '>') depth = Math.max(0, depth - 1);
 
       const isSeparator = (char === ' ' || char === '\t' || char === '\n' || char === ',');
       if (isSeparator && depth === 0) {
@@ -393,6 +408,75 @@ export class MIDIExportService {
     }
     if (current.length > 0) tokens.push(current);
     return tokens;
+  }
+
+  /**
+   * Expands the repetition operators into plain tokens.
+   *
+   * `*n` and `!n` both mean "this token, n times" for export purposes:
+   * `*` subdivides the step and `!` repeats it across steps, and since
+   * export lays tokens out evenly across the bar the two collapse to
+   * the same thing here. `@n` weights a token's duration; the note is
+   * kept and the weight dropped, which is a smaller loss than dropping
+   * the note.
+   *
+   * `<a b c>` alternates across cycles. A single exported bar can only
+   * hold one of them, so the first is taken and the rest reported —
+   * previously the whole token was dropped, which is why
+   * note("<c3 eb3 g3 bb3>") contributed nothing (#335).
+   *
+   * @param tokens - Tokens from `tokenize`
+   * @param onUnrepresented - Called with anything still not expressible
+   * @returns Plain tokens, ready for note lookup
+   * @example
+   * MIDIExportService.expandOperators(['c4*3'], () => {}); // ['c4','c4','c4']
+   */
+  static expandOperators(
+    tokens: string[],
+    onUnrepresented: (token: string) => void,
+    onPartial: (token: string) => void = () => undefined,
+  ): string[] {
+    const MAX_REPEAT = 64;
+    const out: string[] = [];
+
+    for (const token of tokens) {
+      // <a b c> — alternation. Take the first; report the rest.
+      const alternation = /^<(.+)>$/.exec(token);
+      if (alternation) {
+        const options = MIDIExportService.tokenize(alternation[1]);
+        if (options.length === 0) continue;
+        out.push(...MIDIExportService.expandOperators([options[0]], onUnrepresented, onPartial));
+        if (options.length > 1) onPartial(token);
+        continue;
+      }
+
+      // name*n or name!n — repetition.
+      const repeat = /^(.+?)[*!](\d+)$/.exec(token);
+      if (repeat) {
+        const count = Math.min(Number.parseInt(repeat[2], 10), MAX_REPEAT);
+        if (count > 0) {
+          const inner = MIDIExportService.expandOperators([repeat[1]], onUnrepresented, onPartial);
+          for (let i = 0; i < count; i++) out.push(...inner);
+        }
+        continue;
+      }
+
+      // name@n — duration weight. Keep the note, drop the weight.
+      const weighted = /^(.+?)@\d+(?:\.\d+)?$/.exec(token);
+      if (weighted) {
+        out.push(...MIDIExportService.expandOperators([weighted[1]], onUnrepresented, onPartial));
+        onPartial(token);
+        continue;
+      }
+
+      if (/[*!@<>?%]/.test(token)) {
+        onUnrepresented(token);
+        continue;
+      }
+      out.push(token);
+    }
+
+    return out;
   }
 
   private parseNoteString(
@@ -409,7 +493,11 @@ export class MIDIExportService {
     // ["[c4", "e4]", "g4"], and "e4]" fails noteNameToMidi, so the last
     // note of every chord was dropped. Import emits exactly this
     // notation, so its own output could not be re-exported (#336).
-    const parts = MIDIExportService.tokenize(noteString);
+    const parts = MIDIExportService.expandOperators(
+      MIDIExportService.tokenize(noteString),
+      token => { this.unrepresented.add(token); },
+      token => { this.partial.add(token); },
+    );
 
     // One pattern string spans one BAR, not one beat.
     //
@@ -434,10 +522,7 @@ export class MIDIExportService {
       // `*`, `!`, `@` and `<>` are in essentially every pattern the
       // generator produces. Recording them lets the caller be told
       // (#335).
-      if (/[*!@<>?%]/.test(part)) {
-        this.unrepresented.add(part);
-        return;
-      }
+
 
       // Handle sub-patterns in brackets [c4 e4]
       if (part.startsWith('[')) {
@@ -610,6 +695,7 @@ export class MIDIExportService {
   ): MIDIExportResult {
     try {
       this.unrepresented.clear();
+      this.partial.clear();
       const notes = this.parsePatternNotes(pattern);
 
       if (notes.length === 0) {
@@ -680,22 +766,40 @@ export class MIDIExportService {
    *
    * @returns `{}` when everything was representable
    */
-  private lossReport(): { warning?: string; unrepresented?: string[] } {
-    if (this.unrepresented.size === 0) return {};
-    const tokens = [...this.unrepresented].sort();
+  private lossReport(): {
+    warning?: string; unrepresented?: string[]; partiallyExported?: string[];
+  } {
+    const skipped = [...this.unrepresented].sort();
+    const lossy = [...this.partial].sort();
+    if (skipped.length === 0 && lossy.length === 0) return {};
+
+    const parts: string[] = [];
+    if (skipped.length > 0) {
+      parts.push(
+        `${String(skipped.length)} token(s) could not be exported and were skipped: ` +
+        `${skipped.slice(0, 8).join(', ')}${skipped.length > 8 ? ', ...' : ''}`
+      );
+    }
+    if (lossy.length > 0) {
+      parts.push(
+        `${String(lossy.length)} token(s) were exported with loss: ` +
+        `${lossy.slice(0, 8).join(', ')}${lossy.length > 8 ? ', ...' : ''} ` +
+        '(an alternation gives only its first option in a single bar; ' +
+        'a duration weight is dropped)'
+      );
+    }
+
     return {
-      warning:
-        `${String(tokens.length)} token(s) could not be exported and were skipped: ` +
-        `${tokens.slice(0, 8).join(', ')}${tokens.length > 8 ? ', ...' : ''}. ` +
-        'MIDI export reads plain note names only — mini-notation operators ' +
-        '(*, !, @, <>) are not implemented.',
-      unrepresented: tokens,
+      warning: `${parts.join('. ')}.`,
+      ...(skipped.length > 0 ? { unrepresented: skipped } : {}),
+      ...(lossy.length > 0 ? { partiallyExported: lossy } : {}),
     };
   }
 
   exportToBase64(pattern: string, options: MIDIExportOptions = {}): MIDIExportResult {
     try {
       this.unrepresented.clear();
+      this.partial.clear();
       const notes = this.parsePatternNotes(pattern);
 
       if (notes.length === 0) {

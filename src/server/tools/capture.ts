@@ -266,6 +266,7 @@ async function exportMidi(
       bpm: result.bpm,
       ...(result.warning ? { warning: result.warning } : {}),
       ...(result.unrepresented ? { unrepresented: result.unrepresented } : {}),
+      ...(result.partiallyExported ? { partiallyExported: result.partiallyExported } : {}),
       error: result.error,
     };
   }
@@ -283,6 +284,7 @@ async function exportMidi(
     bpm: result.bpm,
     ...(result.warning ? { warning: result.warning } : {}),
     ...(result.unrepresented ? { unrepresented: result.unrepresented } : {}),
+    ...(result.partiallyExported ? { partiallyExported: result.partiallyExported } : {}),
     error: result.error,
   };
 }
