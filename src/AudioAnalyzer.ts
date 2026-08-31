@@ -565,26 +565,85 @@ export class AudioAnalyzer {
     // Calculate inter-onset intervals (IOIs)
     const intervals = this.calculateIntervals(onsets);
 
-    // Calculate mean interval and derive BPM
-    const meanInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-    const bpm = 60000 / meanInterval;
+    // Median, not mean.
+    //
+    // A single dropped or ghosted onset moved the answer badly: a steady
+    // 120 BPM grid with one missed onset reported 105, and with one
+    // extra reported 135. The median is unmoved by either, and onset
+    // detection misses and doubles constantly (#322).
+    const sorted = [...intervals].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const medianInterval = sorted.length % 2 === 0
+      ? (sorted[mid - 1] + sorted[mid]) / 2
+      : sorted[mid];
 
-    // Validate BPM range
-    if (bpm < 40 || bpm > 200) {
+    if (medianInterval <= 0) {
       return { bpm: 0, confidence: 0, method: 'onset' };
     }
 
-    // Calculate confidence from interval consistency
-    const variance = this.calculateVariance(intervals, meanInterval);
-    const coefficientOfVariation = Math.sqrt(variance) / meanInterval;
+    const rawBpm = 60000 / medianInterval;
+    const bpm = AudioAnalyzer.foldIntoTempoRange(rawBpm);
+
+    // Unfoldable — more than a few octaves outside the range, so the
+    // onsets are not a tempo at all.
+    if (bpm === null) {
+      return { bpm: 0, confidence: 0, method: 'onset' };
+    }
+
+    // Confidence still comes from interval consistency, but measured
+    // against the median so one outlier does not inflate the spread it
+    // is being compared to.
+    const variance = this.calculateVariance(intervals, medianInterval);
+    const coefficientOfVariation = Math.sqrt(variance) / medianInterval;
     // More aggressive penalty for variation
-    const confidence = Math.max(0, 1 - coefficientOfVariation * 1.5);
+    let confidence = Math.max(0, 1 - coefficientOfVariation * 1.5);
+
+    // A folded reading is a weaker claim than a direct one: we inferred
+    // the beat is half or double what the onsets literally say.
+    if (Math.abs(rawBpm - bpm) > 1) {
+      confidence *= 0.8;
+    }
 
     return {
       bpm: Math.round(bpm),
       confidence: Math.min(1, confidence),
       method: 'onset'
     };
+  }
+
+  /**
+   * Halves or doubles a tempo until it lands in the musical range.
+   *
+   * Out-of-range readings used to be discarded outright, which threw
+   * away recoverable answers: 174 BPM drum & bass with onsets on 8ths
+   * reads as 348 and returned bpm 0, on 16ths as 696 and returned 0,
+   * and a 70 BPM tune whose onsets land on half notes reads as 35 and
+   * returned 0. Onset detection lands on whatever subdivision is
+   * loudest, so this is the common case, not the edge case (#322).
+   *
+   * @param bpm - Raw tempo from the median inter-onset interval
+   * @returns A tempo within [40, 200], or null if it cannot be folded there
+   * @example
+   * AudioAnalyzer.foldIntoTempoRange(348); // 174
+   * AudioAnalyzer.foldIntoTempoRange(35);  // 70
+   */
+  static foldIntoTempoRange(bpm: number): number | null {
+    if (!Number.isFinite(bpm) || bpm <= 0) return null;
+
+    const MIN = 40;
+    const MAX = 200;
+    let folded = bpm;
+
+    // Three octaves each way. That covers every real case — onsets on
+    // 8ths is one octave, on 16ths is two — while refusing to invent a
+    // tempo from noise: 5000 BPM means onsets 12ms apart, and folding
+    // that five times to a plausible-looking 156 would be a fabrication,
+    // not a measurement.
+    const MAX_OCTAVES = 3;
+    for (let i = 0; i < MAX_OCTAVES && folded > MAX; i++) folded /= 2;
+    for (let i = 0; i < MAX_OCTAVES && folded < MIN; i++) folded *= 2;
+
+    return folded >= MIN && folded <= MAX ? folded : null;
   }
 
   // ============================================================================
