@@ -8,7 +8,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { CreativeFeedback } from '../../services/GeminiService.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
-import { resolveLayers } from '../../services/StyleRegistry.js';
+import { defaultTempoFor, resolveLayers } from '../../services/StyleRegistry.js';
 
 const SESSION_ID_PROP = {
   session_id: {
@@ -56,28 +56,6 @@ export const tools: Tool[] = [
 
 export const toolNames = new Set(tools.map(t => t.name));
 
-const TEMPO_BY_STYLE: Record<string, number> = {
-  techno: 130,
-  house: 125,
-  dnb: 174,
-  'drum and bass': 174,
-  ambient: 80,
-  trap: 140,
-  jungle: 160,
-  jazz: 110,
-  experimental: 120,
-  dubstep: 140,
-  trance: 138,
-  breakbeat: 130,
-  garage: 130,
-  electro: 128,
-  downtempo: 90,
-  idm: 115,
-};
-
-function defaultTempo(style: string): number {
-  return TEMPO_BY_STYLE[style.toLowerCase()] ?? 120;
-}
 
 async function doShow(ctx: ToolContext, sid?: string): Promise<unknown> {
   if (!sid && !ctx.isInitialized()) {
@@ -129,7 +107,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
       // `breakbeat` claim itself supported over a techno bassline
       // (#294, correcting #279).
       const resolution = resolveLayers(args.style);
-      const tempo = args.tempo || defaultTempo(args.style);
+      const tempo = args.tempo || defaultTempoFor(args.style);
       const key = args.key || 'C';
       const pattern = ctx.generator.generateCompletePattern(args.style, key, tempo);
 
