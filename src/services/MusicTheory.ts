@@ -1,3 +1,4 @@
+import { lookup } from '../utils/TableLookup.js';
 export class MusicTheory {
   private scales = {
     major: [0, 2, 4, 5, 7, 9, 11],
@@ -24,7 +25,13 @@ export class MusicTheory {
     rock: ['I', 'bVII', 'IV', 'I'],
     classical: ['I', 'IV', 'V', 'I'],
     modal: ['i', 'bVII', 'IV', 'i'],
-    edm: ['i', 'VI', 'III', 'VII']
+    // Explicitly flattened. Uppercase VI/III/VII mean the major-scale
+    // degrees in chordMap, which under a minor tonic put every non-tonic
+    // chord a semitone sharp: C gave `cm A E B` where the progression
+    // wants `Cm Ab Eb Bb` (#318). The same symbol means different
+    // things in major and minor contexts, and chordMap cannot tell
+    // which, so the progression says what it means.
+    edm: ['i', 'bVI', 'bIII', 'bVII']
   };
 
   /**
@@ -41,7 +48,11 @@ export class MusicTheory {
       throw new Error(`Invalid root note: ${root}`);
     }
     
-    const scale = this.scales[scaleName];
+    // hasOwn for the same reason as chordMap below: a plain object
+    // literal returns an inherited value for 'constructor'/'__proto__',
+    // and `scale.map` then throws a raw TypeError. The tool layer's
+    // VALID_SCALES allowlist blocks it today; this is the second line.
+    const scale = Object.hasOwn(this.scales, scaleName) ? this.scales[scaleName] : undefined;
     if (!scale) {
       throw new Error(`Invalid scale: ${scaleName}`);
     }
@@ -60,7 +71,10 @@ export class MusicTheory {
    * @throws {Error} When style is invalid
    */
   generateChordProgression(key: string, style: keyof typeof this.chordProgressions): string {
-    const progression = this.chordProgressions[style];
+    // hasOwn: same plain-object-literal hazard as scales above (#318).
+    const progression = Object.hasOwn(this.chordProgressions, style)
+      ? this.chordProgressions[style]
+      : undefined;
     if (!progression) {
       throw new Error(`Invalid progression style: ${style}`);
     }
@@ -68,7 +82,7 @@ export class MusicTheory {
     const chordMap: Record<string, string> = {
       'I': key,
       'I7': `${key}7`,
-      'i': `${key.toLowerCase()}m`,
+      'i': `${key}m`,
       'ii': `${this.getNote(key, 2)}m`,
       'IIM7': `${this.getNote(key, 2)}m7`,
       'iii': `${this.getNote(key, 4)}m`,
@@ -80,12 +94,16 @@ export class MusicTheory {
       'vi': `${this.getNote(key, 9)}m`,
       'VI': this.getNote(key, 9),
       'VII': this.getNote(key, 11),
+      'bIII': this.getNote(key, 3),
+      'bVI': this.getNote(key, 8),
       'bVII': this.getNote(key, 10),
       'IM7': `${key}maj7`
     };
 
     return progression
-      .map(chord => chordMap[chord] || key)
+      // hasOwn: chordMap is a plain object literal, so chordMap['constructor']
+      // returns Object — truthy — and the `|| key` fallback never fires (#318).
+      .map(chord => (Object.hasOwn(chordMap, chord) ? chordMap[chord] : key))
       .join(' ');
   }
 
@@ -164,7 +182,7 @@ export class MusicTheory {
       'random': [0, 2, 1, 3, 0, 3, 1, 2]
     };
     
-    const arpPattern = patterns[pattern] || patterns['up'];
+    const arpPattern = lookup(patterns, pattern, patterns['up']);
     const notes = this.getChordNotes(chord);
     
     return arpPattern
@@ -196,7 +214,7 @@ export class MusicTheory {
       'aug': [0, 4, 8] // augmented
     };
     
-    const chordIntervals = intervals[type] || intervals[''];
+    const chordIntervals = lookup(intervals, type, intervals['']);
     return chordIntervals.map(interval => {
       const note = this.getNote(root, interval);
       return `${note.toLowerCase()}3`;

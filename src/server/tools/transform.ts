@@ -13,6 +13,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { empty, withStashField, withStashNotice } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
+import { lookup } from '../../utils/TableLookup.js';
 
 interface EnergyConfig {
   tempoAdjust: number;
@@ -62,7 +63,7 @@ function transposePattern(pattern: string, semitones: number): string {
       'f#': 6, 'g': 7, 'g#': 8, 'a': 9, 'a#': 10, 'b': 11,
     };
     const currentNote = note.toLowerCase();
-    const noteValue = noteMap[currentNote] || 0;
+    const noteValue = lookup(noteMap, currentNote, 0);
     const newNoteValue = (noteValue + semitones + 12) % 12;
     const noteNames = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
     const newOctave = parseInt(octave) + Math.floor((noteValue + semitones) / 12);
