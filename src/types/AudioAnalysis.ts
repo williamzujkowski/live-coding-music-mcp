@@ -6,6 +6,15 @@ export interface TempoAnalysis {
   bpm: number;
   confidence: number;
   method?: 'autocorrelation' | 'onset' | 'spectral';
+  /**
+   * Octave-related readings of the same onset series.
+   *
+   * Half and double time are indistinguishable from onset timing alone
+   * — a 345ms and a 690ms impulse train are the same data. Rather than
+   * pick silently, both are surfaced: a dnb track detected at 87 lists
+   * 174, which is the reading its producer would give (#352).
+   */
+  alternatives?: number[];
 }
 
 export interface KeyAnalysis {
