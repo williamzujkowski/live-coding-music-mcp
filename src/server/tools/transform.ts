@@ -229,6 +229,17 @@ async function opSwing(args: any, ctx: ToolContext, sid?: string): Promise<unkno
 
 async function opScale(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
   InputValidator.validateStringLength(args.scale, 'scale', 50, false);
+  // Concatenated straight into the pattern source below, so it must be a
+  // scale name and not arbitrary code — the same reason `opEffectAdd`
+  // validates its effect name (#236). A length check is not a content
+  // check: `scale: 'minor") .gain(9) //'` closed the string literal and
+  // appended a call, which is how it got past `PatternValidator`'s
+  // dangerous-gain rule — that runs on the pattern before this is
+  // appended to it (#440).
+  //
+  // `validateScaleName` already existed and `generate.ts` already used
+  // it; this path never did.
+  InputValidator.validateScaleName(args.scale);
   InputValidator.validateRootNote(args.root);
   const p = await ctx.getCurrentPatternSafe(sid);
   const written = await ctx.writePatternSafe(p + `.scale("${args.root}:${args.scale}")`, sid);
