@@ -20,7 +20,8 @@
  * test on the pattern STRING cannot see what the scheduler does with it.
  */
 
-import { PatternGenerator, BEATS_PER_CYCLE } from '../../services/PatternGenerator';
+import { PatternGenerator } from '../../services/PatternGenerator';
+import { BEATS_PER_CYCLE } from '../../utils/Tempo';
 import { DRUM_STYLES } from '../../services/StyleRegistry';
 
 const generator = new PatternGenerator();

@@ -18,6 +18,8 @@ import type { CreativeFeedback, AudioFeedback } from '../../services/GeminiServi
 import type { AudioMeasurements } from '../../services/ai/AudioMeasurements.js';
 import { Logger } from '../../utils/Logger.js';
 import { lookup } from '../../utils/TableLookup.js';
+import { declaredBpm } from '../../utils/Tempo.js';
+
 
 const logger = new Logger();
 
@@ -379,7 +381,7 @@ async function jamWith(
 
   let newLayer: string;
   try {
-    newLayer = generateComplementaryLayer(layer, key, tempo, detectedStyle, existingLayers, ctx);
+    newLayer = generateComplementaryLayer(layer, key, detectedStyle, existingLayers, ctx);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return {
@@ -420,17 +422,29 @@ async function jamWith(
   }
 }
 
+/**
+ * The tempo a pattern's author meant, for generating a layer to sit on
+ * top of it.
+ *
+ * Uses the canonical parser rather than a regex of its own. The regex it
+ * had required a bare `setcpm(<n>)`, so it matched nothing the generator
+ * writes — every generated pattern is `setcpm(130/4)` — and fell through
+ * to guessing from words in the text, which is how `jam_with` came to
+ * read a tempo off a comment (#397).
+ *
+ * `declaredBpm`, not `impliedBpm`: this reads patterns written by someone
+ * else, and only the number they wrote is knowable. Working out what one
+ * will actually sound like takes an assumption about beats per cycle
+ * that holds for what this project generates and not for an arbitrary
+ * hand-written pattern.
+ */
 function detectTempoFromPattern(pattern: string): number {
-  const cpmMatch = pattern.match(/setcpm\s*\(\s*(\d+(?:\.\d+)?)\s*\)/i);
-  if (cpmMatch) return Math.round(parseFloat(cpmMatch[1]));
-  const bpmMatch = pattern.match(/setbpm\s*\(\s*(\d+(?:\.\d+)?)\s*\)/i);
-  if (bpmMatch) return Math.round(parseFloat(bpmMatch[1]));
-  const cpsMatch = pattern.match(/setcps\s*\(\s*(\d+(?:\.\d+)?)\s*(?:\/\s*60)?\s*\)/i);
-  if (cpsMatch) {
-    const cps = parseFloat(cpsMatch[1]);
-    if (pattern.includes(`setcps(${cpsMatch[1]}/60`)) return Math.round(cps);
-    return Math.round(cps * 60);
-  }
+  const declared = declaredBpm(pattern);
+  if (declared !== undefined) return Math.round(declared);
+
+  // No tempo call at all. Guessing from genre words is a poor answer,
+  // but it beats silently assuming 120 for a dnb pattern — and a real
+  // parse always wins over it now, which is the part that was broken.
   if (pattern.toLowerCase().includes('dnb')) return 174;
   if (pattern.toLowerCase().includes('techno')) return 130;
   if (pattern.toLowerCase().includes('house')) return 125;
@@ -514,8 +528,15 @@ function detectStyleFromPattern(pattern: string, styleHint?: string): string {
 }
 
 function generateComplementaryLayer(
-  layer: string, key: string, tempo: number, style: string, existingLayers: string[], ctx: ToolContext,
+  layer: string, key: string, style: string, existingLayers: string[], ctx: ToolContext,
 ): string {
+  // No `tempo` parameter: it was declared, passed, and never read. The
+  // merged layer goes inside the host pattern's own stack and inherits
+  // its tempo call (see `mergeLayerIntoPattern`), so there is nothing
+  // here for a tempo to change. A cross-model reviewer read the dead
+  // parameter as evidence that this function retimes the layer, and
+  // concluded jam_with would desync by 4x; it cannot. Dead arguments
+  // are not free.
   switch (layer) {
     case 'drums':
       if (existingLayers.includes('drums')) {

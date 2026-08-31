@@ -13,6 +13,8 @@
 
 // @tonejs/midi is CommonJS - use dynamic import approach
 import * as midiModule from '@tonejs/midi';
+import { BEATS_PER_BAR } from '../utils/Tempo.js';
+
 // Handle both ESM and CJS interop
 const Midi = (midiModule as any).Midi || (midiModule as any).default?.Midi;
 import { writeFileSync, mkdirSync } from 'fs';
@@ -147,14 +149,6 @@ const CASE_SENSITIVE_CHORDS: Record<string, number[]> = {
   'M13': [0, 4, 7, 11, 14, 21],
 };
 
-/**
- * Beats in one bar / cycle.
- *
- * Export and import must agree on this or a round trip rescales time.
- * `MIDIImportService` uses `secondsPerBeat * 4`; this is the same 4,
- * named so the next person changing one finds the other (#336).
- */
-export const BEATS_PER_BAR = 4;
 
 /**
  * Strudel sample name -> GM percussion note.

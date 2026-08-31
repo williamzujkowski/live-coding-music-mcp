@@ -9,6 +9,8 @@
  * @module services/StrudelEngineHelpers
  */
 
+import { declaredBpm } from '../utils/Tempo.js';
+
 /** Error location shape shared by transpile / validate results. */
 export interface ErrorLocation {
   line: number;
@@ -138,27 +140,15 @@ export function checkCommonIssues(
 }
 
 /**
- * Extract BPM from a `setcpm(<number>)` call. Returns undefined when
- * absent — Strudel's default tempo is documented elsewhere; this helper
- * stays narrow (no fallback) so callers can distinguish "not set" from
- * "set to default".
+ * Extract the BPM a pattern declares, or undefined when it declares none.
+ *
+ * Thin wrapper over the canonical parser, kept because callers import it
+ * from here. It used to carry its own regex, which #341 taught to read
+ * `setcpm(130/4)` — a lesson the two other copies of that regex never
+ * got (#397).
  */
 export function extractBpm(code: string): number | undefined {
-  // `setcpm(130/4)` is the canonical way to write "130 BPM in 4/4", and
-  // two of the shipped longform examples use exactly that form. The old
-  // regex required a bare literal, so both reported no BPM at all.
-  // Case-insensitive too: setCpm(120) returned undefined (#341).
-  const divided = code.match(/setcpm\s*\(\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*\)/i);
-  if (divided) {
-    const numerator = Number.parseFloat(divided[1]);
-    const denominator = Number.parseFloat(divided[2]);
-    // The numerator is the BPM the author meant; the divisor is the
-    // beats-per-cycle conversion.
-    if (Number.isFinite(numerator) && denominator > 0) return numerator;
-  }
-
-  const match = code.match(/setcpm\s*\(\s*(\d+(?:\.\d+)?)\s*\)/i);
-  return match ? parseFloat(match[1]) : undefined;
+  return declaredBpm(code);
 }
 
 /**

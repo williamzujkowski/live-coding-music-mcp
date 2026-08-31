@@ -13,7 +13,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { empty, withStashField, withStashNotice } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
-import { BEATS_PER_CYCLE } from '../../services/PatternGenerator.js';
+import { BEATS_PER_CYCLE } from '../../utils/Tempo.js';
 import { lookup } from '../../utils/TableLookup.js';
 
 interface EnergyConfig {
@@ -135,7 +135,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'set_tempo',
-    description: 'Set BPM',
+    description: 'Set BPM. Writes setcpm(bpm/4), assuming one bar of 4/4 per cycle.',
     inputSchema: {
       type: 'object',
       properties: { bpm: { type: 'number', description: 'Tempo in BPM' }, ...SESSION_ID_PROP },

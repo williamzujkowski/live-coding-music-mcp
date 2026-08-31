@@ -60,7 +60,7 @@ describe('import_midi tool (#201)', () => {
         data: buf.toString('base64'),
       }, makeCtx());
       expect(result.ok).toBe(true);
-      expect(result.data.pattern).toContain('setcpm(120)');
+      expect(result.data.pattern).toContain('setcpm(120/4)'); // 120 cpm would be 480 BPM (#397)
       expect(result.data.pattern).toContain('stack(');
       expect(result.data.summary.notes).toBe(2);
     });

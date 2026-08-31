@@ -282,7 +282,7 @@ compose with style: "dnb", key: "Am", tempo: 174, auto_play: true
 | Tool | Description |
 |------|-------------|
 | `playback` | Control transport on the current session.  |
-| `set_tempo` | Set BPM |
+| `set_tempo` | Set BPM. Writes setcpm(bpm/4), assuming one bar of 4/4 per cycle. |
 
 </details>
 
@@ -410,7 +410,7 @@ Claude: [Initializes browser]
         [Starts playback]
 
 Pattern created:
-setcpm(130)
+setcpm(130/4)
 stack(
   s("bd*4"),
   s("~ cp ~ cp"),
@@ -450,7 +450,7 @@ You: Generate a complete drum & bass track at 174 BPM
 Claude: [Creates multi-layer pattern with drums, bass, and pads]
 
 // dnb pattern in C at 174 BPM
-setcpm(174)
+setcpm(174/4)
 stack(
   // Drums
   s("bd ~ ~ [bd bd] ~ ~ bd ~, ~ ~ cp ~ ~ cp ~ ~").fast(2),
@@ -505,7 +505,7 @@ You: Create an ambient soundscape with multiple layers
 
 Claude: [Generates complex multi-layer pattern]
 
-setcpm(90)
+setcpm(90/4)
 stack(
   // Deep bass drone
   note("c1").s("sine").attack(4).release(8).gain(0.5),
@@ -651,7 +651,7 @@ For the full breakdown — component diagram, per-component responsibilities, di
 
 ### Minimal Techno (Verified Working)
 ```javascript
-setcpm(130)
+setcpm(130/4)
 stack(
   s("bd*4").gain(0.9),
   s("~ cp ~ cp").room(0.2),
@@ -662,7 +662,7 @@ stack(
 
 ### Drum & Bass (Verified Working)
 ```javascript
-setcpm(174)
+setcpm(174/4)
 stack(
   s("bd ~ ~ [bd bd] ~ ~ bd ~, ~ ~ sn:3 ~ ~ sn:3 ~ ~").fast(2),
   s("hh*16").gain(0.5),
