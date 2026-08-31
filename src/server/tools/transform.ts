@@ -13,6 +13,7 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { empty, withStashField, withStashNotice } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
+import { BEATS_PER_CYCLE } from '../../services/PatternGenerator.js';
 import { lookup } from '../../utils/TableLookup.js';
 
 interface EnergyConfig {
@@ -345,7 +346,14 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
     case 'set_tempo': {
       InputValidator.validateBPM(args.bpm);
       const p = await ctx.getCurrentPatternSafe(sid);
-      const written = await ctx.writePatternSafe(`setcpm(${args.bpm})\n${p}`, sid);
+      // `setcpm` is CYCLES per minute, and the Strudel convention this
+      // project follows is one bar of four beats per cycle — so the
+      // divisor is what makes `set_tempo({ bpm: 130 })` produce 130 BPM
+      // rather than 520 (#395).
+      const written = await ctx.writePatternSafe(
+        `setcpm(${String(args.bpm)}/${String(BEATS_PER_CYCLE)})\n${p}`,
+        sid,
+      );
       return withStashNotice(`Set tempo to ${args.bpm} BPM`, written);
     }
 

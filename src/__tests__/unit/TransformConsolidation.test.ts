@@ -109,7 +109,7 @@ describe('transform consolidation (#147)', () => {
     it('set_tempo still prepends setcpm', async () => {
       const { ctx, pattern } = makeCtx();
       await execute('set_tempo', { bpm: 140 }, ctx);
-      expect(pattern()).toContain('setcpm(140)');
+      expect(pattern()).toContain('setcpm(140/4)');
     });
   });
 });
