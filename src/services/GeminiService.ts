@@ -1,5 +1,9 @@
 import { Logger } from '../utils/Logger.js';
 import { GoogleAuth } from 'google-auth-library';
+import type { AiTransportEntry } from './ai/AiTransport.js';
+import { cliTransports, hasCliTransport } from './ai/CliTransport.js';
+import type { AudioMeasurements } from './ai/AudioMeasurements.js';
+import { buildMeasurementPrompt } from './ai/AudioMeasurements.js';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -83,6 +87,12 @@ export class GeminiService {
   private cacheTtlMs: number;
   private timeoutMs: number;
   private maxPatternLength: number;
+  /** Whether shelling out to a local CLI is permitted. */
+  private readonly enableCliTransport: boolean;
+
+  /** Resolved transport; undefined = not yet resolved, null = none available. */
+  private transport: AiTransportEntry | null | undefined = undefined;
+
   private adcAvailable: boolean | null = null; // null = not checked yet
   private adcCheckPromise: Promise<boolean> | null = null;
   private cliCredentialsChecked: boolean = false;
@@ -108,6 +118,12 @@ export class GeminiService {
     cacheTtlSeconds?: number;
     timeoutSeconds?: number;
     maxPatternLength?: number;
+    /**
+     * Allow reaching a model by shelling out to a locally authenticated
+     * CLI. Default true. Set false to forbid subprocess transports — a
+     * deployment may reasonably want AI calls to go over HTTP only.
+     */
+    enableCliTransport?: boolean;
   }) {
     this.apiKey = config?.apiKey || process.env.GEMINI_API_KEY;
     this.model = config?.model || 'gemini-2.0-flash';
@@ -115,15 +131,34 @@ export class GeminiService {
     this.cacheTtlMs = (config?.cacheTtlSeconds || 300) * 1000;
     this.timeoutMs = (config?.timeoutSeconds || 30) * 1000;
     this.maxPatternLength = config?.maxPatternLength || 5000;
+    this.enableCliTransport =
+      config?.enableCliTransport ?? process.env.STRUDEL_DISABLE_CLI_AI !== '1';
   }
 
   /**
-   * Checks if Gemini service is available (API key or ADC configured)
-   * Note: This is synchronous and may return false before ADC check completes.
-   * Use isAvailableAsync() for accurate ADC detection.
+   * Whether AI features can currently be served.
+   *
+   * Synchronous, so it can only report what is already known: an API key,
+   * a completed ADC probe, or a transport resolved by an earlier call.
+   * It deliberately does NOT scan for CLIs — that is I/O.
+   *
+   * Every production gate used to call this and stop there, which meant
+   * the ~120 lines of CLI-credential and ADC discovery never ran: users
+   * with only ADC, only `~/.gemini/settings.json`, or only an
+   * authenticated CLI were all told "not configured" (#252). Those gates
+   * now use `isAvailableAsync()`. This stays for callers that need a
+   * cheap, non-blocking answer.
    */
   isAvailable(): boolean {
-    return !!this.apiKey || this.adcAvailable === true;
+    return (
+      !!this.apiKey ||
+      this.adcAvailable === true ||
+      this.transport != null ||
+      // A locally authenticated CLI serves requests perfectly well without
+      // any key of ours (#252). Detecting one is a PATH scan, not I/O
+      // against a service, so this stays synchronous.
+      (this.enableCliTransport && hasCliTransport())
+    );
   }
 
   /**
@@ -131,6 +166,10 @@ export class GeminiService {
    * Checks in order: API key, env var, Gemini CLI config, ADC.
    * @returns Promise<boolean> indicating if service can make API calls
    */
+  async canServe(): Promise<boolean> {
+    return (await this.resolveTransport()) !== null;
+  }
+
   async isAvailableAsync(): Promise<boolean> {
     // 1. Explicit API key or env var already set
     if (this.apiKey) return true;
@@ -311,10 +350,12 @@ export class GeminiService {
    * Get authentication error message
    */
   private getAuthErrorMessage(): string {
-    return 'Gemini API key not configured. Options:\n' +
+    return (
+      'No AI transport available. Options:\n' +
       '1. Set GEMINI_API_KEY environment variable\n' +
-      '2. Install Gemini CLI and run "gemini auth login"\n' +
-      '3. Run "gcloud auth application-default login" for ADC';
+      '2. Run "gcloud auth application-default login" for ADC\n' +
+      '3. Install and authenticate one of: claude, agy, codex'
+    );
   }
 
   /**
@@ -323,18 +364,56 @@ export class GeminiService {
    * @throws {Error} When no authentication method is available
    */
   private async ensureAuthentication(): Promise<void> {
-    // 1. Already have API key (explicit or from env var)
-    if (this.apiKey) return;
+    // A resolved transport IS authentication. An authenticated CLI needs
+    // no API key of ours — it holds its own credentials, which is the
+    // entire point of #252. Checking the key ladder first would reject a
+    // machine where AI works perfectly well.
+    if ((await this.resolveTransport()) !== null) return;
 
-    // 2. Check Gemini CLI config file
-    const cliKey = await this.loadGeminiCliCredentials();
-    if (cliKey) return;
+    throw new Error(this.getAuthErrorMessage());
+  }
 
-    // 3. Fall back to ADC
-    const adcAvailable = await this.checkADC();
-    if (!adcAvailable) {
-      throw new Error(this.getAuthErrorMessage());
+  /**
+   * Analyses audio from locally computed measurements.
+   *
+   * Preferred over {@link analyzeAudio}. No installed CLI can decode
+   * audio — asked directly, they say so — and `agy` will sometimes
+   * confabulate detailed analysis of audio it never examined, which is
+   * worse than refusing. Measuring locally and sending numbers is
+   * deterministic and works with every provider rather than one.
+   *
+   * @param measurements - Peak, RMS, tempo, key and spectrum measured locally
+   * @param pattern - The Strudel source that produced the audio
+   * @param context - What the user was aiming for
+   * @returns Structured feedback in the same shape as analyzeAudio
+   *
+   * @example
+   * await service.analyzeAudioMeasurements(
+   *   { durationMs: 5000, peak: 1.12, rms: 0.36 },
+   *   'stack(s("bd*4"), s("~ cp"))',
+   * );
+   */
+  async analyzeAudioMeasurements(
+    measurements: AudioMeasurements,
+    pattern?: string,
+    context?: PatternContext,
+  ): Promise<AudioFeedback> {
+    await this.ensureAuthentication();
+    this.checkRateLimit();
+
+    const cacheKey = `measure-${await this.getTransportId() ?? 'none'}-${JSON.stringify(measurements)}-${(pattern ?? '').slice(0, 200)}`;
+    const cached = this.getFromCache(this.audioCache, cacheKey);
+    if (cached) {
+      this.logger.debug('Returning cached measurement analysis');
+      return cached;
     }
+
+    const prompt = buildMeasurementPrompt(measurements, pattern, context);
+    const response = await this.callGeminiAPIWithTimeout(prompt);
+    const feedback = this.parseAudioResponse(response);
+
+    this.audioCache.set(cacheKey, { result: feedback, timestamp: Date.now() });
+    return feedback;
   }
 
   /**
@@ -592,7 +671,54 @@ export class GeminiService {
    * @returns API response text
    * @throws {Error} When request times out or API fails
    */
+  /**
+   * Resolves the transport that will actually serve requests.
+   *
+   * The Gemini HTTP API when credentials exist, otherwise the first
+   * locally authenticated CLI. Cached after the first resolution so a
+   * PATH scan and auth probe do not run per request.
+   *
+   * @returns The active transport, or null when nothing can serve
+   */
+  private async resolveTransport(): Promise<AiTransportEntry | null> {
+    if (this.transport !== undefined) return this.transport;
+
+    if (await this.isAvailableAsync()) {
+      this.transport = {
+        id: `gemini-api:${this.model}`,
+        label: 'Gemini API',
+        isAvailable: () => Promise.resolve(true),
+        send: (prompt: string) => this.callGeminiAPI(prompt),
+      };
+      return this.transport;
+    }
+
+    // No API credentials. A locally authenticated CLI still works, which
+    // is the whole of #252: `agy` holds valid Gemini auth that this
+    // service's credential ladder cannot see.
+    for (const candidate of this.enableCliTransport ? cliTransports() : []) {
+      if (await candidate.isAvailable()) {
+        this.logger.debug(`Using AI transport: ${candidate.label}`);
+        this.transport = candidate;
+        return this.transport;
+      }
+    }
+
+    this.transport = null;
+    return null;
+  }
+
+  /** Identifier of the transport in use, for diagnostics. */
+  async getTransportId(): Promise<string | null> {
+    return (await this.resolveTransport())?.id ?? null;
+  }
+
   private async callGeminiAPIWithTimeout(prompt: string): Promise<string> {
+    const transport = await this.resolveTransport();
+    if (transport === null) {
+      throw new Error(this.getAuthErrorMessage());
+    }
+
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
         reject(new Error(`Request timed out after ${this.timeoutMs / 1000} seconds`));
@@ -600,7 +726,7 @@ export class GeminiService {
     });
 
     return Promise.race([
-      this.callGeminiAPI(prompt),
+      transport.send(prompt),
       timeoutPromise
     ]);
   }

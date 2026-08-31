@@ -12,6 +12,7 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import type { CreativeFeedback, AudioFeedback } from '../../services/GeminiService.js';
+import type { AudioMeasurements } from '../../services/ai/AudioMeasurements.js';
 import { Logger } from '../../utils/Logger.js';
 
 const logger = new Logger();
@@ -135,10 +136,14 @@ async function getPatternFeedback(
           peak: sample.peak,
         });
       } else {
-        result.audio_analysis = await ctx.geminiService.analyzeAudio(sample.blob, {
-          style,
-          duration: FEEDBACK_SAMPLE_MS / 1000,
-        });
+        // Measurements, not the waveform. Every installed CLI answers
+        // "CANNOT DECODE AUDIO", and agy will confabulate detailed
+        // analysis of audio it never examined rather than admit it.
+        result.audio_analysis = await ctx.geminiService.analyzeAudioMeasurements(
+          sample.measurements,
+          pattern,
+          { style, duration: FEEDBACK_SAMPLE_MS / 1000 },
+        );
         result.audio_levels = { peak: sample.peak, rms: sample.rms };
       }
     } catch (error: unknown) {
@@ -172,7 +177,8 @@ const FEEDBACK_SAMPLE_MS = 5000;
 
 /** A captured sample plus the level measurements taken while decoding it. */
 interface AudioSample {
-  blob: Blob;
+  /** What was measured locally — this is what the model actually sees. */
+  measurements: AudioMeasurements;
   peak?: number;
   rms?: number;
   /** True when the capture recorded nothing audible. */
@@ -209,9 +215,16 @@ async function captureAudioSampleForFeedback(
     return null;
   }
 
-  const bytes = Buffer.from(result.audio, 'base64');
+  // The bytes are deliberately discarded. No model in play can decode
+  // audio, so what gets sent is the measurement set, not the waveform.
   return {
-    blob: new Blob([bytes], { type: 'audio/wav' }),
+    measurements: {
+      durationMs: result.duration,
+      peak: result.peak,
+      rms: result.rms,
+      sampleRate: result.sampleRate,
+      channels: result.channels,
+    },
     peak: result.peak,
     rms: result.rms,
     silent: result.silent === true,

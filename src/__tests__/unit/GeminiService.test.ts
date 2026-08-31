@@ -56,7 +56,7 @@ describe('GeminiService', () => {
     });
 
     it('should use defaults when no config provided', () => {
-      const defaultService = new GeminiService();
+      const defaultService = new GeminiService({ enableCliTransport: false });
       // Without API key, service is not available
       expect(defaultService.isAvailable()).toBe(false);
     });
@@ -68,7 +68,7 @@ describe('GeminiService', () => {
     });
 
     it('should return false when API key is not configured and ADC not checked', () => {
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       expect(noKeyService.isAvailable()).toBe(false);
     });
   });
@@ -87,7 +87,7 @@ describe('GeminiService', () => {
         })
       }));
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       const result = await noKeyService.isAvailableAsync();
       expect(result).toBe(true);
     });
@@ -98,7 +98,7 @@ describe('GeminiService', () => {
         getClient: jest.fn().mockRejectedValue(new Error('No credentials'))
       }));
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       const result = await noKeyService.isAvailableAsync();
       expect(result).toBe(false);
     });
@@ -112,7 +112,7 @@ describe('GeminiService', () => {
         getClient: mockGetClient
       }));
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       await noKeyService.isAvailableAsync();
       await noKeyService.isAvailableAsync();
       await noKeyService.isAvailableAsync();
@@ -135,7 +135,7 @@ describe('GeminiService', () => {
         response: { text: () => '{"complexity": "simple"}' }
       });
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       const feedback = await noKeyService.getCreativeFeedback('s("bd sd")');
       expect(feedback.complexity).toBe('simple');
     });
@@ -152,7 +152,7 @@ describe('GeminiService', () => {
         response: { text: () => '{"complexity": "simple"}' }
       });
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       // Initially false (ADC not checked)
       expect(noKeyService.isAvailable()).toBe(false);
 
@@ -178,7 +178,7 @@ describe('GeminiService', () => {
     });
 
     it('should return primary config path as ~/.gemini/settings.json', () => {
-      const service = new GeminiService();
+      const service = new GeminiService({ enableCliTransport: false });
       const configPath = service.getGeminiCliConfigPath();
 
       // Primary path is always ~/.gemini/settings.json per Gemini CLI docs
@@ -189,7 +189,7 @@ describe('GeminiService', () => {
       const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
       Object.defineProperty(process, 'platform', { value: 'linux' });
 
-      const service = new GeminiService();
+      const service = new GeminiService({ enableCliTransport: false });
       const configPaths = service.getGeminiCliConfigPaths();
 
       expect(configPaths).toContain(path.join(os.homedir(), '.gemini', 'settings.json'));
@@ -205,7 +205,7 @@ describe('GeminiService', () => {
       const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
       Object.defineProperty(process, 'platform', { value: 'darwin' });
 
-      const service = new GeminiService();
+      const service = new GeminiService({ enableCliTransport: false });
       const configPaths = service.getGeminiCliConfigPaths();
 
       expect(configPaths).toContain(path.join(os.homedir(), '.gemini', 'settings.json'));
@@ -222,7 +222,7 @@ describe('GeminiService', () => {
       Object.defineProperty(process, 'platform', { value: 'win32' });
       process.env.APPDATA = 'C:\\Users\\Test\\AppData\\Roaming';
 
-      const service = new GeminiService();
+      const service = new GeminiService({ enableCliTransport: false });
       const configPaths = service.getGeminiCliConfigPaths();
 
       expect(configPaths).toContain(path.join(os.homedir(), '.gemini', 'settings.json'));
@@ -245,7 +245,7 @@ describe('GeminiService', () => {
         response: { text: () => '{"complexity": "simple"}' }
       });
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       const result = await noKeyService.isAvailableAsync();
 
       expect(result).toBe(true);
@@ -258,7 +258,7 @@ describe('GeminiService', () => {
         response: { text: () => '{"complexity": "simple"}' }
       });
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       const result = await noKeyService.isAvailableAsync();
 
       expect(result).toBe(true);
@@ -267,7 +267,7 @@ describe('GeminiService', () => {
     it('should load API key from Gemini CLI config using geminiApiKey field', async () => {
       mockReadFile.mockResolvedValue(JSON.stringify({ geminiApiKey: 'cli-api-key-789' }));
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       const result = await noKeyService.isAvailableAsync();
 
       expect(result).toBe(true);
@@ -278,7 +278,7 @@ describe('GeminiService', () => {
       error.code = 'ENOENT';
       mockReadFile.mockRejectedValue(error);
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       const result = await noKeyService.isAvailableAsync();
 
       expect(result).toBe(false);
@@ -287,7 +287,7 @@ describe('GeminiService', () => {
     it('should return false when config file is not valid JSON', async () => {
       mockReadFile.mockResolvedValue('not valid json {{{');
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       const result = await noKeyService.isAvailableAsync();
 
       expect(result).toBe(false);
@@ -296,7 +296,7 @@ describe('GeminiService', () => {
     it('should return false when config file has no API key', async () => {
       mockReadFile.mockResolvedValue(JSON.stringify({ someOtherSetting: 'value' }));
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       const result = await noKeyService.isAvailableAsync();
 
       expect(result).toBe(false);
@@ -305,7 +305,7 @@ describe('GeminiService', () => {
     it('should return false when API key is empty string', async () => {
       mockReadFile.mockResolvedValue(JSON.stringify({ apiKey: '' }));
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       const result = await noKeyService.isAvailableAsync();
 
       expect(result).toBe(false);
@@ -314,7 +314,7 @@ describe('GeminiService', () => {
     it('should cache CLI credentials check result', async () => {
       mockReadFile.mockResolvedValue(JSON.stringify({ apiKey: 'cached-key' }));
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       await noKeyService.loadGeminiCliCredentials();
       await noKeyService.loadGeminiCliCredentials();
       await noKeyService.loadGeminiCliCredentials();
@@ -341,22 +341,25 @@ describe('GeminiService', () => {
         response: { text: () => '{"complexity": "moderate", "estimatedStyle": "techno"}' }
       });
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       const feedback = await noKeyService.getCreativeFeedback('s("bd sd")');
 
       expect(feedback.complexity).toBe('moderate');
       expect(mockGenerateContent).toHaveBeenCalled();
     });
 
-    it('should include CLI option in error message when no auth available', async () => {
+    it('should name every transport in the error when none is available', async () => {
       const error = new Error('ENOENT') as NodeJS.ErrnoException;
       error.code = 'ENOENT';
       mockReadFile.mockRejectedValue(error);
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
 
+      // The message must name all routes, not just the API ones — a user
+      // with an authenticated CLI and no API key was previously told to
+      // configure a key they did not need (#252).
       await expect(noKeyService.getCreativeFeedback('s("bd")'))
-        .rejects.toThrow('gemini auth login');
+        .rejects.toThrow(/claude, agy, codex/);
     });
   });
 
@@ -377,15 +380,15 @@ describe('GeminiService', () => {
       });
     });
 
-    it('should throw when neither API key nor ADC configured', async () => {
+    it('should throw when no transport at all is available', async () => {
       const { GoogleAuth } = require('google-auth-library');
       GoogleAuth.mockImplementation(() => ({
         getClient: jest.fn().mockRejectedValue(new Error('No credentials'))
       }));
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       await expect(noKeyService.analyzeAudio(mockAudioBlob))
-        .rejects.toThrow('Gemini API key not configured');
+        .rejects.toThrow('No AI transport available');
     });
 
     it('should analyze audio and return feedback', async () => {
@@ -479,15 +482,15 @@ describe('GeminiService', () => {
       });
     });
 
-    it('should throw when neither API key nor ADC configured', async () => {
+    it('should throw when no transport at all is available', async () => {
       const { GoogleAuth } = require('google-auth-library');
       GoogleAuth.mockImplementation(() => ({
         getClient: jest.fn().mockRejectedValue(new Error('No credentials'))
       }));
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       await expect(noKeyService.suggestVariations(testPattern))
-        .rejects.toThrow('Gemini API key not configured');
+        .rejects.toThrow('No AI transport available');
     });
 
     it('should return pattern suggestions', async () => {
@@ -532,15 +535,15 @@ describe('GeminiService', () => {
       });
     });
 
-    it('should throw when neither API key nor ADC configured', async () => {
+    it('should throw when no transport at all is available', async () => {
       const { GoogleAuth } = require('google-auth-library');
       GoogleAuth.mockImplementation(() => ({
         getClient: jest.fn().mockRejectedValue(new Error('No credentials'))
       }));
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       await expect(noKeyService.getCreativeFeedback(testPattern))
-        .rejects.toThrow('Gemini API key not configured');
+        .rejects.toThrow('No AI transport available');
     });
 
     it('should return creative feedback', async () => {
@@ -789,15 +792,15 @@ describe('GeminiService', () => {
       });
     });
 
-    it('should throw when neither API key nor ADC configured', async () => {
+    it('should throw when no transport at all is available', async () => {
       const { GoogleAuth } = require('google-auth-library');
       GoogleAuth.mockImplementation(() => ({
         getClient: jest.fn().mockRejectedValue(new Error('No credentials'))
       }));
 
-      const noKeyService = new GeminiService();
+      const noKeyService = new GeminiService({ enableCliTransport: false });
       await expect(noKeyService.modifyPatternWithNLP(originalPattern, 'add hi-hats'))
-        .rejects.toThrow('Gemini API key not configured');
+        .rejects.toThrow('No AI transport available');
     });
 
     it('should modify pattern based on natural language description', async () => {
