@@ -28,13 +28,45 @@ function isValidFftSize(n: unknown): n is number {
   );
 }
 
+/** A detected onset and how loud the transient that produced it was. */
+export interface OnsetObservation {
+  t: number;
+  strength: number;
+}
+
+/**
+ * Either shape is accepted.
+ *
+ * Bare timestamps come from the single-sample fallback path and from
+ * every direct test of the interval maths, where there is no flux to
+ * report; the weighted form comes from `onsetsFromFlux`. Rather than
+ * force one to fake the other, both are read through these two helpers.
+ */
+export type OnsetInput = readonly number[] | readonly OnsetObservation[];
+
+/** Timestamps, whichever shape was passed. */
+export function onsetTimes(onsets: OnsetInput): number[] {
+  return onsets.map(onset => (typeof onset === 'number' ? onset : onset.t));
+}
+
+/** Strengths, or an empty array when the caller had none to give. */
+export function onsetStrengths(onsets: OnsetInput): number[] {
+  if (onsets.length === 0 || typeof onsets[0] === 'number') return [];
+  return (onsets as readonly OnsetObservation[]).map(onset => onset.strength);
+}
+
 export class AudioAnalyzer {
   private _analysisCache: AudioAnalysisResult | null = null;
   private _cacheTimestamp: number = 0;
   private readonly ANALYSIS_CACHE_TTL = 50; // milliseconds
 
   // Advanced analysis tracking
-  private _onsetHistory: number[] = [];
+  /**
+   * Detected onsets, with the flux that produced each one (#352). Bare
+   * timestamps would throw away the only signal that distinguishes a
+   * kick from a hi-hat.
+   */
+  private _onsetHistory: OnsetObservation[] = [];
   private _spectralFluxHistory: number[] = [];
   private _previousMagnitudes: number[] | null = null;
   private _chromaHistory: number[][] = [];
@@ -443,16 +475,20 @@ export class AudioAnalyzer {
    * duplicated into a browser copy that would drift from this one — the
    * failure mode #341 found in the style resource (#322).
    *
+   * Returns the flux value alongside the timestamp, because a kick and a
+   * hi-hat are not equally good evidence of where the beat is, and the
+   * autocorrelation needs to be able to tell them apart (#352).
+   *
    * @param samples - Timestamped flux values, oldest first
-   * @returns Timestamps at which an onset was detected
+   * @returns Each detected onset, with the flux that triggered it
    * @example
    * analyzer.onsetsFromFlux([{ t: 0, flux: 0.01 }, { t: 20, flux: 0.4 }]);
    */
-  onsetsFromFlux(samples: { t: number; flux: number }[]): number[] {
+  onsetsFromFlux(samples: { t: number; flux: number }[]): OnsetObservation[] {
     this.resetOnsetDetection();
-    const onsets: number[] = [];
+    const onsets: OnsetObservation[] = [];
     for (const sample of samples) {
-      if (this.isOnset(sample.flux)) onsets.push(sample.t);
+      if (this.isOnset(sample.flux)) onsets.push({ t: sample.t, strength: sample.flux });
     }
     return onsets;
   }
@@ -677,7 +713,7 @@ export class AudioAnalyzer {
       throw new Error('Audio analyzer not connected');
     }
 
-    let onsets: number[];
+    let onsets: OnsetInput;
 
     // Check if this is a mock with pre-calculated onset times (for testing)
     if (typeof analyzer.analyze === 'function') {
@@ -696,7 +732,7 @@ export class AudioAnalyzer {
         const flux = this.calculateSpectralFlux(fftData);
 
         if (this.isOnset(flux)) {
-          this._onsetHistory.push(Date.now());
+          this._onsetHistory.push({ t: Date.now(), strength: flux });
           if (this._onsetHistory.length > this.MAX_HISTORY_LENGTH) {
             this._onsetHistory.shift();
           }
@@ -730,7 +766,7 @@ export class AudioAnalyzer {
       const flux = this.calculateSpectralFlux(fftData);
 
       if (this.isOnset(flux)) {
-        this._onsetHistory.push(Date.now());
+        this._onsetHistory.push({ t: Date.now(), strength: flux });
         if (this._onsetHistory.length > this.MAX_HISTORY_LENGTH) {
           this._onsetHistory.shift();
         }
@@ -827,27 +863,71 @@ export class AudioAnalyzer {
    * @example
    * // onsets every 172ms from a 174 BPM track -> ~345
    */
-  beatPeriodFromOnsets(onsets: number[]): number | null {
+  beatPeriodFromOnsets(onsets: OnsetInput): number | null {
+    const times = onsetTimes(onsets);
+    const strengths = onsetStrengths(onsets);
     // Autocorrelation needs a series long enough to show periodicity.
     // With 8 onsets over 1.2 seconds it reported 117 for a 174 BPM
     // train — the correlation simply has too few overlapping terms at
     // the lags that matter. Below this the median path is better, and
     // the caller falls through to it (#352).
     const MIN_ONSETS_FOR_AUTOCORRELATION = 12;
-    if (onsets.length < MIN_ONSETS_FOR_AUTOCORRELATION) return null;
+    if (times.length < MIN_ONSETS_FOR_AUTOCORRELATION) return null;
 
     // Impulse train at 10ms resolution — finer than the 20ms flux
     // sampling, so quantization here adds nothing.
     const RESOLUTION_MS = 5;
-    const span = onsets[onsets.length - 1] - onsets[0];
+    const span = times[times.length - 1] - times[0];
     if (span <= 0) return null;
     const length = Math.floor(span / RESOLUTION_MS) + 1;
     if (length < 8) return null;
 
+    // Weighted by flux, not a binary impulse train.
+    //
+    // A dnb pattern fires onsets on kicks, snares AND hats, and an
+    // unweighted train says they are equally likely to be the beat. They
+    // are not — measured on a synthetic 174 BPM mix with 16th hats, the
+    // unweighted correlation reads 115 BPM, because the 120 BPM prior
+    // tips a near-tie between the beat lag and a six-sixteenth lag. With
+    // the kick contributing ~2.5x what a hat does, the tie disappears.
+    //
+    // Normalized so the loudest onset is 1: flux magnitudes are relative
+    // to whatever the mix is doing, and only the ratios matter here.
+    const loudest = strengths.length > 0 ? Math.max(...strengths) : 1;
+    const scale = loudest > 0 ? 1 / loudest : 1;
     const envelope = new Array<number>(length).fill(0);
-    for (const onset of onsets) {
-      const index = Math.round((onset - onsets[0]) / RESOLUTION_MS);
-      if (index >= 0 && index < length) envelope[index] = 1;
+
+    // Each onset is spread over a small triangular kernel rather than
+    // written to one bin.
+    //
+    // The flux series is sampled every 20ms, so every onset time is a
+    // multiple of 20ms — and most tempos do not divide into it. A 345ms
+    // beat (174 BPM) lands alternately on 340 and 360, and a bare
+    // impulse train has NO lag that matches both. Measured, tempos whose
+    // period is an exact multiple of the sampling step read correctly
+    // (120 from 500ms, 100 from 600ms) and tempos that are not read
+    // wrong (174, 140) — which is the quantization, not the music.
+    //
+    // A kernel one sampling step wide either side lets a jittered onset
+    // still correlate with the lag it belongs to.
+    // Only for flux-derived onsets. The jitter this corrects is an
+    // artifact of the 20ms sampling, so an input that was not sampled —
+    // exact timestamps from a test, or the mock path — has none, and
+    // smearing it only blurs a peak that was already sharp. Measured:
+    // applying the kernel to an exact 174 BPM 8th-note train moved it
+    // to 117.
+    const KERNEL_BINS = strengths.length > 0 ? Math.max(1, Math.round(20 / RESOLUTION_MS)) : 0;
+    for (let i = 0; i < times.length; i++) {
+      const centre = Math.round((times[i] - times[0]) / RESOLUTION_MS);
+      const weight = strengths.length > 0 ? strengths[i] * scale : 1;
+      for (let d = -KERNEL_BINS; d <= KERNEL_BINS; d++) {
+        const index = centre + d;
+        if (index < 0 || index >= length) continue;
+        const taper = 1 - Math.abs(d) / (KERNEL_BINS + 1);
+        // Keep the strongest contribution rather than summing: two hats
+        // quantized together must not outweigh one kick.
+        envelope[index] = Math.max(envelope[index], weight * taper);
+      }
     }
 
     const correlation = this.autocorrelate(envelope);
@@ -887,7 +967,17 @@ export class AudioAnalyzer {
     // take the halved one. A 120 BPM series on the beat has no
     // correlation at 250ms and keeps 500ms; one on 8ths does, and
     // halves to 250ms — which folds back to 120 anyway.
-    const HALF_TIME_RATIO = 0.4;
+    // How strongly the halved lag must correlate before it is preferred.
+    //
+    // Two regimes, because the two inputs carry different information.
+    // With flux strengths the loudest onsets mark the beat, the peak is
+    // trustworthy, and halving should need a near-tie to win — at 0.4 a
+    // 90 BPM pattern with 8th-note hats reads 179. Without strengths
+    // every onset looks alike and a train on 8ths is genuinely
+    // ambiguous: 172.5ms and 345ms are both perfectly periodic, and 174
+    // is a convention rather than a measurement. There, leaning on the
+    // halving is what recovers the number a producer would give.
+    const HALF_TIME_RATIO = strengths.length > 0 ? 0.8 : 0.4;
     let lag = bestLag;
     for (let i = 0; i < 3; i++) {
       const half = Math.round(lag / 2);
@@ -925,14 +1015,15 @@ export class AudioAnalyzer {
     return out;
   }
 
-  tempoFromOnsets(onsets: number[]): TempoAnalysis {
+  tempoFromOnsets(onsets: OnsetInput): TempoAnalysis {
+    const times = onsetTimes(onsets);
     // Need at least 4 onsets for reliable tempo detection
-    if (onsets.length < 4) {
+    if (times.length < 4) {
       return { bpm: 0, confidence: 0, method: 'onset' };
     }
 
     // Calculate inter-onset intervals (IOIs)
-    const intervals = this.calculateIntervals(onsets);
+    const intervals = this.calculateIntervals(times);
 
     // Autocorrelation first: it asks at what lag the whole series
     // repeats, rather than measuring whatever subdivision the onsets
@@ -946,7 +1037,7 @@ export class AudioAnalyzer {
       const folded = AudioAnalyzer.foldIntoTempoRange(rawBpm);
       if (folded !== null) {
         const bpm = Math.round(folded);
-        const intervals = this.calculateIntervals(onsets);
+        const intervals = this.calculateIntervals(times);
         const variance = this.calculateVariance(intervals);
         const mean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
         const cv = mean > 0 ? Math.sqrt(variance) / mean : 1;
@@ -1221,13 +1312,13 @@ export class AudioAnalyzer {
         const flux = this.calculateSpectralFlux(fftData);
 
         if (this.isOnset(flux)) {
-          this._onsetHistory.push(Date.now());
+          this._onsetHistory.push({ t: Date.now(), strength: flux });
           if (this._onsetHistory.length > this.MAX_HISTORY_LENGTH) {
             this._onsetHistory.shift();
           }
         }
 
-        onsets = [...this._onsetHistory];
+        onsets = onsetTimes(this._onsetHistory);
       }
     } else {
       // No analyze function, use real-time detection
@@ -1235,13 +1326,13 @@ export class AudioAnalyzer {
       const flux = this.calculateSpectralFlux(fftData);
 
       if (this.isOnset(flux)) {
-        this._onsetHistory.push(Date.now());
+        this._onsetHistory.push({ t: Date.now(), strength: flux });
         if (this._onsetHistory.length > this.MAX_HISTORY_LENGTH) {
           this._onsetHistory.shift();
         }
       }
 
-      onsets = [...this._onsetHistory];
+      onsets = onsetTimes(this._onsetHistory);
     }
 
     // Need at least 2 onsets for rhythm analysis

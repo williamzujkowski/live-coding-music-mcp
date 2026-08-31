@@ -529,17 +529,27 @@ new density cases through `IsolatedStrudelEngine` too.
 
 ### Current Limitations
 - Multi-session is supported (#108, v3.0.0): each `session_id` gets its own browser page, undo/redo/history, and audio capture. Max 5 concurrent sessions, 30-min idle eviction. Browser process is still shared across sessions (one Chromium, multiple contexts).
-- **Tempo detection does not measure the music.** Each `detectTempo` call
-  samples the spectrum once and records at most one onset, and four are
-  needed before a BPM is reported — so the inter-onset intervals are the
-  gaps between *tool calls*, and the answer is a function of how often
-  the agent polls. Compounding it, `ONSET_THRESHOLD = 0.3` against a flux
-  normalized by bin count and by 255 demands an average jump of +76/255
-  across every bin; a realistic kick transient measures 0.057, five times
-  under, so only a silence-to-full-scale transition fires it. The interval
-  maths is sound (median IOI, octave folding — #322/#330); the collection
-  is not. Tracked in #322. This previously read "accuracy degrades under
-  headless audio", which undersold it considerably.
+- **Tempo detection measures the music now, and this bullet used to say
+  otherwise long after it stopped being true.** It described a
+  once-per-call spectrum sample and a fixed `ONSET_THRESHOLD = 0.3` that
+  only a silence-to-full-scale transition could fire. #322 replaced the
+  collection with a continuous 20ms buffer in the page, #350 replaced the
+  threshold with an adaptive MAD decision, and #352 fixed the analysis.
+  What holds today:
+  - Onsets carry their flux magnitude, so a kick outweighs a hi-hat in
+    the autocorrelation. Without it a 174 BPM pattern with 8th hats read
+    115.
+  - Onset times are quantized to the 20ms sampling step, and most tempos
+    do not divide into it — a 345ms beat lands alternately on 340 and
+    360, and an impulse train has no lag matching both. Each onset is
+    spread over a kernel one sampling step wide to absorb that. Before
+    it, only tempos whose period was a whole number of samples read
+    correctly (120 from 500ms, 100 from 600ms) and the rest did not.
+  - Verified on synthetic flux across ten tempo/subdivision combinations
+    (`TempoSamplingJitter.test.ts`), all within 5%. That is arithmetic,
+    not audio: it says nothing about how a real mix's spectrum behaves,
+    and the browser band stays wide (40-200) until measured against real
+    playback.
 - Key detection uses Krumhansl-Schmuckler with Pearson correlation and no
   mode boosts (#320). It recovers all 24 canonical profiles exactly, but
   it depends on chroma resolution: at the shipped `fft_size: 2048`
