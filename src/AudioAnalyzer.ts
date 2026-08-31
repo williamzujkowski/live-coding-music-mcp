@@ -881,17 +881,6 @@ export class AudioAnalyzer {
     return magnitude === 0 ? 0 : dotProduct / magnitude;
   }
 
-  /**
-   * Rotate a profile array by a given number of steps
-   * For tonic N, rotate the profile so that position N gets the tonic weight
-   */
-  private rotateProfile(profile: number[], steps: number): number[] {
-    const rotated = new Array(12);
-    for (let i = 0; i < 12; i++) {
-      rotated[i] = profile[(i - steps + 12) % 12];
-    }
-    return rotated;
-  }
 
   /**
    * Calculate intervals between consecutive values
