@@ -8,7 +8,11 @@ import { SessionManager } from '../../services/SessionManager';
 type Sessions = Map<string, Record<string, unknown>>;
 
 /** A manager with planted sessions and no browser. */
-function managerWith(ids: string[], lastActivity: Date): {
+function managerWith(
+  ids: string[],
+  lastActivity: Date,
+  controller: Record<string, unknown> = { getPlaybackState: () => false },
+): {
   manager: SessionManager; sessions: Sessions; closed: string[];
 } {
   const manager = new SessionManager(true);
@@ -16,7 +20,7 @@ function managerWith(ids: string[], lastActivity: Date): {
   const sessions = (manager as unknown as { sessions: Sessions }).sessions;
   for (const id of ids) {
     sessions.set(id, {
-      controller: {},
+      controller,
       context: { close: async (): Promise<void> => { closed.push(id); } },
       page: {},
       created: new Date(),
@@ -113,5 +117,51 @@ describe('concurrent capture-service builds share one injection (#423)', () => {
     expect(a).toBe(b);
 
     jest.restoreAllMocks();
+  });
+});
+
+/**
+ * "Idle" is not the same as "doing nothing" (#423 item 8).
+ *
+ * `lastActivity` moves only in `getSession`, so a session left playing —
+ * or recording, since `audio_capture start` returns immediately and the
+ * capture runs on in the page for up to ten minutes — looked idle to
+ * the sweep and was torn down underneath its own audio.
+ */
+describe('the sweep does not evict a session that is working (#423)', () => {
+  const longAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+  const sweep = async (manager: SessionManager): Promise<void> =>
+    (manager as unknown as { cleanupInactiveSessions: () => Promise<void> })
+      .cleanupInactiveSessions();
+
+  it('keeps a session that is still playing', async () => {
+    const { manager, closed } = managerWith(['playing'], longAgo,
+      { getPlaybackState: () => true });
+
+    await sweep(manager);
+
+    expect(closed).toEqual([]);
+    expect(manager.listSessions()).toEqual(['playing']);
+  });
+
+  it('keeps a session the owner reports busy', async () => {
+    // The manager cannot see a capture in progress; the server answers.
+    const { manager, closed } = managerWith(['recording'], longAgo);
+    manager.isSessionBusy = (id: string): boolean => id === 'recording';
+
+    await sweep(manager);
+
+    expect(closed).toEqual([]);
+  });
+
+  it('evicts a silent, unbusy session as before', async () => {
+    // Both guards must leave ordinary eviction working.
+    const { manager, closed } = managerWith(['idle'], longAgo);
+    manager.isSessionBusy = (): boolean => false;
+
+    await sweep(manager);
+
+    expect(closed).toEqual(['idle']);
   });
 });
