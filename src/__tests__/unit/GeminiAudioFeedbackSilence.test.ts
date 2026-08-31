@@ -21,6 +21,8 @@ const GEMINI_FEEDBACK = {
 };
 
 function makeCtx(exportResult: Record<string, unknown>) {
+  // The measurement method, not analyzeAudio: no model in play can decode
+  // audio, so the feedback path sends numbers rather than a waveform.
   const analyzeAudio = jest.fn(async () => GEMINI_FEEDBACK);
   const ctx = {
     controller: {} as any,
@@ -30,6 +32,7 @@ function makeCtx(exportResult: Record<string, unknown>) {
       isAvailable: jest.fn(() => true),
       getCreativeFeedback: jest.fn(async () => ({ summary: 'ok' })),
       analyzeAudio,
+      analyzeAudioMeasurements: analyzeAudio,
     } as any,
     strudelEngine: {} as any, midiExportService: {} as any, midiImportService: {} as any,
     audioExportService: { exportAudio: jest.fn(async () => exportResult) } as any,
@@ -94,13 +97,28 @@ describe('Gemini audio feedback and silence', () => {
     expect(result.audio_levels).toEqual({ peak: 0.87, rms: 0.2 });
   });
 
-  /** Gemini decodes by the declared container; WAV labelled WebM fails. */
-  it('sends WAV, not the old WebM container', async () => {
+  /**
+   * Measurements, not a waveform. Every installed CLI answers "CANNOT
+   * DECODE AUDIO", and agy will confabulate detailed analysis of audio it
+   * never examined — so the model is sent numbers it can reason about
+   * rather than bytes it would have to invent an opinion of.
+   */
+  it('sends locally computed measurements, not audio bytes', async () => {
     const { ctx, analyzeAudio } = makeCtx(AUDIBLE);
 
     await execute('ai_assist', { task: 'feedback', includeAudio: true }, ctx);
 
-    expect(analyzeAudio.mock.calls[0][0].type).toBe('audio/wav');
+    const measurements = analyzeAudio.mock.calls[0][0] as Record<string, unknown>;
+    expect(measurements).toMatchObject({ peak: 0.87, rms: 0.2, sampleRate: undefined });
+    expect(measurements.blob).toBeUndefined();
+  });
+
+  it('gives the model the pattern that produced the audio', async () => {
+    const { ctx, analyzeAudio } = makeCtx(AUDIBLE);
+
+    await execute('ai_assist', { task: 'feedback', includeAudio: true }, ctx);
+
+    expect(analyzeAudio.mock.calls[0][1]).toBe('s("bd*4")');
   });
 
   it('surfaces a failed capture instead of staying quiet', async () => {

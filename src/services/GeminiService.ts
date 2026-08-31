@@ -2,6 +2,8 @@ import { Logger } from '../utils/Logger.js';
 import { GoogleAuth } from 'google-auth-library';
 import type { AiTransportEntry } from './ai/AiTransport.js';
 import { cliTransports, hasCliTransport } from './ai/CliTransport.js';
+import type { AudioMeasurements } from './ai/AudioMeasurements.js';
+import { buildMeasurementPrompt } from './ai/AudioMeasurements.js';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs/promises';
@@ -369,6 +371,49 @@ export class GeminiService {
     if ((await this.resolveTransport()) !== null) return;
 
     throw new Error(this.getAuthErrorMessage());
+  }
+
+  /**
+   * Analyses audio from locally computed measurements.
+   *
+   * Preferred over {@link analyzeAudio}. No installed CLI can decode
+   * audio — asked directly, they say so — and `agy` will sometimes
+   * confabulate detailed analysis of audio it never examined, which is
+   * worse than refusing. Measuring locally and sending numbers is
+   * deterministic and works with every provider rather than one.
+   *
+   * @param measurements - Peak, RMS, tempo, key and spectrum measured locally
+   * @param pattern - The Strudel source that produced the audio
+   * @param context - What the user was aiming for
+   * @returns Structured feedback in the same shape as analyzeAudio
+   *
+   * @example
+   * await service.analyzeAudioMeasurements(
+   *   { durationMs: 5000, peak: 1.12, rms: 0.36 },
+   *   'stack(s("bd*4"), s("~ cp"))',
+   * );
+   */
+  async analyzeAudioMeasurements(
+    measurements: AudioMeasurements,
+    pattern?: string,
+    context?: PatternContext,
+  ): Promise<AudioFeedback> {
+    await this.ensureAuthentication();
+    this.checkRateLimit();
+
+    const cacheKey = `measure-${await this.getTransportId() ?? 'none'}-${JSON.stringify(measurements)}-${(pattern ?? '').slice(0, 200)}`;
+    const cached = this.getFromCache(this.audioCache, cacheKey);
+    if (cached) {
+      this.logger.debug('Returning cached measurement analysis');
+      return cached;
+    }
+
+    const prompt = buildMeasurementPrompt(measurements, pattern, context);
+    const response = await this.callGeminiAPIWithTimeout(prompt);
+    const feedback = this.parseAudioResponse(response);
+
+    this.audioCache.set(cacheKey, { result: feedback, timestamp: Date.now() });
+    return feedback;
   }
 
   /**
