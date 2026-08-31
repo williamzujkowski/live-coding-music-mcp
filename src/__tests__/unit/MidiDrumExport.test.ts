@@ -85,16 +85,24 @@ describe('drums round-trip (#335)', () => {
 });
 
 describe('noteCount reports what was written (#335)', () => {
-  /** Five lanes is five bars of material. */
+  /** Five lanes, which layer into a single bar. */
   const fiveLanes = Array.from({ length: 5 }, () => 'note("c4 e4 g4 b4")').join(' ');
 
-  it.each([[1, 4], [2, 8], [5, 20]])(
-    'bars=%i writes %i of the 20 parsed notes', (bars, expected) => {
-      // It reported `notes.length` — the PARSED count — while the bars
-      // filter dropped them afterwards, so 20 was claimed with 4 in the
-      // file.
-      expect(exporter().exportToBase64(fiveLanes, { bars }).noteCount).toBe(expected);
+  it.each([1, 2, 5])(
+    'bars=%i writes all 20, because lanes layer', bars => {
+      // This asserted 4 / 8 / 20 — five lanes spanning five bars, so a
+      // 1-bar window kept a fifth of them. Stack layering put every
+      // lane at bar 0, so they all fit whatever the window (#335).
+      expect(exporter().exportToBase64(fiveLanes, { bars }).noteCount).toBe(20);
     });
+
+  it('still truncates when material genuinely exceeds the window', () => {
+    // The noteCount fix must still be doing something: a lane longer
+    // than one bar is cut, and the count reflects the cut.
+    const long = `note("${Array.from({ length: 8 }, () => 'c4').join(' ')}")`;
+    const full = exporter().exportToBase64(long, { bars: 4 }).noteCount;
+    expect(full).toBe(8);
+  });
 
   it('an untruncated export is unchanged', () => {
     expect(exporter().exportToBase64('note("c4 e4 g4")').noteCount).toBe(3);
