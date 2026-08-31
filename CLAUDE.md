@@ -572,11 +572,22 @@ echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"generate_part","a
 ## When Making Changes
 
 ### Before Committing
-1. Run `npm run build` - Verify TypeScript compilation
-2. Run `npm test` - Ensure tests pass
-3. Run `npm run validate` - Test MCP protocol
-4. Update README.md if adding tools
-5. Add JSDoc to new public methods
+1. Run `npm run lint` - **CI blocks on this and nothing else here catches it.**
+   `tsc` does not flag unused imports or variables; eslint does, as errors.
+   This step was missing from the list until a PR failed CI on exactly
+   that, having passed build, test and tsc locally.
+2. Run `npm run build` - Verify TypeScript compilation
+3. Run `npm test` - Ensure tests pass
+4. Run `npm run validate` - Test MCP protocol
+5. Update README.md if adding tools
+6. Add JSDoc to new public methods
+
+`npm run lint` reports ~198 pre-existing `no-explicit-any` **warnings**;
+those do not fail CI. Only the error count matters — check it is zero:
+
+```bash
+npm run lint 2>&1 | grep -c ' error '
+```
 
 ### Performance Guidelines
 - Cache frequently accessed data (TTL 50-100ms for real-time, 5s for static)
