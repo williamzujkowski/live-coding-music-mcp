@@ -57,7 +57,7 @@ export const resources: ResourceDescriptor[] = [
   {
     uri: 'strudel://patterns',
     name: 'Saved patterns',
-    description: 'Patterns saved by the user via the `save` tool, with tags and timestamps',
+    description: 'Patterns saved by the user via the `pattern_store` tool, with tags and timestamps',
     mimeType: 'application/json',
   },
   {
@@ -151,14 +151,27 @@ async function readExamples(examplesDir: string): Promise<unknown> {
 }
 
 async function readSavedPatterns(store: PatternStore): Promise<unknown> {
-  const patterns = await store.list();
+  // `listDetailed`, not `list`.
+  //
+  // #426 made the store keep going past a file it cannot read and report
+  // how many it skipped, because one truncated `.json` used to make
+  // every saved pattern list as zero. The `pattern_store` tool got that
+  // count; this resource did not, so it still reported `count: N` with
+  // unreadable files dropped in silence (#442).
+  const { patterns, skipped } = await store.listDetailed();
   const items = patterns.map(p => ({
     name: p.name,
     tags: p.tags,
     timestamp: p.timestamp,
     contentPreview: p.content.length > 200 ? p.content.slice(0, 200) + '...' : p.content,
   }));
-  return { count: items.length, patterns: items };
+  return {
+    count: items.length,
+    patterns: items,
+    // Only when there is something to say, so the common shape is
+    // unchanged for callers already parsing this.
+    ...(skipped > 0 ? { skipped, note: `${String(skipped)} file(s) could not be read and were skipped.` } : {}),
+  };
 }
 
 function readStyles(): unknown {
