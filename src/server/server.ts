@@ -34,7 +34,7 @@ import { captureModule } from './tools/capture.js';
 import { aiModule } from './tools/ai.js';
 import { composeModule } from './tools/compose.js';
 import type { Envelope, ToolContext, HistoryEntry } from './tools/types.js';
-import { categorizeError, err, isEnvelope, ok } from './tools/types.js';
+import { categorizeError, err, isEnvelope, ok, isFailureShaped } from './tools/types.js';
 import { readResource, resources as mcpResources } from './resources.js';
 import { join } from 'node:path';
 import { parseServerConfig } from '../utils/ServerConfig.js';
@@ -253,6 +253,29 @@ export class StrudelMCPServer {
           return err('business', result);
         }
         return ok(result);
+      }
+
+      // A tool returning `{ success: false, ... }` is reporting a
+      // FAILURE. Wrapping it in ok() told MCP clients the call
+      // succeeded, with the real outcome buried one level down in a
+      // field the envelope contract does not mention — so an agent
+      // checking `envelope.ok` proceeded as though it had worked.
+      //
+      // 28 sites across the tool modules return this shape (capture,
+      // storage, ai). Rather than migrate them all at once, honour the
+      // shape here: it is unambiguous, and the alternative is a silent
+      // wrong answer.
+      if (isFailureShaped(result)) {
+        const message = typeof result.message === 'string'
+          ? result.message
+          : typeof result.error === 'string'
+            ? result.error
+            : 'Tool reported failure without a message.';
+        return err(categorizeError(new Error(message)), message, {
+          // Keep what the tool produced: some of these carry useful
+          // context alongside the failure.
+          partialResult: result,
+        });
       }
 
       return ok(result);

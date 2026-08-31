@@ -209,6 +209,28 @@ export function err(
  * dispatcher when a tool throws without wrapping. Tools that know better
  * should construct `err(category, message)` directly.
  */
+/**
+ * Whether a tool returned a self-declared failure.
+ *
+ * Several modules report problems as `{ success: false, message }`
+ * rather than throwing or building an envelope. Wrapped with `ok()`
+ * those reach MCP clients as successes, with the real outcome hidden in
+ * a field the envelope contract says nothing about (#274).
+ *
+ * @param value - A tool's raw return value
+ * @returns True when it declares failure
+ */
+export function isFailureShaped(
+  value: unknown,
+): value is { success: false; message?: unknown; error?: unknown } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'success' in value &&
+    (value as { success: unknown }).success === false
+  );
+}
+
 export function categorizeError(error: unknown): ErrorCategory {
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
