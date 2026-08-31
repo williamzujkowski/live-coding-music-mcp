@@ -139,10 +139,24 @@ async function doList(args: any, ctx: ToolContext): Promise<unknown> {
   if (args?.tag) {
     InputValidator.validateStringLength(args.tag, 'tag', 100, false);
   }
-  const patterns = await ctx.store.list(args?.tag);
+  const { patterns, skipped } = await ctx.store.listDetailed(args?.tag);
+  // A file the store could not read is not the same as a pattern that
+  // is not there, and the caller has no other way to learn the
+  // difference — the store logs it, and no MCP client reads the log
+  // (#426, same reasoning as the export warning in #335).
+  const note = skipped > 0
+    ? `\n\n(${String(skipped)} file(s) in the pattern directory could not be read and were skipped.)`
+    : '';
+
+  if (patterns.length === 0) {
+    return skipped > 0
+      ? `No readable patterns found.${note}`
+      : 'No patterns found';
+  }
+
   return patterns.map(p =>
     `• ${p.name} [${p.tags.join(', ')}] - ${p.timestamp}`
-  ).join('\n') || 'No patterns found';
+  ).join('\n') + note;
 }
 
 /**

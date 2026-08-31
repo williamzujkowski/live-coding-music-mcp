@@ -131,6 +131,13 @@ describe('StrudelMCPServer', () => {
         }
       ])
     } as any;
+    // Defers to this mock's own `list`, so the two cannot disagree about
+    // what the catalog holds. A mock that drifts from its subject is how
+    // #397's parser bug hid (#426).
+    mockStore.listDetailed = jest.fn(async (tag?: string) => ({
+      patterns: await (mockStore.list as any)(tag),
+      skipped: 0,
+    })) as any;
 
     mockTheory = {
       generateScale: jest.fn().mockReturnValue(['C', 'D', 'E', 'F', 'G', 'A', 'B']),

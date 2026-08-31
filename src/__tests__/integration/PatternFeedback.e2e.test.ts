@@ -146,7 +146,8 @@ describe('Pattern Feedback E2E Tests - Mocked Gemini (CI Compatible)', () => {
     const mockStore = {
       save: jest.fn().mockResolvedValue(undefined),
       load: jest.fn().mockResolvedValue(null),
-      list: jest.fn().mockResolvedValue([])
+      list: jest.fn().mockResolvedValue([]),
+      listDetailed: jest.fn().mockResolvedValue({ patterns: [], skipped: 0 })
     };
 
     // Wire up mocked constructors

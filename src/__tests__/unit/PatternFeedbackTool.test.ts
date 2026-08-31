@@ -92,7 +92,8 @@ describe('get_pattern_feedback Tool', () => {
     mockStore = {
       save: jest.fn().mockResolvedValue(undefined),
       load: jest.fn().mockResolvedValue(null),
-      list: jest.fn().mockResolvedValue([])
+      list: jest.fn().mockResolvedValue([]),
+      listDetailed: jest.fn().mockResolvedValue({ patterns: [], skipped: 0 })
     } as any;
 
     // Setup MusicTheory mock
