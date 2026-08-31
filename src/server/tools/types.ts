@@ -8,7 +8,7 @@
  */
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { AiRateLimitError } from '../../services/ai/AiTransport.js';
+import { AiAuthError, AiRateLimitError } from '../../services/ai/AiTransport.js';
 import { BusinessError, ValidationError } from '../../utils/CategorisedError.js';
 import type { StrudelController } from '../../StrudelController.js';
 import type { PatternStore } from '../../PatternStore.js';
@@ -344,6 +344,10 @@ export function categorizeError(error: unknown): ErrorCategory {
   // retryable failure there is into `internal`, which is not retryable
   // (#380).
   if (error instanceof AiRateLimitError) return 'transient';
+  // Same reasoning as the rate limit: the class exists, it is thrown,
+  // and recognising it by type means the categorisation does not depend
+  // on the message still saying "not authenticated".
+  if (error instanceof AiAuthError) return 'permission';
   // A thrower that knows what kind of failure it has beats a phrase
   // match every time. "Steps cannot exceed 256" contains none of the
   // words below, and fell through to `internal` — not retryable, and
@@ -391,12 +395,24 @@ export function categorizeError(error: unknown): ErrorCategory {
   // Auth before business: a CLI that is installed but not logged in is a
   // credential problem, and saying 'not found' about a login is not the
   // same as saying it about a session.
+  //
+  // `gemini` used to be in this list, which made EVERY error mentioning
+  // the vendor a credentials problem — "Audio analysis failed: gemini
+  // returned 500" included. A vendor name is not an error condition.
+  // Auth failures from that path throw `AiAuthError`, which is matched
+  // by type above, or say "api key"/"not authenticated" in the message.
+  // Found because a test of mine passed with its fix removed: the
+  // fixture said "gemini rejected the request" (#382).
   if (
-    lower.includes('gemini') ||
     lower.includes('api key') ||
     lower.includes('unauthorized') ||
     lower.includes('unauthenticated') ||
     lower.includes('not authenticated') ||
+    // 'authenticate' bare, as well as 'not authenticated': the
+    // no-transport message says "Install and authenticate one of".
+    // That is an auth word doing auth work, unlike the vendor name
+    // removed above.
+    lower.includes('authenticate') ||
     lower.includes('forbidden') ||
     lower.includes('permission denied') ||
     lower.includes('credential')

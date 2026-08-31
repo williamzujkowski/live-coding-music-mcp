@@ -1,5 +1,5 @@
 import { Logger } from '../utils/Logger.js';
-import { AiRateLimitError } from './ai/AiTransport.js';
+import { AiAuthError, AiRateLimitError } from './ai/AiTransport.js';
 import { GoogleAuth } from 'google-auth-library';
 import type { AiTransportEntry } from './ai/AiTransport.js';
 import { cliTransports, hasCliTransport } from './ai/CliTransport.js';
@@ -381,7 +381,11 @@ export class GeminiService {
     // machine where AI works perfectly well.
     if ((await this.resolveTransport()) !== null) return;
 
-    throw new Error(this.getAuthErrorMessage());
+    // Typed, not phrased. The message lists GEMINI_API_KEY and gcloud
+    // commands, and used to be categorised `permission` only because
+    // `gemini` was in the matcher's auth list — which also made every
+    // unrelated Gemini failure a credentials problem (#382).
+    throw new AiAuthError(this.getAuthErrorMessage());
   }
 
   /**
@@ -771,7 +775,11 @@ export class GeminiService {
   private async callGeminiAPIWithTimeout(prompt: string): Promise<string> {
     const transport = await this.resolveTransport();
     if (transport === null) {
-      throw new Error(this.getAuthErrorMessage());
+      // Typed, not phrased. The message lists GEMINI_API_KEY and gcloud
+    // commands, and used to be categorised `permission` only because
+    // `gemini` was in the matcher's auth list — which also made every
+    // unrelated Gemini failure a credentials problem (#382).
+    throw new AiAuthError(this.getAuthErrorMessage());
     }
 
     // A CLI transport enforces its own timeout and can kill the process

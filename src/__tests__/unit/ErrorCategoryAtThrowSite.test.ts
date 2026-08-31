@@ -18,6 +18,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { categorizeError } from '../../server/tools/types';
 import { BusinessError, ValidationError } from '../../utils/CategorisedError';
+import { AiAuthError } from '../../services/ai/AiTransport';
 
 describe('categorised errors carry their own verdict (#382)', () => {
   it('treats a validation failure as the caller\'s to fix', () => {
@@ -29,6 +30,18 @@ describe('categorised errors carry their own verdict (#382)', () => {
 
   it('treats a business failure as setup, not breakage', () => {
     expect(categorizeError(new BusinessError('Maximum session limit (5) reached.'))).toBe('business');
+  });
+
+  it('treats an auth failure as permission, whatever it says', () => {
+    // `permission` was reachable only by matching "not authenticated",
+    // "api key", "unauthorized" and five more phrases. AiAuthError is
+    // thrown by CliTransport and now carries the verdict itself.
+    // Deliberately says nothing the matcher recognises. The first
+    // version of this said "gemini rejected the request" and passed with
+    // the instanceof check removed — because `gemini` was in the
+    // permission list, making every error that mentioned the vendor a
+    // credentials problem. Removing that entry is half of this fix.
+    expect(categorizeError(new AiAuthError('the transport declined'))).toBe('permission');
   });
 
   it('still falls back to the message for errors we did not construct', () => {
@@ -81,7 +94,6 @@ describe('the throw sites that were miscategorised stay fixed (#382)', () => {
     ['Pattern exceeds maximum length', 'validation'],
     ['MIDI base64 input too large', 'validation'],
     ['MIDI input too large', 'validation'],
-    ['Refusing to render', 'validation'],
     ['Maximum session limit', 'business'],
     ['has no active page yet', 'business'],
   ];
@@ -98,5 +110,41 @@ describe('the throw sites that were miscategorised stay fixed (#382)', () => {
     // than re-running the matcher over a message that would pass for
     // the wrong reason.
     expect(site.cls).toBe(expected === 'validation' ? 'ValidationError' : 'BusinessError');
+  });
+});
+
+describe('the category survives the dispatcher (#382)', () => {
+  /**
+   * The unit tests above prove the type carries a verdict and the throw
+   * sites use it. Neither proves the verdict SURVIVES the trip out.
+   *
+   * Cross-model review (agy) found it did not: `session.ts` caught the
+   * error, kept only `.message`, and returned `{ success: false, error }`
+   * — which the dispatcher turned back into a plain `new Error(message)`
+   * before categorising. The type was destroyed one frame above the
+   * code that reads it, so the fix was a no-op on exactly the path it
+   * was written for.
+   */
+  it('a business failure from a tool reaches the caller as business', async () => {
+    const { execute } = await import('../../server/tools/session');
+    const ctx = {
+      sessionManager: {
+        createSession: () => { throw new BusinessError('Maximum session limit (5) reached.'); },
+        getSessionCount: () => 5,
+        getMaxSessions: () => 5,
+      },
+    } as never;
+
+    const result = (await execute('session', { action: 'create', session_id: 'x' }, ctx)) as {
+      ok: boolean; errorCategory: string; isRetryable: boolean;
+    };
+    expect(result.ok).toBe(false);
+    expect(result.errorCategory).toBe('business');
+    expect(result.isRetryable).toBe(false);
+  });
+
+  it('an unrecognised failure from the same path is still internal', () => {
+    // The seam must preserve the category, not invent one.
+    expect(categorizeError(new Error('something nobody anticipated'))).toBe('internal');
   });
 });

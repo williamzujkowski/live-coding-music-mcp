@@ -8,7 +8,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
-import { empty, ok } from './types.js';
+import { categorizeError, empty, err, ok } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 
 export const tools: Tool[] = [
@@ -48,7 +48,14 @@ async function doCreate(args: any, ctx: ToolContext): Promise<unknown> {
       max_sessions: sm.getMaxSessions(),
     };
   } catch (error: unknown) {
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    // `err(...)` rather than `{ success: false }`: the dispatcher turns a
+    // failure-shaped object back into a PLAIN Error before categorising
+    // it, so a typed error thrown below this point loses its category on
+    // the way out and lands in `internal` — not retryable, and wrong
+    // about whose problem it is. Cross-model review caught that the
+    // typed errors were being destroyed at this seam (#382).
+    const message = error instanceof Error ? error.message : String(error);
+    return err(categorizeError(error), message);
   }
 }
 
@@ -68,7 +75,14 @@ async function doDestroy(args: any, ctx: ToolContext): Promise<unknown> {
       remaining_sessions: sm.getSessionCount(),
     };
   } catch (error: unknown) {
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    // `err(...)` rather than `{ success: false }`: the dispatcher turns a
+    // failure-shaped object back into a PLAIN Error before categorising
+    // it, so a typed error thrown below this point loses its category on
+    // the way out and lands in `internal` — not retryable, and wrong
+    // about whose problem it is. Cross-model review caught that the
+    // typed errors were being destroyed at this seam (#382).
+    const message = error instanceof Error ? error.message : String(error);
+    return err(categorizeError(error), message);
   }
 }
 
@@ -101,7 +115,14 @@ function doSwitch(args: any, ctx: ToolContext): unknown {
       message: `Default session switched to '${args.session_id}'`,
     };
   } catch (error: unknown) {
-    return { success: false, error: error instanceof Error ? error.message : String(error) };
+    // `err(...)` rather than `{ success: false }`: the dispatcher turns a
+    // failure-shaped object back into a PLAIN Error before categorising
+    // it, so a typed error thrown below this point loses its category on
+    // the way out and lands in `internal` — not retryable, and wrong
+    // about whose problem it is. Cross-model review caught that the
+    // typed errors were being destroyed at this seam (#382).
+    const message = error instanceof Error ? error.message : String(error);
+    return err(categorizeError(error), message);
   }
 }
 
