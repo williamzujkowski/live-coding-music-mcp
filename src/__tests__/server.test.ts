@@ -939,9 +939,12 @@ describe('StrudelMCPServer', () => {
       test('should handle empty pattern', async () => {
         mockController.getCurrentPattern.mockResolvedValue('');
 
-        const result = await (server as any).executeTool('pattern_store', { action: 'save', name: 'test' });
+        const result: any = await (server as any).executeTool('pattern_store', { action: 'save', name: 'test' });
 
-        expect(result).toBe('No pattern to save');
+        // A save that saved nothing is a failure, not an ok:true string (#287).
+        expect(result.ok).toBe(false);
+        expect(result.errorCategory).toBe('business');
+        expect(result.message).toContain('No pattern to save');
       });
 
       test('should validate name length', async () => {
