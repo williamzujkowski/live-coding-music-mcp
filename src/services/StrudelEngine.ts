@@ -116,6 +116,19 @@ export interface PatternMetadata {
   complexity: number;
   /** BPM if setcpm is present */
   bpm?: number;
+  /**
+   * Whether the pattern could actually be evaluated.
+   *
+   * When false, `eventsPerCycle` and `uniqueValues` are not measurements
+   * — the engine could not run the pattern, and the static fields are all
+   * that is real. Reporting `eventsPerCycle: 0` without this was
+   * indistinguishable from a genuinely silent pattern, so an agent was
+   * told working code produced nothing and would set about fixing it
+   * (#276).
+   */
+  evaluated: boolean;
+  /** Why evaluation failed, when it did. */
+  evaluationError?: string;
 }
 
 /**
@@ -338,6 +351,18 @@ export class StrudelEngine {
       const haps = pattern.queryArc(start, end);
       return haps.map((hap: any) => this.hapToEvent(hap));
     } catch (error: any) {
+      // Same clarification validate() applies. Without it, queryEvents and
+      // compile still emit "references unknown identifier 'setcpm'" — the
+      // exact "reads as a typo" wording #232 was filed to remove — and
+      // flatten a pre-execution PatternSafetyError into an execution
+      // failure, which it is not.
+      const browserOnly = findBrowserOnlyCall(code);
+      if (browserOnly !== null) {
+        throw new Error(explainBrowserOnly(browserOnly) ?? error.message);
+      }
+      if (error instanceof PatternSafetyError) {
+        throw new Error(`Pattern rejected: ${error.message}`);
+      }
       throw new Error(`Pattern execution failed: ${error.message}`);
     }
   }
@@ -364,6 +389,18 @@ export class StrudelEngine {
 
       return pattern;
     } catch (error: any) {
+      // Same clarification validate() applies. Without it, queryEvents and
+      // compile still emit "references unknown identifier 'setcpm'" — the
+      // exact "reads as a typo" wording #232 was filed to remove — and
+      // flatten a pre-execution PatternSafetyError into an execution
+      // failure, which it is not.
+      const browserOnly = findBrowserOnlyCall(code);
+      if (browserOnly !== null) {
+        throw new Error(explainBrowserOnly(browserOnly) ?? error.message);
+      }
+      if (error instanceof PatternSafetyError) {
+        throw new Error(`Pattern rejected: ${error.message}`);
+      }
       throw new Error(`Pattern execution failed: ${error.message}`);
     }
   }
@@ -390,6 +427,7 @@ export class StrudelEngine {
       isStack: /\bstack\s*\(/.test(code),
       functionsUsed: extractFunctionsUsed(code),
       complexity: 0,
+      evaluated: false,
     };
 
     const bpm = extractBpm(code);
@@ -418,13 +456,19 @@ export class StrudelEngine {
         },
         events.length,
       );
-    } catch {
+      metadata.evaluated = true;
+    } catch (error: any) {
+      // Complexity from the static signals only. eventsPerCycle and
+      // uniqueValues stay at their defaults, and `evaluated: false` says
+      // so — the caller can tell "I could not run this" from "this
+      // produces nothing", which sharing the value 0 made impossible.
       metadata.complexity = calculateComplexity({
         uniqueValues: metadata.uniqueValues,
         functionsUsed: metadata.functionsUsed,
         isStack: metadata.isStack,
         codeLength: code.length,
       });
+      metadata.evaluationError = clarifyEngineError(String(error?.message ?? error));
     }
 
     return metadata;

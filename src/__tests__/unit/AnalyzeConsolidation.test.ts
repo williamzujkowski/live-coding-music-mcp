@@ -140,3 +140,72 @@ describe('analyze consolidation (#146)', () => {
     });
   });
 });
+
+/**
+ * #276: analyzePattern wrapped queryEvents in a bare catch and returned
+ * `eventsPerCycle: 0` when evaluation failed. That is exactly what a
+ * genuinely silent pattern yields, so the two were indistinguishable —
+ * an agent looking at working code was told it produced nothing.
+ *
+ * The engine half is verified against the real engine in
+ * `npm run test:sandbox` (it imports @strudel/core as ESM, which this
+ * Jest setup cannot load). This covers the tool layer's contract.
+ */
+describe('analyze_pattern_local does not report unmeasured counts (#276)', () => {
+  const makeCtx = (metadata: Record<string, unknown>) => ({
+    strudelEngine: { analyzePattern: jest.fn(() => metadata) },
+    isInitialized: () => true,
+  } as unknown as ToolContext);
+
+  it('omits event counts when the pattern could not be evaluated', async () => {
+    const ctx = makeCtx({
+      eventsPerCycle: 0, uniqueValues: [], usesSound: true, usesNote: false,
+      isStack: false, functionsUsed: ['s'], complexity: 0.11, bpm: 120,
+      evaluated: false, evaluationError: "'setcpm' is a real Strudel function...",
+    });
+
+    const result = (await execute('analyze_pattern_local', { pattern: 'setcpm(120); s("bd*4")' }, ctx)) as any;
+
+    expect(result.eventsPerCycle).toBeUndefined();
+    expect(result.uniqueValues).toBeUndefined();
+  });
+
+  it('says the analysis is unavailable rather than reporting zero', async () => {
+    const ctx = makeCtx({
+      eventsPerCycle: 0, uniqueValues: [], usesSound: true, usesNote: false,
+      isStack: false, functionsUsed: ['s'], complexity: 0.11,
+      evaluated: false, evaluationError: 'because reasons',
+    });
+
+    const result = (await execute('analyze_pattern_local', { pattern: 'x' }, ctx)) as any;
+
+    expect(result.message).toMatch(/could not be evaluated/i);
+    expect(result.message).not.toMatch(/0 events\/cycle/);
+  });
+
+  it('keeps the static analysis, which is genuinely valid', async () => {
+    const ctx = makeCtx({
+      eventsPerCycle: 0, uniqueValues: [], usesSound: true, usesNote: false,
+      isStack: false, functionsUsed: ['s', 'setcpm'], complexity: 0.11, bpm: 120,
+      evaluated: false, evaluationError: 'x',
+    });
+
+    const result = (await execute('analyze_pattern_local', { pattern: 'x' }, ctx)) as any;
+
+    expect(result.usesSound).toBe(true);
+    expect(result.bpm).toBe(120);
+    expect(result.functionsUsed).toContain('setcpm');
+  });
+
+  it('reports counts normally when evaluation succeeded', async () => {
+    const ctx = makeCtx({
+      eventsPerCycle: 4, uniqueValues: ['bd'], usesSound: true, usesNote: false,
+      isStack: false, functionsUsed: ['s'], complexity: 0.2, evaluated: true,
+    });
+
+    const result = (await execute('analyze_pattern_local', { pattern: 's("bd*4")' }, ctx)) as any;
+
+    expect(result.eventsPerCycle).toBe(4);
+    expect(result.message).toMatch(/4 events\/cycle/);
+  });
+});
