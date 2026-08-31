@@ -48,6 +48,24 @@ export class ErrorRecovery {
    * @param strategy - Recovery strategy configuration
    * @returns Result of the operation
    */
+  /**
+   * Note on reachability: the only production entry point into this
+   * class is `handlePatternWrite`, which calls this. `executeWithRetry`
+   * and `clearErrorHistory` are public because they are the seam the
+   * retry tests drive directly, not because anything else calls them.
+   *
+   * Seven methods that nothing called at all — handleBrowserInit,
+   * handleNetworkOperation, createCircuitBreaker, isFrequentlyFailing,
+   * executeWithTimeout, executeWithRetryAndTimeout and
+   * clearAllErrorHistory — were removed in #309. They were fully tested,
+   * which is how the file reported 100% coverage while most of it was
+   * unreachable, and how the docs could describe an `ErrorRecovery.withRetry`
+   * that never existed without anything noticing.
+   *
+   * Browser init and strudel.cc requests still have no retry. That gap
+   * is real and is tracked separately: reviving deleted machinery
+   * deserves the scrutiny of new code, not a restore from history.
+   */
   async executeWithRetry<T>(
     operation: () => Promise<T>,
     operationName: string,
@@ -115,67 +133,6 @@ export class ErrorRecovery {
   }
 
   /**
-   * Wraps an operation with timeout protection
-   * @param operation - Async function to execute
-   * @param timeout - Timeout in milliseconds
-   * @param operationName - Name for error messages
-   * @returns Result of the operation
-   */
-  async executeWithTimeout<T>(
-    operation: () => Promise<T>,
-    timeout: number,
-    operationName: string
-  ): Promise<T> {
-    return Promise.race([
-      operation(),
-      this.createTimeout<T>(timeout, operationName)
-    ]);
-  }
-
-  /**
-   * Combines retry logic with timeout protection
-   * @param operation - Async function to execute
-   * @param operationName - Name for logging
-   * @param timeout - Timeout per attempt in milliseconds
-   * @param strategy - Recovery strategy
-   * @returns Result of the operation
-   */
-  async executeWithRetryAndTimeout<T>(
-    operation: () => Promise<T>,
-    operationName: string,
-    timeout: number,
-    strategy?: RecoveryStrategy
-  ): Promise<T> {
-    return this.executeWithRetry(
-      () => this.executeWithTimeout(operation, timeout, operationName),
-      operationName,
-      strategy
-    );
-  }
-
-  /**
-   * Gracefully handles browser initialization errors
-   * @param initFunction - Browser initialization function
-   * @returns Initialization result
-   */
-  async handleBrowserInit(initFunction: () => Promise<string>): Promise<string> {
-    return this.executeWithRetryAndTimeout(
-      initFunction,
-      'Browser Initialization',
-      30000, // 30 second timeout
-      {
-        maxRetries: 2,
-        retryDelay: 2000,
-        exponentialBackoff: true,
-        fallbackAction: async () => {
-          this.logger.warn('Browser initialization failed, suggesting headless mode');
-          return 'Browser initialization failed. Try setting headless:true in config.json';
-        }
-      }
-    );
-  }
-
-  /**
    * Handles pattern write errors with validation
    * @param writeFunction - Pattern write function
    * @param pattern - Pattern to write
@@ -200,22 +157,6 @@ export class ErrorRecovery {
         }
       }
     );
-  }
-
-  /**
-   * Checks if an operation is experiencing repeated failures
-   * @param operationName - Name of operation to check
-   * @param threshold - Number of errors to consider "frequent"
-   * @returns True if operation is failing frequently
-   */
-  isFrequentlyFailing(operationName: string, threshold: number = 3): boolean {
-    const errors = this.errorHistory.get(operationName) || [];
-    const now = Date.now();
-
-    // Count errors within the time window
-    const recentErrors = errors.filter(timestamp => now - timestamp < this.ERROR_WINDOW);
-
-    return recentErrors.length >= threshold;
   }
 
   /**
@@ -269,14 +210,6 @@ export class ErrorRecovery {
   }
 
   /**
-   * Clears all error history
-   */
-  clearAllErrorHistory(): void {
-    this.errorHistory.clear();
-    this.recoveredHistory.clear();
-  }
-
-  /**
    * Moves an operation's recorded failures into the recovered log.
    *
    * Called when a retry or fallback rescues the operation, so the
@@ -315,20 +248,6 @@ export class ErrorRecovery {
   }
 
   /**
-   * Creates a timeout promise
-   * @param ms - Timeout in milliseconds
-   * @param operationName - Name for error message
-   * @returns Promise that rejects after timeout
-   */
-  private createTimeout<T>(ms: number, operationName: string): Promise<T> {
-    return new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`${operationName} timed out after ${ms}ms`));
-      }, ms);
-    });
-  }
-
-  /**
    * Sleep utility
    * @param ms - Milliseconds to sleep
    * @returns Promise that resolves after delay
@@ -363,50 +282,4 @@ export class ErrorRecovery {
     return simplified;
   }
 
-  /**
-   * Handles network-related errors
-   * @param operation - Operation that may fail due to network
-   * @param operationName - Name for logging
-   * @returns Operation result
-   */
-  async handleNetworkOperation<T>(
-    operation: () => Promise<T>,
-    operationName: string
-  ): Promise<T> {
-    return this.executeWithRetry(
-      operation,
-      operationName,
-      {
-        maxRetries: 5,
-        retryDelay: 2000,
-        exponentialBackoff: true,
-        fallbackAction: async () => {
-          throw new Error(`Network operation ${operationName} failed - check internet connection`);
-        }
-      }
-    );
-  }
-
-  /**
-   * Creates a circuit breaker for operations that fail frequently
-   * @param operation - Operation to protect
-   * @param operationName - Name for tracking
-   * @param threshold - Number of failures before circuit opens
-   * @returns Protected operation
-   */
-  createCircuitBreaker<T>(
-    operation: () => Promise<T>,
-    operationName: string,
-    threshold: number = 5
-  ): () => Promise<T> {
-    return async () => {
-      if (this.isFrequentlyFailing(operationName, threshold)) {
-        throw new Error(
-          `Circuit breaker open for ${operationName} - operation disabled due to repeated failures`
-        );
-      }
-
-      return operation();
-    };
-  }
 }
