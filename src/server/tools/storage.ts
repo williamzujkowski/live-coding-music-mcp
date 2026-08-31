@@ -100,7 +100,13 @@ async function doSave(args: any, ctx: ToolContext, sid?: string): Promise<unknow
   InputValidator.validateStringLength(args.name, 'name', 255, false);
   const toSave = await ctx.getCurrentPatternSafe(sid);
   if (!toSave) {
-    return 'No pattern to save';
+    // Nothing was written to disk, so this is a failure — but as a bare
+    // string it was none of the three things the dispatcher recognises
+    // (envelope, failure-shaped object, legacy 'Error: ' prefix), so it
+    // reached clients as { ok: true, data: 'No pattern to save' }. An
+    // agent branching on `ok` recorded a successful save and moved on,
+    // and the pattern was gone (#287).
+    return err('business', 'No pattern to save. Write or generate a pattern first.');
   }
   await ctx.store.save(args.name, toSave, args.tags || []);
   return `Pattern saved as "${args.name}"`;

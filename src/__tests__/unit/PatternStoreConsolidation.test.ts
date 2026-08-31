@@ -56,8 +56,23 @@ describe('pattern_store consolidation (#143)', () => {
     it('refuses when there is no pattern to save', async () => {
       const { ctx, pattern } = makeCtx();
       pattern.current = '';
-      const result = await execute('pattern_store', { action: 'save', name: 'empty' }, ctx);
-      expect(result).toBe('No pattern to save');
+      const result: any = await execute('pattern_store', { action: 'save', name: 'empty' }, ctx);
+      // Nothing reached disk, so this must not read as a success. As a
+      // bare string it arrived as { ok: true, data: 'No pattern to
+      // save' } and an agent branching on `ok` lost the pattern (#287).
+      expect(result.ok).toBe(false);
+      expect(result.errorCategory).toBe('business');
+      expect(result.isRetryable).toBe(false);
+      expect(result.message).toContain('No pattern to save');
+      // The message has to say what to do next, not just what went wrong.
+      expect(result.message).toContain('Write or generate a pattern first');
+    });
+
+    it('does not touch the store when there is no pattern', async () => {
+      const { ctx, store, pattern } = makeCtx();
+      pattern.current = '';
+      await execute('pattern_store', { action: 'save', name: 'empty' }, ctx);
+      expect(store.save).not.toHaveBeenCalled();
     });
 
     it('defaults tags to [] when omitted', async () => {
