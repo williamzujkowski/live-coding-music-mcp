@@ -24,7 +24,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { accessSync, constants } from 'node:fs';
+import { accessSync, constants, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AiTransportEntry } from './AiTransport.js';
 import { AiAuthError } from './AiTransport.js';
@@ -34,6 +34,28 @@ export const CLI_TIMEOUT_MS = 120_000;
 
 /** Cap on captured output, so a runaway CLI cannot exhaust memory. */
 export const CLI_MAX_BUFFER = 8 * 1024 * 1024;
+
+/** Time allowed for buffered output to drain after the child exits. */
+export const DRAIN_GRACE_MS = 50;
+
+/**
+ * Environment handed to the CLI.
+ *
+ * These are agentic CLIs with filesystem and tool access, and the prompt
+ * carries pattern text that may have come from a stored file or an
+ * imported MIDI. Passing the full parent environment would hand any
+ * provider credential in it to a different vendor's agent, so the child
+ * gets only what it needs to find its own config.
+ */
+function childEnv(): NodeJS.ProcessEnv {
+  const keep = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'TERM', 'TMPDIR', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME'];
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of keep) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return env;
+}
 
 /** How to drive one CLI non-interactively. */
 export interface CliSpec {
@@ -85,8 +107,12 @@ function isOnPath(bin: string): boolean {
   for (const dir of (process.env.PATH ?? '').split(':')) {
     if (dir === '') continue;
     try {
-      accessSync(join(dir, bin), constants.X_OK);
-      return true;
+      const candidate = join(dir, bin);
+      accessSync(candidate, constants.X_OK);
+      // Directories are mode 755, so X_OK alone passes for them. Without
+      // this check a directory named `claude` on PATH makes the gate
+      // promise AI is configured, and spawn then fails.
+      if (statSync(candidate).isFile()) return true;
     } catch {
       // not here; keep looking
     }
@@ -110,38 +136,83 @@ function runCli(
   return new Promise(resolve => {
     // 'ignore' on stdin is the whole point; never a shell, so prompt text
     // cannot be reinterpreted as shell syntax.
-    const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'], shell: false });
+    // detached: the CLI is agentic and spawns its own tool subprocesses.
+    // Killing only the direct child orphans those, and an orphan holding
+    // the inherited stdout fd keeps 'close' from ever firing — measured,
+    // a child SIGKILLed at 500ms did not emit 'close' until 30,002ms.
+    // Its own process group lets us kill the whole tree.
+    const child = spawn(bin, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: false,
+      detached: true,
+      env: childEnv(),
+    });
 
     let stdout = '';
     let stderr = '';
     let timedOut = false;
     let bytes = 0;
+    let settled = false;
+
+    // Decode as a stream: a multi-byte character split across a chunk
+    // boundary becomes U+FFFD if each chunk is toString()'d alone, and
+    // model output is full of curly quotes and accents.
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+
+    const killTree = (signal: NodeJS.Signals): void => {
+      try {
+        if (child.pid !== undefined) process.kill(-child.pid, signal);
+      } catch {
+        // group already gone
+      }
+      try { child.kill(signal); } catch { /* already dead */ }
+    };
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      killTree('SIGKILL');
     }, timeoutMs);
 
-    const capture = (chunk: Buffer, onto: 'out' | 'err'): void => {
+    let overflowed = false;
+    const capture = (chunk: string, onto: 'out' | 'err'): void => {
       bytes += chunk.length;
       if (bytes > CLI_MAX_BUFFER) {
-        child.kill('SIGKILL');
+        // Say why, rather than surfacing a bare `exited null` with empty
+        // stderr that reads like an external kill.
+        overflowed = true;
+        killTree('SIGKILL');
         return;
       }
-      if (onto === 'out') stdout += chunk.toString();
-      else stderr += chunk.toString();
+      if (onto === 'out') stdout += chunk;
+      else stderr += chunk;
     };
 
-    child.stdout.on('data', (c: Buffer) => { capture(c, 'out'); });
-    child.stderr.on('data', (c: Buffer) => { capture(c, 'err'); });
+    const settle = (code: number | null, errMessage?: string): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({
+        stdout,
+        stderr: overflowed
+          ? `output exceeded ${String(CLI_MAX_BUFFER)} bytes and was terminated`
+          : errMessage ?? stderr,
+        code,
+        timedOut,
+      });
+    };
 
-    child.on('error', (err: Error) => {
-      clearTimeout(timer);
-      resolve({ stdout, stderr: err.message, code: null, timedOut });
-    });
-    child.on('close', (code: number | null) => {
-      clearTimeout(timer);
-      resolve({ stdout, stderr, code, timedOut });
+    child.stdout.on('data', (c: string) => { capture(c, 'out'); });
+    child.stderr.on('data', (c: string) => { capture(c, 'err'); });
+
+    child.on('error', (err: Error) => { settle(null, err.message); });
+
+    // Settle on 'exit', not 'close'. 'close' waits for every inherited
+    // stdio pipe to close, which an orphaned grandchild can hold open
+    // indefinitely — that is the hang above. A short grace lets buffered
+    // output drain first, so nothing is truncated in the normal case.
+    child.on('exit', (code: number | null) => {
+      setTimeout(() => { settle(code); }, DRAIN_GRACE_MS);
     });
   });
 }

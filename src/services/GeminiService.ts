@@ -2,6 +2,12 @@ import { Logger } from '../utils/Logger.js';
 import { GoogleAuth } from 'google-auth-library';
 import type { AiTransportEntry } from './ai/AiTransport.js';
 import { cliTransports, hasCliTransport } from './ai/CliTransport.js';
+
+/**
+ * Cheapest possible request that still proves a transport can answer.
+ * Being on PATH says nothing about being logged in (#252 review).
+ */
+const TRANSPORT_PROBE_PROMPT = 'Reply with exactly: OK';
 import type { AudioMeasurements } from './ai/AudioMeasurements.js';
 import { buildMeasurementPrompt } from './ai/AudioMeasurements.js';
 import * as os from 'os';
@@ -142,12 +148,12 @@ export class GeminiService {
    * a completed ADC probe, or a transport resolved by an earlier call.
    * It deliberately does NOT scan for CLIs — that is I/O.
    *
-   * Every production gate used to call this and stop there, which meant
-   * the ~120 lines of CLI-credential and ADC discovery never ran: users
-   * with only ADC, only `~/.gemini/settings.json`, or only an
-   * authenticated CLI were all told "not configured" (#252). Those gates
-   * now use `isAvailableAsync()`. This stays for callers that need a
-   * cheap, non-blocking answer.
+   * Gates call this, so it has to be complete without being async. It
+   * covers an API key, a finished ADC probe, an already-resolved
+   * transport, and an installed CLI. What it CANNOT see synchronously is
+   * whether that CLI is logged in — `resolveTransport()` probes for that
+   * and falls through to the next candidate, so a gate saying "available"
+   * may still be followed by a transport error naming the reason.
    */
   isAvailable(): boolean {
     return (
@@ -565,6 +571,17 @@ export class GeminiService {
   /**
    * Clears all cached analysis results
    */
+  /**
+   * Forget the resolved transport so the next call re-probes.
+   *
+   * A long-lived server that started with no credentials could otherwise
+   * never recover: `resolveTransport()` caches `null` and logging into a
+   * CLI afterwards would require a restart.
+   */
+  resetTransport(): void {
+    this.transport = undefined;
+  }
+
   clearCache(): void {
     this.audioCache.clear();
     this.patternCache.clear();
@@ -696,12 +713,27 @@ export class GeminiService {
     // No API credentials. A locally authenticated CLI still works, which
     // is the whole of #252: `agy` holds valid Gemini auth that this
     // service's credential ladder cannot see.
+    //
+    // Being on PATH is not the same as being usable. An installed but
+    // unauthenticated `claude` would otherwise win — it is first in the
+    // preference order — and every request would fail without `agy` ever
+    // being tried, on exactly the machine this feature exists to serve.
+    // So probe each candidate and fall through when it cannot answer.
     for (const candidate of this.enableCliTransport ? cliTransports() : []) {
-      if (await candidate.isAvailable()) {
-        this.logger.debug(`Using AI transport: ${candidate.label}`);
-        this.transport = candidate;
-        return this.transport;
+      if (!(await candidate.isAvailable())) continue;
+
+      try {
+        await candidate.send(TRANSPORT_PROBE_PROMPT);
+      } catch (error: unknown) {
+        this.logger.debug(
+          `Transport ${candidate.label} unusable: ${error instanceof Error ? error.message : String(error)}`
+        );
+        continue;
       }
+
+      this.logger.debug(`Using AI transport: ${candidate.label}`);
+      this.transport = candidate;
+      return this.transport;
     }
 
     this.transport = null;
@@ -719,16 +751,29 @@ export class GeminiService {
       throw new Error(this.getAuthErrorMessage());
     }
 
+    // A CLI transport enforces its own timeout and can kill the process
+    // tree; racing it against a shorter one here would leave the loser
+    // running. The caller would see "timed out" while an agentic CLI kept
+    // working for another 90 seconds, burning quota, and repeated
+    // timeouts would stack live subprocesses.
+    if (transport.id.startsWith('cli:')) {
+      return transport.send(prompt);
+    }
+
+    let timer: NodeJS.Timeout | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
+      timer = setTimeout(() => {
         reject(new Error(`Request timed out after ${this.timeoutMs / 1000} seconds`));
       }, this.timeoutMs);
     });
 
-    return Promise.race([
-      transport.send(prompt),
-      timeoutPromise
-    ]);
+    try {
+      return await Promise.race([transport.send(prompt), timeoutPromise]);
+    } finally {
+      // Otherwise the handle and its closure are held until the deadline
+      // even when the request succeeded immediately.
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   private async callGeminiAPI(prompt: string, mediaData?: string, mimeType?: string): Promise<string> {
