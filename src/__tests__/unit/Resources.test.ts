@@ -11,15 +11,21 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isResourceUri, readResource, resources } from '../../server/resources';
 
+const demoPatterns = [
+  {
+    name: 'demo',
+    content: 's("bd hh sd hh")',
+    tags: ['demo'],
+    timestamp: '2026-01-01T00:00:00.000Z',
+  },
+];
+
 const stubStore = {
-  list: async () => [
-    {
-      name: 'demo',
-      content: 's("bd hh sd hh")',
-      tags: ['demo'],
-      timestamp: '2026-01-01T00:00:00.000Z',
-    },
-  ],
+  list: async () => demoPatterns,
+  // The resource reads this now, so it can report files it could not
+  // read the way `pattern_store` already does (#442). Deferring to the
+  // same data keeps the two answers from disagreeing.
+  listDetailed: async () => ({ patterns: demoPatterns, skipped: 0 }),
 } as any;
 
 const ctx = {
@@ -102,6 +108,10 @@ describe('MCP resources', () => {
           list: async () => [
             { name: 'long', content: longContent, tags: [], timestamp: '' },
           ],
+          listDetailed: async () => ({
+            patterns: [{ name: 'long', content: longContent, tags: [], timestamp: '' }],
+            skipped: 0,
+          }),
         } as any,
       };
       const result = await readResource('strudel://patterns', ctxLong);

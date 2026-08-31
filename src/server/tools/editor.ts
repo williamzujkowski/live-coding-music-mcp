@@ -10,6 +10,8 @@ import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { empty, ok, withStashField } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
+import { ValidationError } from '../../utils/CategorisedError.js';
+
 
 const SESSION_ID_PROP = {
   session_id: {
@@ -41,7 +43,12 @@ export const tools: Tool[] = [
         },
         pattern: { type: 'string', description: 'Pattern code (mode=write)' },
         code: { type: 'string', description: 'Code to append/insert (mode=append/insert)' },
-        position: { type: 'number', description: 'Line number (mode=insert)' },
+        position: {
+          type: 'number',
+          description:
+            'mode=insert: 0-indexed line to insert BEFORE. 0 puts the code at the top; '
+            + 'a value equal to the line count appends. Out of range is an error, not an append.',
+        },
         search: { type: 'string', description: 'Text to replace (mode=replace)' },
         replace: { type: 'string', description: 'Replacement text (mode=replace)' },
         replace_all: { type: 'boolean', description: 'mode=replace: replace every occurrence instead of just the first (default false)' },
@@ -100,10 +107,29 @@ async function doAppend(args: any, ctx: ToolContext, sid?: string): Promise<unkn
 }
 
 async function doInsert(args: any, ctx: ToolContext, sid?: string): Promise<unknown> {
-  InputValidator.validatePositiveInteger(args.position, 'position');
   InputValidator.validateStringLength(args.code, 'code', 10000, true);
   const lines = (await ctx.getCurrentPatternSafe(sid)).split('\n');
-  lines.splice(args.position, 0, args.code);
+
+  // 0-indexed, and 0 is a legal position.
+  //
+  // `validatePositiveInteger` rejected 0 while the `splice` below is
+  // 0-indexed, so inserting at the TOP of a pattern was impossible
+  // through this tool — and `StrudelController.insertAtLine`, which does
+  // the same job, documents the parameter as 0-indexed and permits 0.
+  //
+  // The other end was unguarded: `position: 9999` on a three-line
+  // pattern passed validation and `splice` silently appended, where
+  // `insertAtLine` throws. Now it matches that contract exactly
+  // (#442), so the two ways of doing this cannot disagree.
+  const position = args.position;
+  if (!Number.isInteger(position) || position < 0 || position > lines.length) {
+    throw new ValidationError(
+      `Invalid position: ${String(position)}. Must be an integer between 0 and ${String(lines.length)} ` +
+      `(0 inserts before the first line, ${String(lines.length)} appends).`
+    );
+  }
+
+  lines.splice(position, 0, args.code);
   return await ctx.writePatternSafe(lines.join('\n'), sid);
 }
 
