@@ -43,3 +43,20 @@ export class BusinessError extends Error {
     this.name = 'BusinessError';
   }
 }
+
+/**
+ * A failure that may not recur: the model returned something
+ * unparseable, a network hiccup, a service that was briefly unwell.
+ *
+ * The distinction that matters to a caller is whether trying again could
+ * help. `No JSON found in response` means the model produced prose where
+ * a JSON block was asked for — the next attempt often does not, and the
+ * message contains no word the phrase matcher recognises, so it landed
+ * in `internal` and told the caller not to bother.
+ */
+export class TransientError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TransientError';
+  }
+}

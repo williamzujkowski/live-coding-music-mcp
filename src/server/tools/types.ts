@@ -9,7 +9,7 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { AiAuthError, AiRateLimitError } from '../../services/ai/AiTransport.js';
-import { BusinessError, ValidationError } from '../../utils/CategorisedError.js';
+import { BusinessError, TransientError, ValidationError } from '../../utils/CategorisedError.js';
 import type { StrudelController } from '../../StrudelController.js';
 import type { PatternStore } from '../../PatternStore.js';
 import type { PatternGenerator } from '../../services/PatternGenerator.js';
@@ -355,6 +355,7 @@ export function categorizeError(error: unknown): ErrorCategory {
   // change an argument (#382).
   if (error instanceof ValidationError) return 'validation';
   if (error instanceof BusinessError) return 'business';
+  if (error instanceof TransientError) return 'transient';
 
   const message = error instanceof Error ? error.message : String(error);
   const lower = message.toLowerCase();
