@@ -22,18 +22,21 @@ import { AudioCaptureService } from '../../services/AudioCaptureService';
 jest.mock('playwright');
 
 describe('AudioCaptureService page binding', () => {
-  const pageA = { evaluate: jest.fn(async () => undefined) } as never;
-  const pageB = { evaluate: jest.fn(async () => undefined) } as never;
+  // `evaluate` stands in for two different calls: the injection itself,
+  // and the liveness probe `isInjectedInto` now makes. Returning true
+  // means "the recorder is on this page" (#437).
+  const pageA = { evaluate: jest.fn(async () => true) } as never;
+  const pageB = { evaluate: jest.fn(async () => true) } as never;
 
-  it('reports no binding before injection', () => {
-    expect(new AudioCaptureService().isInjectedInto(pageA)).toBe(false);
+  it('reports no binding before injection', async () => {
+    expect(await new AudioCaptureService().isInjectedInto(pageA)).toBe(false);
   });
 
   it('reports the page it was injected into', async () => {
     const service = new AudioCaptureService();
     await service.injectRecorder(pageA);
 
-    expect(service.isInjectedInto(pageA)).toBe(true);
+    expect(await service.isInjectedInto(pageA)).toBe(true);
   });
 
   /** The whole point: a recreated session or recovered browser is a NEW page. */
@@ -41,7 +44,7 @@ describe('AudioCaptureService page binding', () => {
     const service = new AudioCaptureService();
     await service.injectRecorder(pageA);
 
-    expect(service.isInjectedInto(pageB)).toBe(false);
+    expect(await service.isInjectedInto(pageB)).toBe(false);
   });
 
   it('rebinds when injected into another page', async () => {
@@ -49,8 +52,8 @@ describe('AudioCaptureService page binding', () => {
     await service.injectRecorder(pageA);
     await service.injectRecorder(pageB);
 
-    expect(service.isInjectedInto(pageB)).toBe(true);
-    expect(service.isInjectedInto(pageA)).toBe(false);
+    expect(await service.isInjectedInto(pageB)).toBe(true);
+    expect(await service.isInjectedInto(pageA)).toBe(false);
   });
 });
 

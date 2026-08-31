@@ -78,9 +78,35 @@ export class AudioCaptureService {
    */
   private injectedPage: Page | null = null;
 
-  /** Whether this service's recorder is live on the given page. */
-  isInjectedInto(page: Page): boolean {
-    return this.injectedPage === page;
+  /**
+   * Whether this service's recorder is live on the given page.
+   *
+   * Asks the page, rather than comparing object identity. A Playwright
+   * `Page` outlives the JS realm it points at: reload strudel.cc — which
+   * a user can do at any time, since CLAUDE.md makes the visible browser
+   * window the intended interface — and `window.strudelAudioCapture` is
+   * gone while `injectedPage === page` still holds.
+   *
+   * The cached service was then returned without re-injecting, and every
+   * capture and export failed with "Audio capture not initialized" for
+   * the rest of the session. `init` could not recover it either:
+   * `initialize()` returns 'Already initialized' whenever the page is
+   * alive, so the same page and the same cached service came back (#437).
+   *
+   * Identity is still checked first — it is free, and it catches the
+   * recreated-session and recovered-browser cases (#264) without a round
+   * trip to the page.
+   */
+  async isInjectedInto(page: Page): Promise<boolean> {
+    if (this.injectedPage !== page) return false;
+    try {
+      return await page.evaluate(/* istanbul ignore next */ () =>
+        typeof (window as any).strudelAudioCapture === 'object'
+        && (window as any).strudelAudioCapture !== null);
+    } catch {
+      // An unreadable page is not an injected one.
+      return false;
+    }
   }
 
   async injectRecorder(page: Page): Promise<void> {
@@ -174,6 +200,16 @@ export class AudioCaptureService {
 
             return { success: true };
           } catch (err: any) {
+            // Reset before returning, or the page is wedged for good.
+            //
+            // `isCapturing` is set just above, and `recorder.start()` can
+            // throw — on a track-less stream, for instance. The flag then
+            // stayed true while the Node mirror stayed false, so every
+            // later start got "Capture already in progress", every export
+            // got "A capture is already in progress", and stop was
+            // refused by the Node-side gate. Nothing cleared it short of
+            // a new page (#437).
+            capture.isCapturing = false;
             return { success: false, error: err.message || 'Failed to start capture' };
           }
         },
