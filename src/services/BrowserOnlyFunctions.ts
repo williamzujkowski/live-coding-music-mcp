@@ -34,6 +34,12 @@ export const BROWSER_ONLY_FUNCTIONS: ReadonlyMap<string, UnavailableReason> = ne
   ['setcpm', 'transport'],
   ['setCps', 'transport'],
   ['hush', 'transport'],
+  // Siblings of hush and setcpm, and just as absent locally. Without
+  // them, panic() and getcpm() produced the "references unknown
+  // identifier — reads as a typo" message that #232 was filed to
+  // remove (#343).
+  ['panic', 'transport'],
+  ['getcpm', 'transport'],
   ['all', 'transport'],
 
   // Loaders: fetch sample banks over the network at evaluation time.
@@ -93,11 +99,24 @@ export function explainBrowserOnly(name: string): string | null {
  * @returns The first browser-only function called, or null
  */
 export function findBrowserOnlyCall(code: string): string | null {
+  // Comments are not calls.
+  //
+  // The regex only guarded the single character before the name, so a
+  // mention inside a comment matched. This is consulted on the ERROR
+  // path, so the effect was misattribution rather than false
+  // rejection — but it fired ahead of the real diagnosis: an
+  // unterminated string with `samples("x")` in a trailing comment was
+  // reported as "samples loads over the network" instead of as the
+  // syntax error it is (#343).
+  const withoutComments = code
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ');
+
   for (const name of BROWSER_ONLY_FUNCTIONS.keys()) {
     // Called as a function or chained as a method, not merely mentioned
     // inside a string.
     const called = new RegExp(`(^|[^\\w$."'])${name}\\s*\\(|\\.${name}\\s*\\(`);
-    if (called.test(code)) return name;
+    if (called.test(withoutComments)) return name;
   }
   return null;
 }

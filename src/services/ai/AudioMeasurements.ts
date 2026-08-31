@@ -53,6 +53,14 @@ export interface AudioMeasurements {
 }
 
 /** Converts a linear amplitude to dBFS, the unit mixing engineers use. */
+/**
+ * Amplitude at or below which a capture is treated as silent.
+ *
+ * Not exactly zero: dithering, a DC offset, or a single stray sample
+ * can leave a capture technically non-zero while containing no audio.
+ */
+export const SILENCE_THRESHOLD = 1e-4;
+
 export function toDbfs(amplitude: number): number {
   if (amplitude <= 0) return -Infinity;
   return 20 * Math.log10(amplitude);
@@ -77,13 +85,36 @@ export function describeMeasurements(m: AudioMeasurements): string {
     lines.push(`- Format: ${String(m.sampleRate)} Hz, ${String(m.channels ?? 2)} channel(s)`);
   }
 
+  // Silence first, and loudly.
+  //
+  // A silent capture was described as "Infinity dB of headroom", which
+  // is arithmetically true and useless: toDbfs(0) is -Infinity, and the
+  // verdict ladder had a branch for clipping and one for low headroom
+  // but none for nothing-at-all. buildMeasurementPrompt then wraps this
+  // in "these measurements are accurate — treat them as ground truth"
+  // and asks the model for mood, style and energy. Silence is THE
+  // documented failure mode of this project's headless capture, and the
+  // model was given no signal it had happened (#343).
+  const isSilent = m.peak !== undefined && m.peak <= SILENCE_THRESHOLD
+    && (m.rms === undefined || m.rms <= SILENCE_THRESHOLD);
+
+  if (isSilent) {
+    lines.push(
+      '- SILENT: nothing was recorded. Peak and RMS are both at or below ' +
+      `${String(SILENCE_THRESHOLD)}. Do not infer mood, style or energy from this — ` +
+      'there is no audio to describe. The capture failed, or the pattern was not playing.'
+    );
+  }
+
   if (m.peak !== undefined) {
     const db = toDbfs(m.peak);
     const verdict = m.peak > 1
       ? 'CLIPPING — above full scale, so the mix is distorting'
       : m.peak > 0.95
         ? 'very close to full scale, little headroom'
-        : `${(-db).toFixed(1)} dB of headroom`;
+        : m.peak <= SILENCE_THRESHOLD
+          ? 'silence — no signal at all'
+          : `${(-db).toFixed(1)} dB of headroom`;
     lines.push(`- Peak: ${m.peak.toFixed(4)} (${db.toFixed(2)} dBFS) — ${verdict}`);
   }
 
