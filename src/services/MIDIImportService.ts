@@ -245,7 +245,32 @@ export class MIDIImportService {
 
     const discarded: string[] = [];
 
-    const bpm = Math.round(midi.header.tempos[0]?.bpm ?? 120);
+    // The file's tempo, not a rounded one.
+    //
+    // The grid below is derived from this while note times come from
+    // @tonejs/midi at the file's TRUE tempo, so rounding here made the
+    // two disagree and the error accumulated. Measured on a 100.4 BPM
+    // file with a note on beat 1 of each of 16 bars:
+    //
+    //   bar  0  first onset at step 0
+    //   bar 13  first onset at step 15     <- a full step early
+    //
+    // The downbeat had walked backwards past the bar line (#433).
+    //
+    // `exactBpm` drives the grid and the emitted `setcpm`, so the
+    // pattern plays at the tempo the file states; `bpm` stays rounded
+    // for the summary a human reads.
+    // Rounded to three decimals, once, and used for BOTH the grid and
+    // the emitted `setcpm` so the two cannot disagree.
+    //
+    // A MIDI tempo is stored as microseconds per quarter note, so
+    // @tonejs/midi hands back 100.40009437608872 for a 100.4 BPM file —
+    // 17 digits of float noise to write into a pattern. Three decimals
+    // is a relative error near 1e-6: about 40 microseconds of drift
+    // across sixteen bars, against the 0.15 SECONDS that rounding to an
+    // integer produced.
+    const exactBpm = Math.round((midi.header.tempos[0]?.bpm ?? 120) * 1000) / 1000;
+    const bpm = Math.round(exactBpm);
     if (midi.header.tempos.length > 1) {
       const others = midi.header.tempos
         .slice(1, 4)
@@ -266,7 +291,7 @@ export class MIDIImportService {
         'the grid is 4/4, so bar lines will not line up'
       );
     }
-    const secondsPerBeat = 60 / bpm;
+    const secondsPerBeat = 60 / exactBpm;
     // Export reads the same constant, so a round trip cannot rescale
     // time by disagreeing about the bar (#336, consolidated in #397).
     const secondsPerBar = secondsPerBeat * BEATS_PER_BAR;
@@ -336,7 +361,13 @@ export class MIDIImportService {
     // One cycle plays one bar (see `renderBars`), and every meter is laid
     // onto 4/4 — so the bar is four beats and `setcpm(bpm)` would run the
     // file four times too fast. Importing a 120 BPM file gave 480 (#397).
-    const tempoCall = `setcpm(${bpm}/${String(BEATS_PER_CYCLE)})`;
+    // The exact tempo, matching the grid the notes were placed on.
+    //
+    // Emitting the rounded one would put the drift back in the other
+    // direction: a grid built for 100.4 played at 100 walks apart just
+    // the same (#433). A fractional cpm is valid and the divisor is the
+    // beats-per-cycle conversion (#395).
+    const tempoCall = `setcpm(${String(exactBpm)}/${String(BEATS_PER_CYCLE)})`;
     const out = lanes.length === 0
       ? `${tempoCall}\n\n// (no playable notes after parse)\nsilence`
       : `${tempoCall}\n\nstack(\n${lanes.join(',\n')}\n)`;
