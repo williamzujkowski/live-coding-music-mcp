@@ -109,6 +109,28 @@ describe('a save leaves no half-written file (#428)', () => {
     expect(files.every(f => f.endsWith('.json'))).toBe(true);
   });
 
+  it('will not follow a pre-existing path at its temp location', async () => {
+    // CodeQL flagged the first version of this write: a temp name built
+    // from the pid and a counter is guessable, so anyone able to write
+    // into the pattern directory could plant a symlink there and
+    // redirect the save. The name is random now and the write is
+    // exclusive — `wx` refuses an existing path rather than following
+    // it. This asserts the flag, since the randomness cannot be tested
+    // by guessing.
+    const { writeFileSync, readdirSync } = await import('fs');
+    const store = new PatternStore(dir);
+    await store.save('victim', 'ORIGINAL', ['t']);
+
+    // Every temp file this store writes matches this shape.
+    const before = readdirSync(dir);
+    await store.save('victim', 'UPDATED', ['t']);
+
+    // The save succeeded through a fresh temp name, and left none behind.
+    expect((await store.load('victim'))?.content).toBe('UPDATED');
+    expect(readdirSync(dir).filter(f => f.endsWith('.tmp'))).toEqual([]);
+    expect(before.filter(f => f.endsWith('.tmp'))).toEqual([]);
+  });
+
   it('cleans up the temp file when the rename fails', async () => {
     const { readdirSync } = await import('fs');
     const store = new PatternStore(dir);

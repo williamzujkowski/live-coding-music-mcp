@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import { randomBytes } from 'crypto';
 import * as path from 'path';
 import { Logger } from './utils/Logger.js';
 import { ValidationError } from './utils/CategorisedError.js';
@@ -34,8 +35,6 @@ export class PatternStore {
   private listCache: { patterns: PatternData[], timestamp: number, skipped: number } | null = null;
   /** Set by the read `listDetailed` wraps; never read except through it. */
   private skippedInLastRead = 0;
-  /** Distinguishes concurrent temp files; see the write in `save`. */
-  private static tempCounter = 0;
   private readonly LIST_CACHE_TTL = 5000; // 5 seconds
   private readonly MAX_CACHE_SIZE = 100; // LRU cache limit
   private directoryEnsured: boolean = false;
@@ -168,12 +167,20 @@ export class PatternStore {
     // down (#426). That fix made the listing survive such a file; this
     // one stops producing them.
     //
-    // The temp name carries the pid and a counter so two saves cannot
-    // collide on it, and it sits in the same directory so the rename
-    // stays within one filesystem.
-    const tempPath = `${filepath}.${String(process.pid)}.${String(++PatternStore.tempCounter)}.tmp`;
+    // The temp name is random, and the write is exclusive.
+    //
+    // A predictable name (pid plus a counter) is guessable, so anyone
+    // able to write into the pattern directory could pre-create it as a
+    // symlink and redirect the write elsewhere — CodeQL flags exactly
+    // this as js/insecure-temporary-file, and it was right. `randomBytes`
+    // removes the guess and the `wx` flag refuses to open a path that
+    // already exists, symlink included, rather than following it.
+    //
+    // It sits in the same directory so the rename stays within one
+    // filesystem, which is what makes the rename atomic.
+    const tempPath = `${filepath}.${randomBytes(8).toString('hex')}.tmp`;
     try {
-      await fs.writeFile(tempPath, JSON.stringify(data, null, 2));
+      await fs.writeFile(tempPath, JSON.stringify(data, null, 2), { flag: 'wx' });
       await fs.rename(tempPath, filepath);
     } catch (error) {
       // Leaving a stray .tmp would make it the next listing's problem.
