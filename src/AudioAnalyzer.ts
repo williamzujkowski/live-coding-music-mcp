@@ -380,10 +380,17 @@ export class AudioAnalyzer {
   /**
    * Extract chroma features (12-dimensional pitch class profile) from FFT data
    */
-  private extractChroma(fftData: Uint8Array): number[] {
+  extractChroma(fftData: Uint8Array, sampleRate: number = 44100): number[] {
     const chroma = new Array(12).fill(0);
+    // How many FFT bins landed in each pitch class. Linear-frequency
+    // bins do not divide evenly among twelve logarithmic pitch classes:
+    // at fftSize=1024 only 92 of 512 bins fall inside 20-4000 Hz, and
+    // they are distributed 4 to 12 per class — A gets 12, C# and D# get
+    // 4. Summing raw magnitudes therefore made the classes with more
+    // bins louder no matter what the audio was, and flat white noise
+    // detected as F major with confidence 0.849 (#321).
+    const binCounts = new Array(12).fill(0);
     const fftSize = fftData.length;
-    const sampleRate = 44100;
 
     for (let i = 0; i < fftSize; i++) {
       const freq = (i / fftSize) * (sampleRate / 2);
@@ -391,6 +398,14 @@ export class AudioAnalyzer {
 
       const pitchClass = this.frequencyToPitchClass(freq);
       chroma[pitchClass] += fftData[i];
+      binCounts[pitchClass]++;
+    }
+
+    // Mean magnitude per class, not total. This is the whole fix: a
+    // class with 12 bins is now compared on equal terms with one that
+    // has 4.
+    for (let pc = 0; pc < 12; pc++) {
+      if (binCounts[pc] > 0) chroma[pc] /= binCounts[pc];
     }
 
     // Normalize
@@ -676,7 +691,7 @@ export class AudioAnalyzer {
           throw new Error('Invalid audio data');
         }
         const fftData = new Uint8Array(analyzer.dataArray);
-        chroma = this.extractChroma(fftData);
+        chroma = this.extractChroma(fftData, analyzer.sampleRate ?? 44100);
       }
     } else {
       // No analyze function, extract from FFT
@@ -684,7 +699,11 @@ export class AudioAnalyzer {
         throw new Error('Invalid audio data');
       }
       const fftData = new Uint8Array(analyzer.dataArray);
-      chroma = this.extractChroma(fftData);
+      // The rate the AudioContext actually reported, captured at
+      // connect time. 44100 was assumed; the real rate is commonly
+      // 48000, where every frequency came out 8.8% low — 1.47
+      // semitones, enough to put a note in the wrong pitch class (#321).
+      chroma = this.extractChroma(fftData, analyzer.sampleRate ?? 44100);
     }
 
     // Check for sufficient energy
