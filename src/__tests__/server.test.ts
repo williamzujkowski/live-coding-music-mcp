@@ -1633,7 +1633,8 @@ describe('StrudelMCPServer', () => {
 
         expect(result.success).toBe(true);
         expect(result.message).toContain('Audio capture started');
-        expect(result.format).toBe('webm');
+        // The actual mime, so start and stop agree (#437).
+        expect(result.format).toBe('audio/webm;codecs=opus');
       });
 
       test('start_audio_capture should use custom format', async () => {
@@ -1644,7 +1645,12 @@ describe('StrudelMCPServer', () => {
         });
 
         expect(result.success).toBe(true);
-        expect(result.format).toBe('opus');
+        // The mime the recorder actually produces, not the requested
+        // label. Echoing `format` meant start said "opus" and the
+        // matching stop said "audio/webm;codecs=opus" for one recording
+        // — MediaRecorder gives a webm container with an Opus stream
+        // either way (#437).
+        expect(result.format).toBe('audio/webm;codecs=opus');
       });
 
       test('start_audio_capture should fail if capture already in progress', async () => {

@@ -45,8 +45,14 @@ const createMockPage = (overrides: Partial<{
         return undefined;
       }
 
-      // Check for startCapture
-      if (fnStr.includes('startCapture()')) {
+      // Check for startCapture.
+      //
+      // `startCapture(` not `startCapture()`: this mock dispatches on
+      // the SOURCE TEXT of the evaluated function, so adding an argument
+      // silently stopped matching and every call fell through to
+      // undefined (#437). Brittle by construction; matching the call
+      // rather than the exact argument list is the least of it.
+      if (fnStr.includes('startCapture(')) {
         if (state.notInitialized) {
           return { success: false, error: 'Audio capture not initialized. Call injectRecorder first.' };
         }

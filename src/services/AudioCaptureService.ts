@@ -11,6 +11,15 @@ export interface AudioCaptureConfig {
   sampleRate?: number;
   /** Recording duration in milliseconds (default: 5000) */
   durationMs?: number;
+  /**
+   * Upper bound on a streaming capture, in ms.
+   *
+   * The recorder stops itself at this point and the chunks are kept, so
+   * a later `stop` returns what was recorded. Defaults to ten minutes —
+   * a streaming capture used to have no bound at all and grew in page
+   * memory until someone stopped it (#437).
+   */
+  maxDuration?: number;
 }
 
 /**
@@ -58,6 +67,8 @@ export class AudioCaptureService {
   private readonly DEFAULT_SAMPLE_RATE = 48000;
   private readonly DEFAULT_DURATION_MS = 5000;
   private readonly MIME_TYPE = 'audio/webm;codecs=opus';
+  /** Cap on an unbounded streaming capture. Ten minutes (#437). */
+  private static readonly DEFAULT_MAX_CAPTURE_MS = 10 * 60 * 1000;
 
   /**
    * Injects audio capture code into the Strudel page.
@@ -115,6 +126,8 @@ export class AudioCaptureService {
       (window as any).strudelAudioCapture = {
         /** In-flight stop, so a second one waits rather than racing it. */
         stopping: null as Promise<unknown> | null,
+        /** Auto-stop at maxDuration; cleared when a stop lands first. */
+        capTimer: null as ReturnType<typeof setTimeout> | null,
         mediaStreamDest: null as MediaStreamAudioDestinationNode | null,
         recorder: null as MediaRecorder | null,
         isConnected: false,
@@ -155,7 +168,7 @@ export class AudioCaptureService {
          * Starts audio capture
          * @returns Success status and any error message
          */
-        startCapture(): { success: boolean; error?: string } {
+        startCapture(maxDurationMs?: number): { success: boolean; error?: string } {
           const capture = (window as any).strudelAudioCapture;
 
           if (!capture.isConnected || !capture.mediaStreamDest) {
@@ -199,6 +212,19 @@ export class AudioCaptureService {
             capture.startTime = Date.now();
             capture.isCapturing = true;
             capture.recorder.start(100); // Collect data every 100ms
+
+            // A streaming capture had no upper bound at all: it
+            // accumulated a 100ms blob in page memory until someone
+            // stopped it, and `maxDuration` — advertised by the tool —
+            // was accepted and discarded (#437). The recorder stops
+            // itself at the cap now; the chunks stay, so a later `stop`
+            // returns what was recorded.
+            if (typeof maxDurationMs === 'number' && maxDurationMs > 0) {
+              capture.capTimer = setTimeout(() => {
+                if (!capture.isCapturing) return;
+                try { capture.recorder.stop(); } catch { /* already stopped */ }
+              }, maxDurationMs);
+            }
 
             return { success: true };
           } catch (err: any) {
@@ -252,6 +278,10 @@ export class AudioCaptureService {
 
             recorder.onstop = () => {
               capture.isCapturing = false;
+              if (capture.capTimer !== null) {
+                clearTimeout(capture.capTimer);
+                capture.capTimer = null;
+              }
               const duration = Date.now() - startTime;
 
               if (capture.chunks.length === 0) {
@@ -332,14 +362,20 @@ export class AudioCaptureService {
    *   recorder config is fixed at injectRecorder time)
    * @throws {Error} When capture fails to start
    */
-  async startCapture(page: Page, _config?: AudioCaptureConfig): Promise<void> {
-    const result = await page.evaluate(/* istanbul ignore next */ () => {
+  async startCapture(page: Page, config?: AudioCaptureConfig): Promise<void> {
+    // Bounded even when the caller does not ask. An unbounded streaming
+    // capture grows in page memory until someone remembers to stop it,
+    // and nothing here ever timed it out (#437). Ten minutes is far
+    // longer than any musical take and far shorter than forever.
+    const maxDurationMs = config?.maxDuration ?? AudioCaptureService.DEFAULT_MAX_CAPTURE_MS;
+
+    const result = await page.evaluate(/* istanbul ignore next */ (capMs: number) => {
       const capture = (window as any).strudelAudioCapture;
       if (!capture) {
         return { success: false, error: 'Audio capture not initialized. Call injectRecorder first.' };
       }
-      return capture.startCapture();
-    });
+      return capture.startCapture(capMs);
+    }, maxDurationMs);
 
     if (!result.success) {
       throw new Error(result.error || 'Failed to start capture');

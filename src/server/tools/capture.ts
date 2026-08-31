@@ -56,7 +56,13 @@ export const tools: Tool[] = [
       properties: {
         action: { type: 'string', enum: ['start', 'stop', 'sample'], description: 'Capture action' },
         format: { type: 'string', enum: ['webm', 'opus'], description: 'action=start: audio format (default webm)' },
-        maxDuration: { type: 'number', description: 'action=start: maximum capture duration ms' },
+        maxDuration: {
+          type: 'number',
+          description:
+            'action=start: stop the recorder automatically after this many ms. '
+            + 'Defaults to 600000 (ten minutes); the recording so far is kept and '
+            + 'returned by a later stop.',
+        },
         duration: { type: 'number', description: 'action=sample: duration ms (100-60000, default 5000)' },
         ...SESSION_ID_PROP,
       },
@@ -132,7 +138,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
 
 async function startAudioCapture(
   format: 'webm' | 'opus' | undefined,
-  _maxDuration: number | undefined,
+  maxDuration: number | undefined,
   ctx: ToolContext,
   sid?: string,
 ): Promise<unknown> {
@@ -141,11 +147,19 @@ async function startAudioCapture(
     if (service.isCapturing()) {
       return err('business', 'Audio capture already in progress. Stop it first.');
     }
-    await service.startCapture(ctx.getController(sid).page!, { format });
+    if (maxDuration !== undefined) {
+      InputValidator.validatePositiveInteger(maxDuration, 'maxDuration');
+    }
+    await service.startCapture(ctx.getController(sid).page!, { format, maxDuration });
     return {
       success: true,
       message: 'Audio capture started. Use audio_capture({ action: "stop" }) to get the recorded audio.',
-      format: format || 'webm',
+      // The mime the recorder actually produces, which is what `stop`
+      // reports. Echoing the requested `format` here meant start said
+      // "opus" and the matching stop said "audio/webm;codecs=opus" for
+      // one recording (#437). MediaRecorder gives a webm container with
+      // an Opus stream either way.
+      format: service.getMimeType(),
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

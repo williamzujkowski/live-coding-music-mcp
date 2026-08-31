@@ -283,24 +283,36 @@ export class AudioExportService {
       },
     };
 
-    if (!args.wantWav) {
-      return {
-        success: true,
-        base64: h.toBase64(recorded),
-        duration: stopped.duration,
-      };
-    }
-
-    // Decode the Opus stream to PCM so it can be written as a WAV a DAW
-    // will open.
+    // Decode for BOTH formats.
+    //
+    // The webm path used to return here, before anything measured the
+    // signal — so `peak` was undefined, the silence check upstream
+    // (`payload.peak !== undefined && ...`) was false, and a silent webm
+    // was reported as a clean export. The tool description promises
+    // "Reports silent captures instead of writing a silent file and
+    // claiming success" with no format qualifier, and that promise held
+    // only for wav (#437).
+    //
+    // webm still ships the ORIGINAL Opus bytes; the decode is only to
+    // measure them. A decode failure is fatal for wav, which needs the
+    // samples, and merely means "no peak reported" for webm, which does
+    // not.
     const AudioCtx = (window as any).AudioContext ?? (window as any).webkitAudioContext;
     const ctx = new AudioCtx();
-    let decoded: AudioBuffer;
+    let decoded: AudioBuffer | null = null;
+    let decodeError = '';
     try {
       decoded = await ctx.decodeAudioData(recorded.slice(0));
     } catch (error: any) {
+      decodeError = String(error?.message ?? error);
+    }
+
+    if (decoded === null) {
       await ctx.close();
-      return { success: false, error: `Failed to decode captured audio: ${String(error?.message ?? error)}` };
+      if (args.wantWav) {
+        return { success: false, error: `Failed to decode captured audio: ${decodeError}` };
+      }
+      return { success: true, base64: h.toBase64(recorded), duration: stopped.duration };
     }
 
     const channels = decoded.numberOfChannels;
@@ -321,6 +333,22 @@ export class AudioExportService {
       }
     }
     const rms = frames > 0 ? Math.sqrt(sumSquares / (frames * channels)) : 0;
+
+    if (!args.wantWav) {
+      await ctx.close();
+      return {
+        success: true,
+        base64: h.toBase64(recorded),
+        // The audio's own length, not the wall clock. `stopped.duration`
+        // is `Date.now() - startTime`, which counts the time spent
+        // starting and stopping the recorder as if it were sound (#437).
+        duration: Math.round((frames / sampleRate) * 1000),
+        peak,
+        rms,
+        sampleRate,
+        channels,
+      };
+    }
 
     // 16-bit PCM WAV: 44-byte RIFF header then interleaved samples.
     const bytesPerSample = 2;
@@ -357,7 +385,12 @@ export class AudioExportService {
     return {
       success: true,
       base64: h.toBase64(buffer),
-      duration: stopped.duration,
+      // The audio's own length. `stopped.duration` is
+      // `Date.now() - startTime`, so it counted the time spent starting
+      // and stopping the recorder as if it were sound — and a caller
+      // could compute (bytes - 44) / (sampleRate * channels * 2) from
+      // this very response and get a different answer (#437).
+      duration: Math.round((frames / sampleRate) * 1000),
       sampleRate,
       channels,
       peak,
