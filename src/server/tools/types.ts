@@ -284,7 +284,9 @@ export function wasStashed(writeResult: unknown): boolean {
  */
 export function withStashNotice(message: string, writeResult: unknown): string {
   if (!wasStashed(writeResult)) return message;
-  return `${message}${STASH_SUFFIX}`;
+  // Trim a trailing period first: appending an em dash straight after
+  // one produced "…boom_bap. — but it is not in the editor yet" (#297).
+  return `${message.replace(/\.\s*$/, '')}${STASH_SUFFIX}`;
 }
 
 /** The caveat, as a suffix for prose results. */
@@ -303,12 +305,32 @@ export const STASH_WARNING = 'The pattern is not in the editor yet: no browser '
  * @param result - What the tool would return on a normal write
  * @param writeResult - Exactly what `writePatternSafe` returned
  */
-export function withStashField<T extends object>(
+export function withStashField<T extends Record<string, unknown>>(
   result: T,
   writeResult: unknown,
 ): T & { warning?: string } {
   if (!wasStashed(writeResult)) return result;
-  return { ...result, warning: STASH_WARNING };
+
+  // Spreading an array produces {"0":"a","1":"b"} — a silent shape
+  // change the `T & {...}` signature promised not to make. The type
+  // now excludes arrays; this is the runtime half of the same
+  // guarantee (#297).
+  if (Array.isArray(result)) {
+    throw new TypeError(
+      'withStashField expects an object result, not an array. ' +
+      'Spreading an array would change its shape.',
+    );
+  }
+
+  // Append rather than overwrite: a result that already carries a
+  // warning has something to say, and the stash notice is additional
+  // information, not a replacement for it.
+  const existing = result.warning;
+  const warning = typeof existing === 'string' && existing.length > 0
+    ? `${existing} ${STASH_WARNING}`
+    : STASH_WARNING;
+
+  return { ...result, warning };
 }
 
 export function categorizeError(error: unknown): ErrorCategory {
@@ -380,7 +402,16 @@ export function categorizeError(error: unknown): ErrorCategory {
     lower.includes('too many') ||
     lower.includes('too long') ||
     lower.includes('non-empty') ||
-    lower.includes('cannot be empty')
+    lower.includes('cannot be empty') ||
+    // The MIDI parse message reached `validation` only because it
+    // happens to contain 'Invalid'. Reword it without that adjective
+    // and it silently became a non-retryable server fault again — the
+    // two halves of #280 were coupled by nothing but vocabulary (#297).
+    lower.includes('could not be parsed') ||
+    lower.includes('parse error') ||
+    lower.includes('failed to parse') ||
+    lower.includes('malformed') ||
+    lower.includes('corrupt')
   ) {
     return 'validation';
   }

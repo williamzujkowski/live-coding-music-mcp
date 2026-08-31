@@ -198,9 +198,13 @@ export class MIDIImportService {
       // internals (#280). The underlying text is kept at the end for
       // anyone debugging, after the part that says what to do.
       const detail = String(e?.message ?? e);
+      // Don't assert the chunk name. @tonejs/midi reports the header as
+      // 'MHdr' while the actual bytes are 'MThd', so naming one while
+      // quoting the other read as a contradiction to whoever was
+      // debugging (#297). Say what to check instead.
       throw new Error(
         'Invalid MIDI file: could not be parsed. It may be truncated, or not a ' +
-        `MIDI file at all — a valid one begins with the bytes "MThd". (${detail})`
+        `MIDI file at all. Check the file opens in another MIDI tool. (${detail})`
       );
     }
 

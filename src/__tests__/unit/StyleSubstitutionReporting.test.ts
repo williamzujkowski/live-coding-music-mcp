@@ -154,7 +154,10 @@ describe('MIDI parse failure describes the file (#280)', () => {
     }
     expect(caught).toBeDefined();
     expect(caught!.message).toContain('Invalid MIDI file');
-    expect(caught!.message).toContain('MThd');
+    // The message no longer names a chunk the quoted parser disagrees
+    // about — @tonejs/midi says 'MHdr' while the real bytes are 'MThd'
+    // (#297). It still has to be actionable.
+    expect(caught!.message).toContain('another MIDI tool');
     // Not "Cannot read properties of undefined" as the leading text.
     expect(caught!.message.startsWith('Cannot read properties')).toBe(false);
   });
