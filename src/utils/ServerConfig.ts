@@ -122,6 +122,60 @@ function parseDirectory(
  * const config = parseServerConfig({ strudel_url: 'file:///etc/passwd' });
  * // -> strudelUrl: 'https://strudel.cc/', warnings: ['...must use http or https...']
  */
+/** Keys `audio_analysis` may contain. Anything else earns a warning. */
+const KNOWN_AUDIO_KEYS = new Set(['fft_size', 'smoothing']);
+
+/**
+ * Parses the `audio_analysis` block, saying so when it cannot.
+ *
+ * Three ways this used to go wrong in silence, all measured:
+ *
+ *   audio_analysis: "enabled"      -> undefined, indistinguishable from
+ *                                     leaving the block out entirely
+ *   audio_analysis: []             -> {} — an array passes a bare
+ *                                     `typeof === 'object'` test
+ *   audio_analysis: {fftSize: ...} -> {} — the natural camelCase
+ *                                     spelling of `fft_size`, dropped
+ *
+ * The last is the sharpest: the same typo one level up IS warned about
+ * by the unknown-key loop above, so the file was strict about its own
+ * keys and silent about the nested ones (#442).
+ */
+function parseAudioAnalysis(
+  raw: unknown,
+  warnings: string[],
+): { fftSize?: number; smoothing?: number } | undefined {
+  if (raw === undefined) return undefined;
+
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    warnings.push(
+      'config.audio_analysis must be an object with fft_size and/or smoothing; ignoring it'
+    );
+    return undefined;
+  }
+
+  const audio = raw as Record<string, unknown>;
+  for (const key of Object.keys(audio)) {
+    if (!KNOWN_AUDIO_KEYS.has(key)) {
+      warnings.push(
+        `Unknown config key 'audio_analysis.${key}' — it will be ignored. ` +
+        `Known keys: ${[...KNOWN_AUDIO_KEYS].join(', ')}`
+      );
+    }
+  }
+  if (audio.fft_size !== undefined && typeof audio.fft_size !== 'number') {
+    warnings.push('config.audio_analysis.fft_size must be a number; ignoring it');
+  }
+  if (audio.smoothing !== undefined && typeof audio.smoothing !== 'number') {
+    warnings.push('config.audio_analysis.smoothing must be a number; ignoring it');
+  }
+
+  return {
+    fftSize: typeof audio.fft_size === 'number' ? audio.fft_size : undefined,
+    smoothing: typeof audio.smoothing === 'number' ? audio.smoothing : undefined,
+  };
+}
+
 export function parseServerConfig(raw: unknown): ServerConfig {
   const warnings: string[] = [];
   const obj: Record<string, unknown> =
@@ -145,20 +199,7 @@ export function parseServerConfig(raw: unknown): ServerConfig {
     warnings.push(`config.headless must be a boolean; using false`);
   }
 
-  const audio = obj.audio_analysis;
-  const audioAnalysis =
-    audio !== null && typeof audio === 'object'
-      ? {
-          fftSize:
-            typeof (audio as Record<string, unknown>).fft_size === 'number'
-              ? ((audio as Record<string, unknown>).fft_size as number)
-              : undefined,
-          smoothing:
-            typeof (audio as Record<string, unknown>).smoothing === 'number'
-              ? ((audio as Record<string, unknown>).smoothing as number)
-              : undefined,
-        }
-      : undefined;
+  const audioAnalysis = parseAudioAnalysis(obj.audio_analysis, warnings);
 
   return {
     headless: obj.headless === true,
