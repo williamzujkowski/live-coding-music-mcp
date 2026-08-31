@@ -410,6 +410,19 @@ await this.page.evaluate(() => {
 including for functions passed by reference rather than written inline
 (#248).
 
+**Mark every `page.evaluate` argument `/* istanbul ignore next */`.** Same
+hazard, different tool: Jest's coverage instrumentation injects `cov_*`
+counters into functions matched by `collectCoverageFrom`, and `cov_*` does
+not exist in page context either. This one is nastier to diagnose —
+`waitForFunction` swallows the `ReferenceError` and polls until timeout,
+so the symptom looks like strudel.cc being slow. It cost 31 browser tests,
+which were skipped wholesale under `--coverage` until #256. The same test
+enforces the pragma.
+
+The general rule: a function heading for `page.evaluate` must survive
+whatever the local toolchain injects into it. Two tools already inject
+something; assume a third will.
+
 ### Error Recovery
 ```typescript
 import { ErrorRecovery } from './utils/ErrorRecovery';
@@ -470,7 +483,14 @@ src/
 │   ├── StrudelEngine.ts        # @strudel/* wrapper
 │   ├── StrudelEngineHelpers.ts # Pure helpers (#107, direct-tested)
 │   ├── MIDIExportService.ts    # Strudel -> MIDI export
-│   └── MIDIImportService.ts    # MIDI -> Strudel import (#203)
+│   ├── MIDIImportService.ts    # MIDI -> Strudel import (#203)
+│   ├── AudioExportService.ts   # Record live audio to WAV/WebM (#223)
+│   ├── PatternSandbox.ts       # AST allowlist + vm for local execution (#229)
+│   ├── BrowserOnlyFunctions.ts # Functions the local engine can't provide (#232)
+│   └── ai/                     # Provider-agnostic AI transport (#252)
+│       ├── AiTransport.ts      # The seam: (prompt) => Promise<string>
+│       ├── CliTransport.ts     # Drives claude / agy / codex
+│       └── AudioMeasurements.ts # Describes audio numerically for any model
 ├── types/
 │   └── AudioAnalysis.ts        # Analysis result + config types
 ├── utils/
@@ -478,7 +498,9 @@ src/
 │   ├── PatternValidator.ts     # Validation (286 lines)
 │   ├── ErrorRecovery.ts        # Error handling (338 lines)
 │   ├── PerformanceMonitor.ts   # Monitoring (156 lines)
-│   └── InputValidator.ts       # Input validation (321 lines)
+│   ├── InputValidator.ts       # Input validation (321 lines)
+│   ├── SafePath.ts             # Filename confinement for exports (#224)
+│   └── ServerConfig.ts         # config.json parsing + validation (#227)
 └── __tests__/                  # Jest tests
 ```
 
