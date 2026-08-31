@@ -28,6 +28,12 @@ export interface NoteEvent {
   duration: number;
   /** Velocity (0-127) */
   velocity: number;
+  /**
+   * MIDI channel. Omitted means the default melodic track; 9 is the GM
+   * percussion channel, which is how a drum hit is distinguished from a
+   * pitched note of the same number (#335).
+   */
+  channel?: number;
 }
 
 /** Options for MIDI export */
@@ -150,6 +156,37 @@ const CASE_SENSITIVE_CHORDS: Record<string, number[]> = {
  */
 export const BEATS_PER_BAR = 4;
 
+/**
+ * Strudel sample name -> GM percussion note.
+ *
+ * The inverse of `MIDIImportService.GM_DRUM_MAP`. Import could read a
+ * GM channel-9 track into clean `s(...)` lanes; export had no
+ * counterpart at all, so `s("bd*4")` returned "No notes found in
+ * pattern" and drums were import-only. Import's own output could not be
+ * re-exported (#335).
+ *
+ * Where import maps several notes onto one sample (35 and 36 both ->
+ * bd), the canonical one is used here.
+ */
+export const SAMPLE_TO_MIDI: Record<string, number> = {
+  bd: 36,    // bass drum 1
+  rim: 37,   // side stick
+  sd: 38,    // acoustic snare
+  cp: 39,    // hand clap
+  lt: 41,    // low floor tom
+  hh: 42,    // closed hi-hat
+  mt: 45,    // low tom
+  oh: 46,    // open hi-hat
+  ht: 48,    // hi-mid tom
+  cr: 49,    // crash cymbal 1
+  rd: 51,    // ride cymbal 1
+  tb: 54,    // tambourine
+  cb: 56,    // cowbell
+};
+
+/** The General MIDI percussion channel. */
+export const GM_PERCUSSION_CHANNEL = 9;
+
 export class MIDIExportService {
   /**
    * Mini-notation tokens the parser could not represent, collected
@@ -169,6 +206,8 @@ export class MIDIExportService {
    * caller (#335).
    */
   private partial = new Set<string>();
+  /** Notes actually written by the last convertToMidi, for noteCount. */
+  private lastWrittenCount = 0;
   /** Directory file exports are confined to. */
   private readonly exportDir: string;
 
@@ -348,6 +387,23 @@ export class MIDIExportService {
       currentTime += parsedChords.length > 0 ? BEATS_PER_BAR : 0;
     }
 
+    // Drum lanes: s("bd*4"), sound("bd sd"), etc.
+    //
+    // Export had no sample->MIDI map and never set a channel, so every
+    // drum pattern returned "No notes found in pattern" — drums were
+    // import-only, and import's own output could not be re-exported
+    // (#335). Only lanes whose tokens are all recognised drum samples
+    // are taken; s("piano") is left to the .n() pass below.
+    const drumRegex = /\b(?:s|sound)\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/gi;
+    let drumMatch;
+    while ((drumMatch = drumRegex.exec(pattern)) !== null) {
+      const parsedDrums = this.parseDrumString(drumMatch[1], currentTime);
+      if (parsedDrums.length > 0) {
+        notes.push(...parsedDrums);
+        currentTime += BEATS_PER_BAR;
+      }
+    }
+
     // Extract s() sound patterns with n() modifier for samples
     // e.g., s("piano").n("0 2 4 7")
     const soundNRegex = /s\s*\([^)]+\)\s*\.n\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/gi;
@@ -477,6 +533,45 @@ export class MIDIExportService {
     }
 
     return out;
+  }
+
+  /**
+   * Parses a drum lane into GM percussion events on channel 9.
+   *
+   * Returns an empty array if the lane contains anything that is not a
+   * known sample or a rest, so a melodic `s("piano")` falls through to
+   * the `.n()` handler instead of being silently misread as drums.
+   *
+   * @param soundString - Contents of an s(...) call
+   * @param startTime - Bar start, in beats
+   * @returns Percussion events, or [] if this is not a drum lane
+   */
+  private parseDrumString(soundString: string, startTime: number): NoteEvent[] {
+    const tokens = MIDIExportService.expandOperators(
+      MIDIExportService.tokenize(soundString),
+      token => { this.unrepresented.add(token); },
+      token => { this.partial.add(token); },
+    );
+    if (tokens.length === 0) return [];
+
+    const isRest = (t: string) => t === '~' || t === '-' || t === 'r';
+    const known = tokens.every(
+      t => isRest(t) || Object.hasOwn(SAMPLE_TO_MIDI, t.toLowerCase()));
+    if (!known) return [];
+
+    const step = BEATS_PER_BAR / tokens.length;
+    const events: NoteEvent[] = [];
+    tokens.forEach((token, index) => {
+      if (isRest(token)) return;
+      events.push({
+        note: SAMPLE_TO_MIDI[token.toLowerCase()],
+        time: startTime + index * step,
+        duration: step,
+        velocity: 100,
+        channel: GM_PERCUSSION_CHANNEL,
+      });
+    });
+    return events;
   }
 
   private parseNoteString(
@@ -654,11 +749,28 @@ export class MIDIExportService {
       measures: 0
     });
 
-    // Create track
-    const track = midi.addTrack();
-    track.name = trackName;
+    // One track per channel.
+    //
+    // Percussion has to land on GM channel 9 or an importer cannot tell
+    // a kick from a pitched C2 — MIDIImportService keys its drum
+    // handling on `track.channel === 9` exactly. Everything melodic
+    // shares the default track, as before.
+    const tracksByChannel = new Map<number, ReturnType<typeof midi.addTrack>>();
+    const trackFor = (channel: number) => {
+      let track = tracksByChannel.get(channel);
+      if (!track) {
+        track = midi.addTrack();
+        track.name = channel === GM_PERCUSSION_CHANNEL ? `${trackName} (drums)` : trackName;
+        track.channel = channel;
+        tracksByChannel.set(channel, track);
+      }
+      return track;
+    };
+    // Keep a melodic track first even for a drums-only export, so the
+    // file shape does not change depending on content.
+    trackFor(0);
 
-    // Add notes to track
+    let written = 0;
     notes.forEach(noteEvent => {
       // Only add notes within the specified bar range
       const maxTime = bars * timeSignatureNumerator;
@@ -670,13 +782,19 @@ export class MIDIExportService {
       const timeInSeconds = (noteEvent.time / (bpm / 60));
       const durationInSeconds = (noteEvent.duration / (bpm / 60));
 
-      track.addNote({
+      trackFor(noteEvent.channel ?? 0).addNote({
         midi: noteEvent.note,
         time: timeInSeconds,
         duration: durationInSeconds,
         velocity: noteEvent.velocity / 127
       });
+      written++;
     });
+
+    // `noteCount` reported parsed notes, not written ones, so a pattern
+    // truncated by `bars` still claimed the full count — 40 note() calls
+    // at bars=1 reported 40 with 4 in the file (#335).
+    this.lastWrittenCount = written;
 
     return midi;
   }
@@ -728,7 +846,7 @@ export class MIDIExportService {
       return {
         success: true,
         output: target.path,
-        noteCount: notes.length,
+        noteCount: this.lastWrittenCount,
         bars: options.bars || 4,
         bpm: options.bpm || 120,
         // Surfaced so the caller knows the file did not land where it
@@ -821,7 +939,7 @@ export class MIDIExportService {
       return {
         success: true,
         output: base64,
-        noteCount: notes.length,
+        noteCount: this.lastWrittenCount,
         bars: options.bars || 4,
         bpm: options.bpm || 120,
         ...this.lossReport(),

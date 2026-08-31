@@ -61,12 +61,14 @@ describe('export counts (#335)', () => {
   });
 
   it('a realistic generated pattern is no longer nearly empty', () => {
-    // Was success:true, noteCount:2 for five lanes.
+    // Was success:true, noteCount:2 for five lanes. Operators (#335)
+    // took it to 5; drum export (#335) takes it to 11, since three of
+    // the five lanes are drums.
     const realistic = [
       'stack(', '  s("bd*4"),', '  s("~ cp ~ cp"),', '  s("hh*8"),',
       '  note("c2*4"),', '  note("<c3 eb3 g3 bb3>")', ')',
     ].join('\n');
-    expect(service().exportToBase64(realistic).noteCount).toBe(5);
+    expect(service().exportToBase64(realistic).noteCount).toBe(11);
   });
 });
 

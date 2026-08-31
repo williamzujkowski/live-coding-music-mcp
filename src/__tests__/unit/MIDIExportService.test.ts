@@ -266,9 +266,13 @@ describe('MIDIExportService', () => {
       expect(notes.every(n => n.duration === 1)).toBe(true);
     });
 
-    it('should return empty array for patterns without notes', () => {
+    it('parses a drum lane as percussion notes', () => {
+      // This asserted 0 — drum patterns produced nothing, because
+      // export had no sample->MIDI map. That was the bug, not the
+      // contract (#335).
       const notes = service.parsePatternNotes('s("bd sd hh cp")');
-      expect(notes.length).toBe(0);
+      expect(notes.every(n => n.channel === 9)).toBe(true);
+      expect(notes).toHaveLength(4);
     });
 
     it('should return empty array for invalid input', () => {
@@ -432,7 +436,9 @@ describe('MIDIExportService', () => {
     });
 
     it('should fail when pattern has no notes', () => {
-      const result = service.exportToFile('s("bd sd")', testFilename);
+      // Was s("bd sd") — a drum pattern, which now exports. Using a
+              // genuinely note-free pattern instead (#335).
+      const result = service.exportToFile('silence', testFilename);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('No notes found');
@@ -469,7 +475,7 @@ describe('MIDIExportService', () => {
     });
 
     it('should fail when pattern has no notes', () => {
-      const result = service.exportToBase64('s("bd sd")');
+      const result = service.exportToBase64('silence');
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('No notes found');
