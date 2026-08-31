@@ -18,8 +18,7 @@ jest.mock('../../services/StrudelEngine');
 
 import { StrudelEngine } from '../../services/StrudelEngine';
 import { PatternValidator, ValidationResult } from '../../utils/PatternValidator';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { PatternGenerator } from '../../services/PatternGenerator';
 
 describe('Hybrid Validation Integration Tests', () => {
   let strudelEngine: StrudelEngine;
@@ -294,108 +293,25 @@ stack(
   // ============================================================================
 
   describe('Longform Pattern Validation', () => {
-    // Use process.cwd() to get the project root
-    const longformDir = path.join(
-      process.cwd(),
-      'patterns/examples/longform'
-    );
-
-    test('should validate longform patterns directory exists', async () => {
-      let dirExists = false;
-      try {
-        await fs.access(longformDir);
-        dirExists = true;
-      } catch {
-        dirExists = false;
+    /**
+     * The longform examples are gone (#353).
+     *
+     * They were `generateCompletePattern` output saved to disk, 3-7k
+     * characters of it, and they were the files that pinned
+     * calculateComplexity at 1.0 (#341). Nothing regenerated them, so
+     * one still carried a chord-progression bug fixed weeks earlier.
+     *
+     * The generator's ability to produce long patterns is now covered
+     * where it belongs — by generating at test time in the browser
+     * tier — rather than by replaying stale snapshots.
+     */
+    test('long generated patterns still validate', () => {
+      const generator = new PatternGenerator();
+      for (const style of ['techno', 'house', 'ambient']) {
+        const pattern = generator.generateCompletePattern(style, 'C', 120);
+        expect(pattern.length).toBeGreaterThan(200);
+        expect(strudelEngine.validate(pattern).valid).toBe(true);
       }
-
-      // If directory doesn't exist, skip remaining tests gracefully
-      expect(dirExists).toBe(true);
-    });
-
-    test('should validate all JSON pattern files in longform directory', async () => {
-      let files: string[] = [];
-      try {
-        files = await fs.readdir(longformDir);
-      } catch {
-        // Directory may not exist in test environment
-        return;
-      }
-
-      const jsonFiles = files.filter((f) => f.endsWith('.json'));
-
-      for (const file of jsonFiles) {
-        const content = await fs.readFile(path.join(longformDir, file), 'utf-8');
-        const data = JSON.parse(content);
-
-        expect(data).toHaveProperty('pattern');
-        expect(data).toHaveProperty('name');
-
-        // Validate the pattern
-        const localResult = strudelEngine.validate(data.pattern);
-        const validatorResult = patternValidator.validate(data.pattern);
-
-        // Longform patterns should be valid
-        expect(localResult.valid).toBe(true);
-        expect(validatorResult.valid).toBe(true);
-
-        // Should have reasonable structure
-        const metadata = strudelEngine.analyzePattern(data.pattern);
-        expect(metadata.isStack || metadata.usesSound || metadata.usesNote).toBe(true);
-      }
-    });
-
-    test('should validate dark-ambient-journey pattern structure', async () => {
-      const filePath = path.join(longformDir, 'dark-ambient-journey.json');
-
-      let content: string;
-      try {
-        content = await fs.readFile(filePath, 'utf-8');
-      } catch {
-        // File may not exist in test environment
-        return;
-      }
-
-      const data = JSON.parse(content);
-
-      // Validate pattern parses
-      const localResult = strudelEngine.validate(data.pattern);
-      expect(localResult.valid).toBe(true);
-
-      // Validate structure
-      const metadata = strudelEngine.analyzePattern(data.pattern);
-
-      // Should have tempo
-      expect(metadata.bpm).toBe(60);
-
-      // Should be a stack pattern
-      expect(metadata.isStack).toBe(true);
-
-      // Should use multiple functions
-      expect(metadata.functionsUsed.length).toBeGreaterThan(5);
-
-      // Pattern should have expected metadata
-      expect(data).toHaveProperty('structure');
-      expect(data).toHaveProperty('bpm', 60);
-      expect(data).toHaveProperty('key', 'Cm');
-      expect(data.tags).toContain('longform');
-    });
-
-    test('should handle patterns with section timing functions', async () => {
-      // Pattern with .when() structural control (common in longform)
-      const pattern = `setcpm(60)
-const intro = (p) => p.when("<1@16 0@80>", x => x)
-stack(
-  note("c2 e2 g2 b2").s("sawtooth").apply(intro)
-).gain(0.8)`;
-
-      // PatternValidator should validate the basic structure
-      const validatorResult = patternValidator.validate(pattern);
-      expect(validatorResult.valid).toBe(true);
-
-      // Should detect stack usage
-      const metadata = strudelEngine.analyzePattern(pattern);
-      expect(metadata.isStack).toBe(true);
     });
   });
 

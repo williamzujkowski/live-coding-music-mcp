@@ -55,7 +55,10 @@ describe('calculateComplexity does not saturate on length alone (#341)', () => {
         }));
       }
     }
-    expect(scores.length).toBeGreaterThan(10);
+    // Was >10 when 18 generated examples shipped; the corpus is 7 real
+    // ones now (#353). The floor exists so this cannot pass vacuously
+    // on an empty directory, not to assert a particular size.
+    expect(scores.length).toBeGreaterThanOrEqual(5);
     expect(scores.filter(s => s >= 1)).toHaveLength(0);
   });
 });
@@ -76,16 +79,13 @@ describe('extractBpm reads the forms the examples use (#341)', () => {
     expect(extractBpm('s("bd*4")')).toBeUndefined();
   });
 
-  it('the shipped longform examples now report a BPM', () => {
-    // Both declare a bpm in their metadata and write setcpm(bpm/4);
-    // extractBpm returned undefined for both.
-    const dir = join(__dirname, '..', '..', '..', 'patterns', 'examples', 'longform');
-    for (const file of readdirSync(dir).filter(f => f.endsWith('.json'))) {
-      const parsed = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as
-        { pattern: string; bpm?: number };
-      if (!/setcpm/i.test(parsed.pattern)) continue;
-      expect(extractBpm(parsed.pattern)).toBeDefined();
-    }
+  it('reads the setcpm(bpm/4) form the longform examples used', () => {
+    // Those examples are gone (#353) — they were generator output. The
+    // FORM they used is still the canonical way to write "130 BPM in
+    // 4/4", so the case stays covered directly rather than being
+    // deleted along with the files that happened to exercise it.
+    expect(extractBpm('setcpm(130/4)\nstack(s("bd*4"))')).toBe(130);
+    expect(extractBpm('setcpm(174/4)')).toBe(174);
   });
 });
 

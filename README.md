@@ -56,7 +56,7 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 - **Result envelope** on every `tools/call`: clients branch on `{ ok, errorCategory, isRetryable }` instead of parsing free-text.
 
 ### Testing & CI status
-- **~2570 passing tests**: `npm test` runs ~2540 unit/integration/example tests in parallel, then 31 browser-validation tests serially against real Chromium. The coverage figure below is from the first tier, which is the one CI also runs — the browser tier adds ~0.2 points and CI does not execute it, so counting it would document coverage nothing verifies.
+- **~2570 passing tests**: `npm test` runs ~2540 unit/integration/example tests in parallel, then 36 browser-validation tests serially against real Chromium. The coverage figure below is from the first tier, which is the one CI also runs — the browser tier adds ~0.2 points and CI does not execute it, so counting it would document coverage nothing verifies.
 <!-- COVERAGE:START -->
 - **88.84% statement coverage / 78.97% branch coverage** (93.07% functions, 89.40% lines), checked against `coverage/coverage-summary.json` by a drift guard.
 <!-- COVERAGE:END -->
