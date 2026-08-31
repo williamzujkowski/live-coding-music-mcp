@@ -155,7 +155,7 @@ Adding context guidelines to CLAUDE.md after line 70.
 ## Project Purpose
 This is an **open source, actively developed** MCP server enabling AI agents to generate music via Strudel.cc using browser automation.
 
-**Current State:** Beta. `npm test` runs two tiers: ~2050 unit/integration tests in parallel, then 58 browser tests serially — they contend for Chromium and the live site, which made the combined parallel run flaky (#267). 20 skipped, 0 failing. <!-- COVERAGE:START -->88.02% statement / 77.72% branch coverage<!-- COVERAGE:END -->. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
+**Current State:** Beta. `npm test` runs two tiers: ~2330 unit/integration tests in parallel, then 31 browser tests serially — they contend for Chromium and the live site, which made the combined parallel run flaky (#267). 20 skipped, 0 failing. <!-- COVERAGE:START -->88.02% statement / 77.72% branch coverage<!-- COVERAGE:END -->. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
 
 ## GitHub Issues Workflow
 
@@ -226,7 +226,7 @@ Closes #123"
 ## Core Architecture
 
 ```
-MCP Protocol Layer (26 tools + 4 resources)
+MCP Protocol Layer (28 tools + 4 resources)
     ↓ dispatcher in src/server/server.ts
 Per-domain tool modules (src/server/tools/*.ts)
     ↓
@@ -244,9 +244,9 @@ Integration: Playwright → Strudel.cc
 
 ## Key Components
 
-### 1. StrudelMCPServer (`src/server/server.ts`, ~520 lines)
+### 1. StrudelMCPServer (`src/server/server.ts`, ~680 lines)
 - **Purpose**: MCP protocol handling, dispatch to per-domain tool modules, response envelope wrapping
-- **Tools**: 26 registered (consolidated; #120 introduced the canonical shape in v3.0.0, #178 removed the deprecated aliases in v4.0.0)
+- **Tools**: 28 registered — 27 across the domain modules plus `init`, wired directly in `server.ts` (consolidated; #120 introduced the canonical shape in v3.0.0, #178 removed the deprecated aliases in v4.0.0)
 - **Resources**: 4 MCP resources (#131) — examples, patterns, styles, tool docs
 - **Key Methods**: `setupHandlers()`, `dispatchToolCall()`, `executeTool()` (thin), `getHistoryBundle()`, `getAudioCaptureService(sid)`
 - **State**: per-session history bundles (`historyBundles: Map<sid, ...>`), per-session capture services (`audioCaptureServices: Map<sid, ...>`), pattern cache
@@ -301,9 +301,9 @@ estimates — treat them as rough, not as guarantees.
 | Pattern Write | 50-80ms | measured | Cached editor access; `targetP95Ms: 80` |
 | Pattern Read (cached) | 10-15ms | measured | 100ms TTL |
 | Play/Stop | 100-150ms | measured | Via `strudelMirror.evaluate()`/`.stop()`, then state confirmed |
-| Audio Analysis | 10-15ms | estimate | FFT with typed arrays |
-| Tempo Detection | <100ms | estimate | Onset-based; accuracy degrades under headless audio |
-| Key Detection | <100ms | estimate | Krumhansl-Schmuckler; best-effort |
+| Audio Analysis | 10-15ms | measured | FFT with typed arrays; `targetP95Ms: 15` |
+| Tempo Detection | <100ms | measured | Onset-based; `targetP95Ms: 100`. Accuracy degrades under headless audio |
+| Key Detection | <100ms | measured | Krumhansl-Schmuckler; `targetP95Ms: 100`. Best-effort |
 | Rhythm Analysis | <100ms | estimate | Complexity, density, syncopation |
 
 ## Development Workflow
@@ -427,11 +427,21 @@ something; assume a third will.
 ```typescript
 import { ErrorRecovery } from './utils/ErrorRecovery';
 
-const result = await ErrorRecovery.withRetry(
+const recovery = new ErrorRecovery();
+const result = await recovery.executeWithRetry(
   async () => await riskyOperation(),
-  { maxRetries: 3, baseDelay: 1000 }
+  'Operation Name',
+  { maxRetries: 3, retryDelay: 1000, exponentialBackoff: true }
 );
 ```
+
+**This example is aspirational, not descriptive.** `executeWithRetry` has
+zero production callers. The only path into `ErrorRecovery` from live code
+is `handlePatternWrite` (`StrudelController.ts:643`) plus `getErrorStats`
+for diagnostics — eight of its ten public methods, including the circuit
+breaker and the network-retry helper, are never invoked outside tests.
+Note also that `ErrorRecovery.withRetry` — which this snippet claimed for
+several releases — has never existed at all.
 
 ### Pattern Validation
 ```typescript
@@ -463,11 +473,11 @@ if (!validation.isValid) {
 ```
 src/
 ├── index.ts                    # Entry point
-├── StrudelController.ts        # Browser automation (~800 lines)
+├── StrudelController.ts        # Browser automation (~970 lines)
 ├── AudioAnalyzer.ts            # Audio analysis (~890 lines)
 ├── PatternStore.ts             # On-disk JSON persistence
 ├── server/
-│   ├── server.ts                    # MCP dispatcher (~520 lines, post-#104)
+│   ├── server.ts                    # MCP dispatcher (~680 lines, post-#104)
 │   ├── resources.ts                 # MCP resources (#131)
 │   └── tools/                       # Per-domain handlers (#104)
 │       ├── ai.ts, analysis.ts, capture.ts, compose.ts,
@@ -482,6 +492,7 @@ src/
 │   ├── AudioCaptureService.ts  # Audio recording (per-session, #180)
 │   ├── StrudelEngine.ts        # @strudel/* wrapper
 │   ├── StrudelEngineHelpers.ts # Pure helpers (#107, direct-tested)
+│   ├── StyleRegistry.ts        # Style aliases, per-layer resolution, tempos
 │   ├── MIDIExportService.ts    # Strudel -> MIDI export
 │   ├── MIDIImportService.ts    # MIDI -> Strudel import (#203)
 │   ├── AudioExportService.ts   # Record live audio to WAV/WebM (#223)
@@ -496,9 +507,9 @@ src/
 ├── utils/
 │   ├── Logger.ts               # Logging (22 lines)
 │   ├── PatternValidator.ts     # Validation (286 lines)
-│   ├── ErrorRecovery.ts        # Error handling (338 lines)
+│   ├── ErrorRecovery.ts        # Error handling (412 lines; 8 of 10 public methods have no production caller — #309)
 │   ├── PerformanceMonitor.ts   # Monitoring (156 lines)
-│   ├── InputValidator.ts       # Input validation (321 lines)
+│   ├── InputValidator.ts       # Input validation (349 lines)
 │   ├── SafePath.ts             # Filename confinement for exports (#224)
 │   └── ServerConfig.ts         # config.json parsing + validation (#227)
 └── __tests__/                  # Jest tests
@@ -639,7 +650,7 @@ if (!this._page) throw new Error('Error');
 ```
 
 **Error Recovery:**
-- Use `ErrorRecovery` class for retries (lines 15-338 in ErrorRecovery.ts)
+- `ErrorRecovery` exists for retries, but only `handlePatternWrite` is wired up; `executeWithRetry`, the circuit breaker and the network-retry helper have no production callers
 - Exponential backoff for browser operations
 - Circuit breakers for external resources (Strudel.cc)
 
