@@ -72,8 +72,16 @@ export interface RunnerOptions {
   onSpawn?: (reason: string) => void;
 }
 
-/** Keep the tail of the child's stderr for diagnostics, not the whole V8 dump. */
-const STDERR_TAIL_LIMIT = 2000;
+/**
+ * Keep the FIRST slice of the child's stderr, not the last.
+ *
+ * This was the tail, and the tail is worthless here: V8 prints
+ * "FATAL ERROR: ... JavaScript heap out of memory" and then dumps a
+ * ~40-frame native stack, so the last 2000 characters are pure addresses
+ * and the one line that identifies the failure has scrolled away. The
+ * diagnosis is always at the top.
+ */
+const STDERR_CAPTURE_LIMIT = 2000;
 
 interface Pending {
   resolve: (value: unknown) => void;
@@ -83,7 +91,7 @@ interface Pending {
 export class IsolatedEngineRunner {
   private child: ChildProcess | null = null;
   private nextId = 1;
-  private stderrTail = '';
+  private stderrHead = '';
   private disposed = false;
   /**
    * Whether the current child has ever answered anything. A child that
@@ -154,7 +162,7 @@ export class IsolatedEngineRunner {
     }
 
     const id = this.nextId++;
-    this.stderrTail = '';
+    this.stderrHead = '';
 
     return new Promise<T>((resolve, reject) => {
       let settled = false;
@@ -188,7 +196,13 @@ export class IsolatedEngineRunner {
         pending.reject(rebuilt);
       };
 
-      const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+      // 'close', not 'exit'. They differ by exactly the thing that
+      // matters here: 'exit' fires when the process ends, while the
+      // child's stderr may still be unread — so classifying on 'exit'
+      // looked at an EMPTY stderr tail and could not see V8's
+      // "JavaScript heap out of memory". 'close' fires once the stdio
+      // streams are done, which is the first moment the evidence exists.
+      const onClose = (code: number | null, signal: NodeJS.Signals | null): void => {
         this.child = null;
         pending.reject(this.describeDeath(method, code, signal));
       };
@@ -213,12 +227,12 @@ export class IsolatedEngineRunner {
       const cleanup = (): void => {
         clearTimeout(timer);
         child.off('message', onMessage);
-        child.off('exit', onExit);
+        child.off('close', onClose);
         child.off('error', onError);
       };
 
       child.on('message', onMessage);
-      child.on('exit', onExit);
+      child.on('close', onClose);
       child.on('error', onError);
 
       try {
@@ -245,8 +259,16 @@ export class IsolatedEngineRunner {
     code: number | null,
     signal: NodeJS.Signals | null
   ): IsolatedRunnerError {
-    const outOfHeap =
-      signal === 'SIGABRT' || code === 134 || /heap out of memory/i.test(this.stderrTail);
+    // V8 prints "JavaScript heap out of memory" before it aborts, so the
+    // stderr signature is the reliable evidence and the signal is only a
+    // fallback for when we captured nothing. Treating every SIGABRT as an
+    // OOM would file a native assertion as the caller's bad input, which
+    // is both wrong and unhelpful — cross-model review (codex) flagged
+    // exactly that.
+    const sawHeapMessage = /heap out of memory|Allocation failed/i.test(this.stderrHead);
+    const abortedSilently =
+      this.stderrHead.trim().length === 0 && (signal === 'SIGABRT' || code === 134);
+    const outOfHeap = sawHeapMessage || abortedSilently;
     if (outOfHeap) {
       return new IsolatedRunnerError(
         `Pattern evaluation exceeded the ${String(this.options.maxOldSpaceMb)}MB memory cap for ` +
@@ -256,7 +278,7 @@ export class IsolatedEngineRunner {
       );
     }
     const how = signal !== null ? `signal ${signal}` : `exit code ${String(code)}`;
-    const tail = this.stderrTail.trim();
+    const tail = this.stderrHead.trim();
 
     // A child that never answered anything did not fail at evaluating
     // this pattern; it failed at starting — a broken build, a bad import,
@@ -307,7 +329,8 @@ export class IsolatedEngineRunner {
 
     child.stderr?.setEncoding('utf8');
     child.stderr?.on('data', (chunk: string) => {
-      this.stderrTail = (this.stderrTail + chunk).slice(-STDERR_TAIL_LIMIT);
+      if (this.stderrHead.length >= STDERR_CAPTURE_LIMIT) return;
+      this.stderrHead = (this.stderrHead + chunk).slice(0, STDERR_CAPTURE_LIMIT);
     });
     // A dead child is not an event anyone needs to hear about twice; the
     // in-flight call's own listener reports it. This one only clears the

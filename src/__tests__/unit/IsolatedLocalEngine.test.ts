@@ -92,6 +92,46 @@ describe('IsolatedStrudelEngine', () => {
     expect(a.pid).toBe(b.pid);
   });
 
+  it('does not fork a child after dispose, even mid-start', async () => {
+    // Resolving the child entrypoint is asynchronous, so shutdown can
+    // land while a start is in flight. Without a permanent disposed flag
+    // the start completed afterwards and forked a process nobody was
+    // left to kill.
+    //
+    // This test used to pass `childPath`, which resolves synchronously
+    // and closes the very window it claimed to test — it stayed green
+    // with the fix reverted. Cross-model review (agy) caught that. The
+    // resolver below reproduces production's async path.
+    const spawns: string[] = [];
+    let releaseResolution = (): void => {};
+    const gate = new Promise<void>(resolve => { releaseResolution = resolve; });
+
+    const racing = new IsolatedStrudelEngine({
+      resolveEntrypoint: async () => {
+        await gate;
+        return { childPath, needsTsx: false };
+      },
+      onSpawn: (reason) => spawns.push(reason),
+    });
+
+    const pending = racing.validate('s("bd")');
+    // dispose lands while the resolution is still outstanding.
+    racing.dispose();
+    releaseResolution();
+
+    await expect(pending).rejects.toThrow(/disposed/);
+    expect(spawns).toEqual([]);
+    expect(racing.isStarted).toBe(false);
+  });
+
+  it('stays disposed — a later call does not quietly start a new child', async () => {
+    const engine2 = new IsolatedStrudelEngine({ childPath });
+    await engine2.validate('s("bd")');
+    engine2.dispose();
+    await expect(engine2.validate('s("bd")')).rejects.toThrow(/disposed/);
+    expect(engine2.isStarted).toBe(false);
+  });
+
   it('is safe to dispose without ever having started', () => {
     const unused = new IsolatedStrudelEngine({ childPath });
     expect(() => { unused.dispose(); }).not.toThrow();

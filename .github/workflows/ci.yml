@@ -37,6 +37,15 @@ jobs:
       - name: Run tests
         run: npm run test:nocov -- --testPathIgnorePatterns="browser"
 
+      # Jest runs this repo as CommonJS and @strudel/* is ESM, so every
+      # StrudelEngine case in the unit tier runs against a mock. The
+      # sandbox escapes (#229) and the memory containment (#307) are
+      # therefore invisible to `npm test` by construction — which is why
+      # this script exists, and why it not being in CI meant nothing ever
+      # ran it.
+      - name: Verify sandbox and memory containment
+        run: npm run test:sandbox
+
       - name: Test MCP server initialization
         run: |
           # Test that the server can start and respond to basic requests
