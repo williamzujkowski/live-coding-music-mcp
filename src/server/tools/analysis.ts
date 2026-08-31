@@ -351,10 +351,14 @@ async function run(name: string, args: any, ctx: ToolContext): Promise<unknown> 
       const startCycle = args.start ?? 0;
       const endCycle = args.end ?? 1;
       if (startCycle >= endCycle) {
-        return { error: 'Start must be less than end' };
+        // Categorised explicitly rather than by whether the message
+        // happens to contain "must be" — which is the only reason this
+        // one landed in `validation` while the range check below landed
+        // in `internal` (#453).
+        return err('validation', 'Start must be less than end');
       }
       if (endCycle - startCycle > 16) {
-        return { error: 'Maximum range is 16 cycles to prevent excessive output' };
+        return err('validation', 'Maximum range is 16 cycles to prevent excessive output');
       }
       try {
         const events = await ctx.strudelEngine.queryEvents(args.pattern, startCycle, endCycle);
@@ -402,12 +406,17 @@ async function run(name: string, args: any, ctx: ToolContext): Promise<unknown> 
           message: 'Pattern transpiled successfully',
         };
       }
-      return {
-        success: false,
-        error: transpileResult.error,
-        errorLocation: transpileResult.errorLocation,
-        message: 'Transpilation failed',
-      };
+      // A syntax error in the caller's pattern is the caller's input,
+      // not an internal fault — and `Unexpected token (1:6)` matches
+      // nothing the string matcher looks for (#453). The location is
+      // kept in the message, since an envelope carries no extra fields.
+      return err(
+        'validation',
+        `Transpilation failed: ${String(transpileResult.error)}`
+        + (transpileResult.errorLocation !== undefined
+          ? ` (at ${String(transpileResult.errorLocation)})`
+          : ''),
+      );
     }
 
     default:

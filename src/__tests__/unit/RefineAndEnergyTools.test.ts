@@ -219,9 +219,11 @@ describe('refine Tool (#78)', () => {
 
       const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'make it groovy' });
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Unknown refinement direction');
-      expect(result.error).toContain('Supported');
+      expect(result.ok).toBe(false);
+      // `validation`, not `internal`: the caller's argument (#453).
+      expect(result.errorCategory).toBe('validation');
+      expect(result.message).toContain('Unknown refinement direction');
+      expect(result.message).toContain('Supported');
     });
 
     test('should list supported directions in error message', async () => {
@@ -229,10 +231,12 @@ describe('refine Tool (#78)', () => {
 
       const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'something random' });
 
-      expect(result.error).toContain('faster');
-      expect(result.error).toContain('slower');
-      expect(result.error).toContain('louder');
-      expect(result.error).toContain('quieter');
+      // `message`, not `error`: an unknown direction is an envelope now
+      // so it carries the caller's-fault category (#453).
+      expect(result.message).toContain('faster');
+      expect(result.message).toContain('slower');
+      expect(result.message).toContain('louder');
+      expect(result.message).toContain('quieter');
     });
   });
 
@@ -260,6 +264,9 @@ describe('refine Tool (#78)', () => {
 
       const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'faster' });
 
+      // Still a failure-shaped object the dispatcher converts — this
+      // path did not change, and asserting a category here would be
+      // asserting one I did not reason about.
       expect(result.success).toBe(false);
       expect(result.error).toContain('No pattern');
     });
@@ -269,6 +276,9 @@ describe('refine Tool (#78)', () => {
 
       const result = await (server as any).executeTool('shape', { dimension: 'refine', direction: 'faster' });
 
+      // Still a failure-shaped object the dispatcher converts — this
+      // path did not change, and asserting a category here would be
+      // asserting one I did not reason about.
       expect(result.success).toBe(false);
       expect(result.error).toContain('No pattern');
     });
@@ -451,6 +461,9 @@ describe('set_energy Tool (#81)', () => {
     test('should reject energy level below 0', async () => {
       const result = await (server as any).executeTool('shape', { dimension: 'energy', level: -1 });
 
+      // Unchanged path: still a failure-shaped object the dispatcher
+      // converts. Only the mood and direction branches became envelopes
+      // (#453).
       expect(result.success).toBe(false);
       expect(result.error).toContain('integer from 0 to 10');
     });
@@ -458,6 +471,9 @@ describe('set_energy Tool (#81)', () => {
     test('should reject energy level above 10', async () => {
       const result = await (server as any).executeTool('shape', { dimension: 'energy', level: 11 });
 
+      // Unchanged path: still a failure-shaped object the dispatcher
+      // converts. Only the mood and direction branches became envelopes
+      // (#453).
       expect(result.success).toBe(false);
       expect(result.error).toContain('integer from 0 to 10');
     });
@@ -465,6 +481,8 @@ describe('set_energy Tool (#81)', () => {
     test('should reject non-integer energy level', async () => {
       const result = await (server as any).executeTool('shape', { dimension: 'energy', level: 5.5 });
 
+      // Unchanged path: still failure-shaped, converted by the
+      // dispatcher (#453).
       expect(result.success).toBe(false);
       expect(result.error).toContain('integer');
     });
@@ -490,6 +508,9 @@ describe('set_energy Tool (#81)', () => {
 
       const result = await (server as any).executeTool('shape', { dimension: 'energy', level: 5 });
 
+      // Still a failure-shaped object the dispatcher converts — this
+      // path did not change, and asserting a category here would be
+      // asserting one I did not reason about.
       expect(result.success).toBe(false);
       expect(result.error).toContain('No pattern');
     });
@@ -499,6 +520,9 @@ describe('set_energy Tool (#81)', () => {
 
       const result = await (server as any).executeTool('shape', { dimension: 'energy', level: 5 });
 
+      // Still a failure-shaped object the dispatcher converts — this
+      // path did not change, and asserting a category here would be
+      // asserting one I did not reason about.
       expect(result.success).toBe(false);
       expect(result.error).toContain('No pattern');
     });

@@ -38,8 +38,10 @@ describe('shape dimension=mood (#308)', () => {
     const { ctx } = makeCtx();
     const r = await transformExecute(
       'shape', { dimension: 'mood', target_mood: mood, auto_play: false }, ctx) as any;
-    expect(r.success).toBe(false);
-    expect(r.error).toContain(`Unknown mood: ${mood}`);
+    expect(r.ok).toBe(false);
+    // `validation`, not `internal`: the caller's argument (#453).
+    expect(r.errorCategory).toBe('validation');
+    expect(r.message).toContain(`Unknown mood: ${mood}`);
   });
 
   it('does not write a NaN-riddled pattern into the editor', async () => {
@@ -51,7 +53,7 @@ describe('shape dimension=mood (#308)', () => {
     const before = pattern();
     const r = await transformExecute(
       'shape', { dimension: 'mood', target_mood: 'constructor', auto_play: false }, ctx) as any;
-    expect(r.success).toBe(false);
+    expect(r.ok).toBe(false);
     expect(pattern()).toBe(before);
     expect(pattern()).not.toContain('NaN');
   });
