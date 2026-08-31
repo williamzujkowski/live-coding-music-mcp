@@ -28,6 +28,7 @@ import { transpiler } from '@strudel/transpiler';
 import { assertPatternIsSafe, runPatternCode, PatternSafetyError } from './PatternSandbox.js';
 import { clarifyEngineError, explainBrowserOnly, findBrowserOnlyCall } from './BrowserOnlyFunctions.js';
 import { probeEventDensity } from './EventDensityProbe.js';
+import { ValidationError } from '../utils/CategorisedError.js';
 import {
   calculateComplexity,
   checkCommonIssues,
@@ -420,7 +421,7 @@ export class StrudelEngine {
       );
 
       if (verdict.kind === 'refuse') {
-        throw new Error(
+        throw new ValidationError(
           `Pattern produces roughly ${String(verdict.projected)} events over ` +
           `${String(span)} cycle(s), above the ${String(MAX_QUERY_EVENTS)} cap. ` +
           'Narrow the range, or reduce the pattern density (a large .fast() ' +
@@ -453,7 +454,7 @@ export class StrudelEngine {
       // sample, so a pattern whose density is wildly uneven could still
       // land above the cap. Truncating beats returning 40 MB of JSON.
       if (haps.length > MAX_QUERY_EVENTS) {
-        throw new Error(
+        throw new ValidationError(
           `Pattern produced ${String(haps.length)} events, above the ` +
           `${String(MAX_QUERY_EVENTS)} cap. Narrow the range.`
         );
@@ -469,8 +470,15 @@ export class StrudelEngine {
       if (browserOnly !== null) {
         throw new Error(explainBrowserOnly(browserOnly) ?? error.message);
       }
+      // Already categorised: the density caps above throw
+      // ValidationError, and flattening them here into a generic
+      // "Pattern execution failed" was the third time in one day that a
+      // verdict was destroyed one frame above the code that reads it.
+      if (error instanceof ValidationError) throw error;
       if (error instanceof PatternSafetyError) {
-        throw new Error(`Pattern rejected: ${error.message}`);
+        // The caller's pattern was refused before it ran. That is their
+        // input to change, not an internal failure.
+        throw new ValidationError(`Pattern rejected: ${error.message}`);
       }
       throw new Error(`Pattern execution failed: ${error.message}`);
     }
@@ -507,8 +515,15 @@ export class StrudelEngine {
       if (browserOnly !== null) {
         throw new Error(explainBrowserOnly(browserOnly) ?? error.message);
       }
+      // Already categorised: the density caps above throw
+      // ValidationError, and flattening them here into a generic
+      // "Pattern execution failed" was the third time in one day that a
+      // verdict was destroyed one frame above the code that reads it.
+      if (error instanceof ValidationError) throw error;
       if (error instanceof PatternSafetyError) {
-        throw new Error(`Pattern rejected: ${error.message}`);
+        // The caller's pattern was refused before it ran. That is their
+        // input to change, not an internal failure.
+        throw new ValidationError(`Pattern rejected: ${error.message}`);
       }
       throw new Error(`Pattern execution failed: ${error.message}`);
     }

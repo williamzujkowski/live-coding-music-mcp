@@ -46,6 +46,15 @@ jobs:
       - name: Verify sandbox and memory containment
         run: npm run test:sandbox
 
+      # The unit tier constructs an error and calls the categoriser
+      # directly, which is not the path production takes. Three times in
+      # one day a fix was correct and the plumbing swallowed it — at the
+      # tool/dispatcher seam, crossing IPC, and inside StrudelEngine's
+      # own catch. This drives the built server over real stdio JSON-RPC
+      # and checks the envelope a client actually receives (#382).
+      - name: Verify error envelopes over the protocol
+        run: npx tsx scripts/verify-envelopes.ts
+
       - name: Test MCP server initialization
         run: |
           # Test that the server can start and respond to basic requests
