@@ -659,9 +659,18 @@ export class MIDIExportService {
     if (tokens.length === 0) return [];
 
     const isRest = (t: string) => t === '~' || t === '-' || t === 'r';
-    const known = tokens.every(
-      t => isRest(t) || Object.hasOwn(SAMPLE_TO_MIDI, t.toLowerCase()));
-    if (!known) return [];
+    const unknown = tokens.filter(
+      t => !isRest(t) && !Object.hasOwn(SAMPLE_TO_MIDI, t.toLowerCase()));
+    if (unknown.length > 0) {
+      // The whole lane is dropped when any token is unrecognised — a
+      // deliberate choice, since a partial drum lane is a different
+      // rhythm rather than a quieter one. But it used to happen in
+      // silence: `stack(note("c4"), s("bd unknown sd"))` exported one
+      // note with success:true and no `unrepresented` entry, so the
+      // caller had no way to learn a whole lane had vanished (#433).
+      for (const token of unknown) this.unrepresented.add(token);
+      return [];
+    }
 
     const step = BEATS_PER_BAR / tokens.length;
     const events: NoteEvent[] = [];
@@ -971,13 +980,23 @@ export class MIDIExportService {
       const notes = this.parsePatternNotes(pattern);
 
       if (notes.length === 0) {
+        // The loss report is dropped exactly where it is most useful.
+        //
+        // `note("c4?")` records `c4?` as unrepresented and then returns
+        // here, so the caller got the generic "use note(), n(), or
+        // chord()" — advice to use the function they already used —
+        // instead of the list of what actually failed (#433).
+        const loss = this.lossReport();
         return {
           success: false,
           output: '',
           noteCount: 0,
           bars: options.bars || 4,
           bpm: options.bpm || 120,
-          error: 'No notes found in pattern. Use note(), n(), or chord() functions.'
+          ...loss,
+          error: loss.unrepresented !== undefined
+            ? `No notes could be exported. ${loss.warning ?? ''}`.trim()
+            : 'No notes found in pattern. Use note(), n(), or chord() functions.',
         };
       }
 
@@ -1001,7 +1020,7 @@ export class MIDIExportService {
         success: true,
         output: target.path,
         noteCount: this.lastWrittenCount,
-        bars: options.bars || 4,
+        bars: this.barsProduced(notes, options.bars ?? 4),
         bpm: options.bpm || 120,
         // Surfaced so the caller knows the file did not land where it
         // asked, rather than silently believing the traversal worked.
@@ -1038,6 +1057,27 @@ export class MIDIExportService {
    *
    * @returns `{}` when everything was representable
    */
+  /**
+   * Bars the exported notes actually occupy.
+   *
+   * `bars: options.bars || 4` reported the CAP, so `note("c4")` — one
+   * beat of content — came back `bars: 4`. A caller sizing a timeline
+   * from that gets four times the music (#433).
+   *
+   * Never more than the cap, since notes past it are not written, and
+   * never less than one: a file with content occupies a bar even if the
+   * content is a single note.
+   *
+   * @param notes - The events actually written
+   * @param cap - The requested `bars` limit
+   * @returns Bars occupied, 1..cap
+   */
+  private barsProduced(notes: NoteEvent[], cap: number): number {
+    if (notes.length === 0) return 0;
+    const end = Math.max(...notes.map(n => n.time + n.duration));
+    return Math.max(1, Math.min(cap, Math.ceil(end / BEATS_PER_BAR)));
+  }
+
   private lossReport(): {
     warning?: string; unrepresented?: string[]; partiallyExported?: string[];
   } {
@@ -1075,13 +1115,23 @@ export class MIDIExportService {
       const notes = this.parsePatternNotes(pattern);
 
       if (notes.length === 0) {
+        // The loss report is dropped exactly where it is most useful.
+        //
+        // `note("c4?")` records `c4?` as unrepresented and then returns
+        // here, so the caller got the generic "use note(), n(), or
+        // chord()" — advice to use the function they already used —
+        // instead of the list of what actually failed (#433).
+        const loss = this.lossReport();
         return {
           success: false,
           output: '',
           noteCount: 0,
           bars: options.bars || 4,
           bpm: options.bpm || 120,
-          error: 'No notes found in pattern. Use note(), n(), or chord() functions.'
+          ...loss,
+          error: loss.unrepresented !== undefined
+            ? `No notes could be exported. ${loss.warning ?? ''}`.trim()
+            : 'No notes found in pattern. Use note(), n(), or chord() functions.',
         };
       }
 
@@ -1094,7 +1144,7 @@ export class MIDIExportService {
         success: true,
         output: base64,
         noteCount: this.lastWrittenCount,
-        bars: options.bars || 4,
+        bars: this.barsProduced(notes, options.bars ?? 4),
         bpm: options.bpm || 120,
         ...this.lossReport(),
       };
