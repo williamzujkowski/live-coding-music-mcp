@@ -70,6 +70,31 @@ const SAFE_GLOBALS = new Set([
   'NaN', 'Infinity', 'undefined',
 ]);
 
+/**
+ * Largest numeric literal a pattern may contain.
+ *
+ * A fast-fail for accidents and naive input, NOT a security control.
+ * `Array(50000000).fill(7)` reached 1908 MB in 5791 ms before the vm's
+ * 1000 ms timeout fired — V8 cannot interrupt inside an allocating
+ * builtin, so a wall-clock budget is not a memory budget (#307).
+ *
+ * A determined payload evades this trivially by computing the number
+ * (`Array(1e4 * 5e3)`), and this deliberately does not try to constant-
+ * fold arithmetic — chasing that is an arms race an AST walk loses. The
+ * real containment is process isolation with a hard heap cap, settled
+ * by measurement on #307: worker_threads with `resourceLimits` does NOT
+ * contain the OOM (the parent dumped core), a forked child with
+ * `--max-old-space-size` does.
+ *
+ * What this buys, honestly: the common accidental case fails in
+ * microseconds with a message naming the problem, instead of allocating
+ * hundreds of megabytes first.
+ *
+ * The bound is far above anything musical — a pattern asking for a
+ * million of anything is not describing music.
+ */
+const MAX_NUMERIC_LITERAL = 1_000_000;
+
 /** AST node types a pattern is allowed to contain. */
 const ALLOWED_NODE_TYPES = new Set([
   'Program', 'ExpressionStatement', 'CallExpression', 'MemberExpression',
@@ -192,6 +217,18 @@ export function assertPatternIsSafe(code: string, allowedGlobals: Iterable<strin
     // collectDeclaredNames then added `C` to the allowed set, so the
     // identifier check passed too. Two holes lining up into a sandbox
     // escape (#SANDBOX).
+    // Cheap upper bound on allocation-shaped input. See
+    // MAX_NUMERIC_LITERAL: a fast-fail, not a control.
+    if (node.type === 'Literal' && typeof node.value === 'number') {
+      if (Number.isFinite(node.value) && Math.abs(node.value) > MAX_NUMERIC_LITERAL) {
+        throw new PatternSafetyError(
+          `Pattern contains the number ${String(node.value)}, above the ` +
+          `${String(MAX_NUMERIC_LITERAL)} limit. Numbers that large usually mean ` +
+          'an allocation mistake rather than a musical intent.'
+        );
+      }
+    }
+
     if (node.type === 'ObjectPattern') {
       for (const prop of node.properties ?? []) {
         if (prop.type !== 'Property') continue;
