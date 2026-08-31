@@ -418,7 +418,8 @@ describe('MIDIExportService', () => {
 
       expect(result.success).toBe(true);
       expect(result.noteCount).toBe(3);
-      expect(result.bars).toBe(4);
+      // One bar of content, whatever the cap says (#433).
+      expect(result.bars).toBe(1);
       expect(result.bpm).toBe(120);
       expect(existsSync(result.output)).toBe(true);
     });
@@ -451,11 +452,15 @@ describe('MIDIExportService', () => {
       expect(result.bpm).toBe(140);
     });
 
-    it('should use custom bar count', () => {
+    it('reports the bars the file holds, not the cap requested', () => {
+      // `bars` used to echo `options.bars`, so one beat of content came
+      // back as 8 and a caller sizing a timeline got eight times the
+      // music (#433). The cap still limits what is written; this reports
+      // what was written.
       const result = service.exportToFile('note("c4")', testFilename, { bars: 8 });
 
       expect(result.success).toBe(true);
-      expect(result.bars).toBe(8);
+      expect(result.bars).toBe(1);
     });
   });
 
@@ -486,7 +491,8 @@ describe('MIDIExportService', () => {
 
       expect(result.success).toBe(true);
       expect(result.bpm).toBe(160);
-      expect(result.bars).toBe(2);
+      // The content, not the cap (#433).
+      expect(result.bars).toBe(1);
     });
 
     it('should produce valid base64 that can be decoded', () => {
