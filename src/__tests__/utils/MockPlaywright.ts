@@ -274,6 +274,19 @@ export class MockBrowser implements Partial<Browser> {
   isClosed(): boolean {
     return this.closed;
   }
+
+  /**
+   * Playwright's own liveness check, which this mock lacked.
+   *
+   * `SessionManager.ensureBrowser` calls it to notice a crashed Chromium
+   * and relaunch (#423). A mock missing it made that self-heal look like
+   * a bug — four tests failed with `isConnected is not a function`, which
+   * is the mock being wrong about the shape it stands in for, not the
+   * code.
+   */
+  isConnected(): boolean {
+    return !this.closed;
+  }
 }
 
 export const createMockPage = (): MockPage => {
