@@ -377,6 +377,39 @@ await this.page.evaluate((pattern) => {
 }, patternCode);
 ```
 
+**No named inner functions inside `page.evaluate`.** Playwright serializes
+the function source and runs it in the browser. `tsx` transpiles with
+esbuild's `keepNames`, which rewrites a named inner function into
+`__name(fn, "fn")` — and `__name` does not exist in page context, so the
+whole evaluate throws `ReferenceError: __name is not defined`. `tsc`
+emits it untouched, so this breaks **only** under `npm run dev` and the
+`test:sandbox` / `test:export-audio` scripts, never in production or CI.
+
+Measured, not guessed — which forms survive:
+
+| Inside `page.evaluate` | Safe? |
+|---|---|
+| `const fn = (x) => ...` | no |
+| `function fn(x) {}` | no |
+| `{ prop: () => ... }` | no |
+| `{ method(x) {} }` | **yes** |
+| `arr.map(x => ...)` | **yes** |
+
+So put helpers in an object literal using method shorthand:
+
+```typescript
+await this.page.evaluate(() => {
+  const h = {
+    encode(bytes: Uint8Array): string { /* ... */ return ''; },
+  };
+  return h.encode(new Uint8Array());
+});
+```
+
+`src/__tests__/unit/PageEvaluateNameWrapping.test.ts` enforces this,
+including for functions passed by reference rather than written inline
+(#248).
+
 ### Error Recovery
 ```typescript
 import { ErrorRecovery } from './utils/ErrorRecovery';
