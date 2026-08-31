@@ -180,7 +180,11 @@ export class PatternStore {
     // filesystem, which is what makes the rename atomic.
     const tempPath = `${filepath}.${randomBytes(8).toString('hex')}.tmp`;
     try {
-      await fs.writeFile(tempPath, JSON.stringify(data, null, 2), { flag: 'wx' });
+      // `mode: 0o600` is the part CodeQL's js/insecure-temporary-file is
+      // actually about — "accessible by other users". A temp file
+      // holding the user's pattern has no business being world-readable
+      // even for the instant before the rename.
+      await fs.writeFile(tempPath, JSON.stringify(data, null, 2), { flag: 'wx', mode: 0o600 });
       await fs.rename(tempPath, filepath);
     } catch (error) {
       // Leaving a stray .tmp would make it the next listing's problem.
