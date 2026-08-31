@@ -24,7 +24,6 @@ jest.mock('../../services/PatternGenerator');
 jest.mock('../../services/GeminiService');
 jest.mock('../../services/AudioCaptureService');
 jest.mock('../../services/SessionManager');
-jest.mock('../../services/StrudelEngine');
 jest.mock('fs', () => ({
   readFileSync: jest.fn().mockReturnValue('{"headless": true}'),
   existsSync: jest.fn().mockReturnValue(true),

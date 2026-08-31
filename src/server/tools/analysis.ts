@@ -6,7 +6,8 @@
  *   browser-free:     validate_pattern_local, analyze_pattern_local,
  *                     query_pattern_events, transpile_pattern
  *
- * The browser-free set runs against the in-process StrudelEngine and
+ * The browser-free set runs against the local engine — since #307, a
+ * forked child with a heap cap and a deadline, not this process — and
  * pairs naturally with validate_pattern_runtime (which monitors the
  * actual Strudel console). They were orphan handlers — implementations
  * present but not registered in tools/list — until #124.
@@ -14,8 +15,9 @@
 
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
-import { empty, ok } from './types.js';
+import { empty, err, ok } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
+import { IsolatedRunnerError } from '../../services/IsolatedEngineRunner.js';
 
 const SESSION_ID_PROP = {
   session_id: {
@@ -233,7 +235,42 @@ async function doAnalyze(args: any, controller: any): Promise<unknown> {
   return Object.fromEntries(entries);
 }
 
+/**
+ * Turns a death of the isolated engine child into an envelope (#307).
+ *
+ * All four local-engine tools funnel through here, which is the point:
+ * one isolation path, one place that decides what a caller is told.
+ *
+ * The distinction the categories carry is whether retrying could possibly
+ * help. It cannot for an OOM — `new Array(5e7).fill(7)` will exhaust the
+ * cap every time it is sent — so that is the caller's input to fix, not a
+ * transient condition to wait out. A hang or an unexplained crash might
+ * well be transient. Recording this because the vote on #307 said "one
+ * retryable envelope" for all of them, and a blanket `isRetryable: true`
+ * would invite an agent into a loop it cannot win.
+ */
+function isolationFailure(error: IsolatedRunnerError): unknown {
+  // Not retryable, and for two different reasons. An OOM is the caller's
+  // input: `s("[bd*99999]*99999")` exhausts the cap every time it is
+  // sent. A spawn failure is the deployment: a missing or unbuilt child
+  // is missing on the next attempt too. Both would put an agent in a loop
+  // it cannot win, which is why the vote's "one retryable envelope for
+  // everything" is not what shipped.
+  if (error.kind === 'oom') return err('validation', error.message);
+  if (error.kind === 'spawn') return err('internal', error.message);
+  return err('transient', error.message, { isRetryable: true });
+}
+
 export async function execute(name: string, args: any, ctx: ToolContext): Promise<unknown> {
+  try {
+    return await run(name, args, ctx);
+  } catch (error: unknown) {
+    if (error instanceof IsolatedRunnerError) return isolationFailure(error);
+    throw error;
+  }
+}
+
+async function run(name: string, args: any, ctx: ToolContext): Promise<unknown> {
   const sid: string | undefined = args?.session_id;
   if (!LOCAL_ENGINE_TOOLS.has(name) && !sid && !ctx.isInitialized()) {
     return 'Browser not initialized. Run init first.';
@@ -259,7 +296,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
 
     case 'validate_pattern_local': {
       InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
-      const localValidation = ctx.strudelEngine.validate(args.pattern);
+      const localValidation = await ctx.strudelEngine.validate(args.pattern);
       return {
         valid: localValidation.valid,
         errors: localValidation.errors,
@@ -274,7 +311,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
 
     case 'analyze_pattern_local': {
       InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
-      const patternMetadata = ctx.strudelEngine.analyzePattern(args.pattern);
+      const patternMetadata = await ctx.strudelEngine.analyzePattern(args.pattern);
 
       // Do not report event counts the engine never measured. When
       // evaluation failed, `eventsPerCycle: 0` is a default, not a
@@ -319,7 +356,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
         return { error: 'Maximum range is 16 cycles to prevent excessive output' };
       }
       try {
-        const events = ctx.strudelEngine.queryEvents(args.pattern, startCycle, endCycle);
+        const events = await ctx.strudelEngine.queryEvents(args.pattern, startCycle, endCycle);
         // A silent pattern is a valid-empty query, not a failed one —
         // and not the same as a pattern with events, which is what a
         // plain ok() made it look like (#288).
@@ -335,6 +372,10 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
           })),
         });
       } catch (error: unknown) {
+        // The engine dying is not a syntax problem, and telling the
+        // caller to go run the validator would send them to a tool that
+        // will die the same way. Let it reach isolationFailure (#307).
+        if (error instanceof IsolatedRunnerError) throw error;
         const message = error instanceof Error ? error.message : String(error);
         return {
           error: message,
@@ -345,7 +386,7 @@ export async function execute(name: string, args: any, ctx: ToolContext): Promis
 
     case 'transpile_pattern': {
       InputValidator.validateStringLength(args.pattern, 'pattern', 10000, false);
-      const transpileResult = ctx.strudelEngine.transpile(args.pattern);
+      const transpileResult = await ctx.strudelEngine.transpile(args.pattern);
       if (transpileResult.success) {
         return {
           success: true,

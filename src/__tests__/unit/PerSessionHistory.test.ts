@@ -5,7 +5,6 @@
  * stacks, and that destroying a session releases its bundle.
  */
 
-jest.mock('../../services/StrudelEngine');
 
 import { StrudelMCPServer } from '../../server/server';
 

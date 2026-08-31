@@ -23,7 +23,6 @@ import { MockBrowser, createMockPage } from '../utils/MockPlaywright';
 jest.mock('playwright');
 jest.mock('../../StrudelController');
 jest.mock('../../PatternStore');
-jest.mock('../../services/StrudelEngine');
 
 describe('MCP Server Integration Tests', () => {
   let server: StrudelMCPServer;

@@ -16,6 +16,7 @@
  */
 
 import { StrudelController } from '../../StrudelController.js';
+import { IsolatedStrudelEngine } from '../../services/IsolatedStrudelEngine.js';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -48,6 +49,12 @@ const TARGETS: Target[] = [
   { name: 'getAnalysis', targetP95Ms: 15 },
   { name: 'detectTempo', targetP95Ms: 100 },
   { name: 'detectKey', targetP95Ms: 100 },
+  // #307 moved local-engine evaluation into a forked child. The whole
+  // argument for a PERSISTENT child rather than a fork per call rests on
+  // the warm number, so it is gated. Measured here under tsx (which the
+  // child pays a loader cost for); from dist it is faster, never slower.
+  { name: 'localEngine.coldStart', targetP95Ms: 500, runs: 3 },
+  { name: 'localEngine.warmCall', targetP95Ms: 5, runs: 40 },
 ];
 
 const GATE_MULTIPLIER = 1.5;
@@ -87,6 +94,26 @@ async function main() {
   console.log();
 
   const results: OpResult[] = [];
+
+  // Local engine first: it needs no browser, so it still reports on a
+  // machine where Playwright is unavailable.
+  const coldTarget = TARGETS.find(t => t.name === 'localEngine.coldStart')!;
+  const coldSamples: number[] = [];
+  for (let i = 0; i < (coldTarget.runs ?? 3); i++) {
+    const engine = new IsolatedStrudelEngine();
+    const r = await time(() => engine.validate('s("bd*4")'));
+    coldSamples.push(r.ms);
+    engine.dispose();
+  }
+  results.push(summarize(coldTarget, coldSamples));
+
+  const warmEngine = new IsolatedStrudelEngine();
+  await warmEngine.validate('s("bd")'); // pay the fork before measuring
+  const warmTarget = TARGETS.find(t => t.name === 'localEngine.warmCall')!;
+  const warmSamples = await measure(warmTarget.runs ?? 40, () =>
+    warmEngine.validate('setcpm(120)\nstack(s("bd*4"), s("hh*8"))'));
+  results.push(summarize(warmTarget, warmSamples));
+  warmEngine.dispose();
 
   // init is measured separately — each run destroys and recreates the browser
   const initTarget = TARGETS.find(t => t.name === 'init')!;

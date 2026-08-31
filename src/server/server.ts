@@ -20,7 +20,7 @@ import { SessionManager } from '../services/SessionManager.js';
 import { readFileSync, existsSync } from 'fs';
 import { Logger } from '../utils/Logger.js';
 import { PerformanceMonitor } from '../utils/PerformanceMonitor.js';
-import { StrudelEngine } from '../services/StrudelEngine.js';
+import { IsolatedStrudelEngine } from '../services/IsolatedStrudelEngine.js';
 import { diagnosticsModule } from './tools/diagnostics.js';
 import { playbackModule } from './tools/playback.js';
 import { storageModule } from './tools/storage.js';
@@ -83,7 +83,7 @@ export class StrudelMCPServer {
   private sessionManager: SessionManager;
   private logger: Logger;
   private perfMonitor: PerformanceMonitor;
-  private strudelEngine: StrudelEngine;
+  private strudelEngine: IsolatedStrudelEngine;
   /**
    * Per-session undo/redo/history bundles (#179). Keyed by session id;
    * 'default' for the legacy/single-session path. Bundles are lazily
@@ -154,7 +154,7 @@ export class StrudelMCPServer {
     }
 
     this.perfMonitor = new PerformanceMonitor();
-    this.strudelEngine = new StrudelEngine();
+    this.strudelEngine = new IsolatedStrudelEngine();
     this.setupHandlers();
   }
 
@@ -674,6 +674,9 @@ export class StrudelMCPServer {
       this.logger.info('Shutting down...');
       await this.controller.cleanup();
       await this.sessionManager.destroyAll();
+      // The isolated engine child is a real process. Left behind, it
+      // outlives the server that forked it (#307).
+      this.strudelEngine.dispose();
       process.exit(0);
     });
   }

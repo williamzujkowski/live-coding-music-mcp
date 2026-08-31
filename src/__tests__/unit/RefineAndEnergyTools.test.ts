@@ -18,14 +18,6 @@ jest.mock('../../PatternStore');
 jest.mock('../../services/MusicTheory');
 jest.mock('../../services/PatternGenerator');
 jest.mock('../../services/GeminiService');
-jest.mock('../../services/StrudelEngine', () => ({
-  StrudelEngine: jest.fn().mockImplementation(() => ({
-    validate: jest.fn().mockReturnValue({ valid: true, errors: [] }),
-    analyzePattern: jest.fn().mockReturnValue({ complexity: 'moderate' }),
-    queryEvents: jest.fn().mockReturnValue([]),
-    transpile: jest.fn().mockReturnValue({ success: true, output: '' })
-  }))
-}));
 jest.mock('fs', () => ({
   readFileSync: jest.fn().mockReturnValue('{"headless": true}'),
   existsSync: jest.fn().mockReturnValue(true)

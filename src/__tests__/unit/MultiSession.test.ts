@@ -10,7 +10,6 @@
  * it directly (the same reason #107 needed pure helpers).
  */
 
-jest.mock('../../services/StrudelEngine');
 
 import type { StrudelController } from '../../StrudelController';
 import {
