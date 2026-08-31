@@ -7,7 +7,7 @@
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolContext, ToolModule } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
-import { ok, err, categorizeError } from './types.js';
+import { ok, err, categorizeError, withStashNotice } from './types.js';
 import { readFile } from 'fs/promises';
 import path from 'path';
 
@@ -116,8 +116,8 @@ async function doLoad(args: any, ctx: ToolContext, sid?: string): Promise<unknow
   InputValidator.validateStringLength(args.name, 'name', 255, false);
   const saved = await ctx.store.load(args.name);
   if (saved) {
-    await ctx.writePatternSafe(saved.content, sid);
-    return `Loaded pattern "${args.name}"`;
+    const written = await ctx.writePatternSafe(saved.content, sid);
+    return withStashNotice(`Loaded pattern "${args.name}"`, written);
   }
   return `Pattern "${args.name}" not found`;
 }
