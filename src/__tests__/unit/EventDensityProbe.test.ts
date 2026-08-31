@@ -214,3 +214,67 @@ describe('probeEventDensity (#360)', () => {
     expect(probeEventDensity(evenlySpaced(1e10), 3, 3, { maxEvents: CAP }).kind).toBe('proceed');
   });
 });
+
+/**
+ * A window full of events counts, distinct or not (#460).
+ *
+ * The distinctness gate exists to stop a rate being extrapolated from a
+ * handful of stacked events — `s("bd").slow(64)` returns one hap at any
+ * span, and projecting from it refused ordinary patterns (rule 1). It
+ * was never meant to discard a window that is FULL.
+ *
+ * Discarding it let through exactly what the probe exists to refuse.
+ * Measured before the fix, 150,000 onset instants x 250 simultaneous
+ * layers — 37,500,000 events in one cycle:
+ *
+ *   {"kind":"proceed","observedOnsets":3750,"windowsWithOnsets":8}
+ *
+ * All eight windows saw the density and none was allowed to say so:
+ * each cleared `sampleTarget` (so the ladder stopped) but failed
+ * `minDistinct` (so it went unrecorded), and `countedFloor` stayed under
+ * the cap because eight small windows hold few events in absolute terms.
+ */
+describe('a full window is believed even when its onsets are not distinct (#460)', () => {
+  /** N onset instants per cycle, each carrying L simultaneous layers. */
+  const layered = (instants: number, layers: number) =>
+    (begin: number, end: number): Array<{ whole: { begin: number } }> => {
+      const out: Array<{ whole: { begin: number } }> = [];
+      for (let cycle = Math.floor(begin); cycle < Math.ceil(end); cycle++) {
+        for (let i = 0; i < instants; i++) {
+          const t = cycle + i / instants;
+          if (t < begin || t >= end) continue;
+          for (let l = 0; l < layers; l++) out.push({ whole: { begin: t } });
+        }
+      }
+      return out;
+    };
+
+  it('refuses 37.5 million events in a cycle', () => {
+    const verdict = probeEventDensity(layered(150000, 250), 0, 1, { maxEvents: 50000 });
+
+    expect(verdict.kind).toBe('refuse');
+    // And the projection is the truth, not a guess: 150000 * 250.
+    if (verdict.kind === 'refuse') {
+      expect(verdict.projected).toBe(37500000);
+    }
+  });
+
+  it('still allows layers that merely start together', () => {
+    // Rule 1, which this must not undo: simultaneity is not density.
+    // 200 layers is far below the sample target, so the window is not
+    // full and the distinctness gate still governs.
+    expect(probeEventDensity(layered(1, 200), 0, 1, { maxEvents: 50000 }).kind)
+      .toBe('proceed');
+  });
+
+  it('still allows a pattern just under the cap', () => {
+    // Rule 3: the near-cap verdict is an average, not a maximum.
+    expect(probeEventDensity(layered(40000, 1), 0, 1, { maxEvents: 50000 }).kind)
+      .toBe('proceed');
+  });
+
+  it('still allows an ordinary pattern', () => {
+    expect(probeEventDensity(layered(4, 1), 0, 4, { maxEvents: 50000 }).kind)
+      .toBe('proceed');
+  });
+});
