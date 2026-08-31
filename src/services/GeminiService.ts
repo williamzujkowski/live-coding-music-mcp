@@ -465,19 +465,30 @@ export class GeminiService {
 
       // Use timeout for audio analysis (may take longer due to media processing)
       const audioTimeoutMs = this.timeoutMs * 2; // Double timeout for audio
+      let audioTimer: NodeJS.Timeout | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
+        audioTimer = setTimeout(() => {
           reject(new Error(`Audio analysis timed out after ${audioTimeoutMs / 1000} seconds`));
         }, audioTimeoutMs);
       });
 
-      const response = await Promise.race([
-        // Derive from the blob rather than hardcoding: the feedback path
-        // now sends WAV (decoded PCM), and telling Gemini it is WebM makes
-        // it decode the wrong container.
-        this.callGeminiAPI(prompt, audioBase64, audioData.type || 'audio/webm'),
-        timeoutPromise
-      ]);
+      let response: string;
+      try {
+        response = await Promise.race([
+          // Derive from the blob rather than hardcoding: the feedback path
+          // now sends WAV (decoded PCM), and telling Gemini it is WebM makes
+          // it decode the wrong container.
+          this.callGeminiAPI(prompt, audioBase64, audioData.type || 'audio/webm'),
+          timeoutPromise
+        ]);
+      } finally {
+        // The race settling does not disarm the loser. Without this the
+        // handle and its closure live for the full 60s even when the API
+        // answered at once — eight of them outlived one test file, and in
+        // a long-lived server they accumulate (#404). The sibling call
+        // site at `callWithTimeout` already did this; this one did not.
+        if (audioTimer !== undefined) clearTimeout(audioTimer);
+      }
 
       const feedback = this.parseAudioResponse(response);
       this.audioCache.set(cacheKey, { result: feedback, timestamp: Date.now() });
