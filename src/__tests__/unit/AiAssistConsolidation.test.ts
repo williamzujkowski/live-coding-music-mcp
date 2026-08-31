@@ -32,9 +32,12 @@ describe('ai_assist consolidation (#159)', () => {
   it('ai_assist(task=feedback) routes to feedback handler', async () => {
     const { ctx } = makeCtx();
     const result = (await execute('ai_assist', { task: 'feedback' }, ctx)) as any;
-    // Without GEMINI_API_KEY, the feedback handler returns gemini_available: false
+    // With no transport at all, the feedback handler says so — and names
+    // both routes, since a logged-in CLI is as good as an API key (#252).
     expect(result.gemini_available).toBe(false);
-    expect(result.error).toContain('Gemini API not configured');
+    expect(result.error).toContain('No AI transport available');
+    expect(result.error).toContain('GEMINI_API_KEY');
+    expect(result.error).toMatch(/claude\/agy\/codex/);
   });
 
   it('ai_assist(task=suggest) routes to suggest handler', async () => {

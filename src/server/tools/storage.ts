@@ -58,7 +58,7 @@ export const tools: Tool[] = [
       'Pitched tracks emit note("...").s("piano") with simultaneous notes merged into [a,b,c] chord tokens. ' +
       'Phase 2+ (structural compression, voice separation, LLM idiomatic pass) tracked in separate issues. ' +
       'Example: import_midi({ source: "path", data: "drumloop.mid", steps_per_cycle: 16 }). ' +
-      'For the reverse direction (Strudel → MIDI) use the analyze tool with task="export_midi".',
+      'For the reverse direction (Strudel → MIDI) use the export_midi tool.',
     inputSchema: {
       type: 'object',
       properties: {

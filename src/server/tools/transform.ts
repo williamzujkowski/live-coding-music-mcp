@@ -119,7 +119,7 @@ export const tools: Tool[] = [
     description:
       'Add or remove a Strudel effect on the current session pattern. ' +
       'action=add appends `.<effect>(<params>)`. ' +
-      'action=remove strips the last `.<effect>(...)` call from the pattern. ' +
+      'action=remove strips EVERY `.<effect>(...)` call from the pattern, not just the last. ' +
       'Example: effect({ action: "add", effect: "lpf", params: "1000" }). ' +
       'For higher-level effect bundles (mood/energy/refine) use shape; for raw transforms use transform.',
     inputSchema: {
