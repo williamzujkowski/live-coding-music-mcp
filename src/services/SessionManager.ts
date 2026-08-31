@@ -283,21 +283,35 @@ export class SessionManager {
       throw new Error(`Session '${id}' not found`);
     }
 
+    // Out of the map BEFORE the await, not after.
+    //
+    // The entry used to survive `await context.close()`, so a concurrent
+    // `getSession(id)` handed out a controller on a closing page — and
+    // stamped `lastActivity` on it. The same window let two destroys of
+    // one id both pass the guard above, both close, both fire the
+    // callback below, and both reach `closeBrowser` (#423).
+    this.sessions.delete(id);
+
     try {
       // Close the browser context (which closes the page)
       await session.context.close();
     } catch (error: any) {
+      // Logged, not rethrown: the entry is already gone, and a context
+      // that refuses to close is not a reason to keep serving it. This
+      // does drop the last handle to it — noted in #423.
       this.logger.warn(`Error closing session context: ${error.message}`);
     }
-
-    this.sessions.delete(id);
 
     // Tell the owner, whichever path got us here. The server keeps its
     // own per-session maps (history bundles, capture services), and those
     // used to be cleared only by the session({action:'destroy'}) tool
-    // handler — so idle eviction and destroyAll leaked them, and a
-    // session recreated under the same id inherited a dead recorder and
-    // a previous session's undo stack (#264).
+    // handler — so idle eviction leaked them, and a session recreated
+    // under the same id inherited a dead recorder and a previous
+    // session's undo stack (#264).
+    //
+    // `destroyAll` fires it in its own loop rather than routing through
+    // here. This comment used to claim destroyAll was covered by this
+    // line, and it was not (#423).
     try {
       this.onSessionDestroyed?.(id);
     } catch (error: any) {
@@ -386,15 +400,24 @@ export class SessionManager {
     for (const id of sessionIds) {
       try {
         const session = this.sessions.get(id);
-        if (session) {
-          await session.context.close();
-        }
+        if (!session) continue;
+        this.sessions.delete(id);
+        await session.context.close();
+        // The same callback `destroySession` fires. This loop used to
+        // close contexts and call `sessions.clear()` without it, so the
+        // server's per-session history bundles and capture services were
+        // never dropped — while the comment on `destroySession` and the
+        // one at the callback's registration both said destroyAll was
+        // covered (#423). Only the shutdown path calls this, so nothing
+        // leaked in practice; the claim was the problem.
+        this.onSessionDestroyed?.(id);
       } catch (error: any) {
         this.logger.warn(`Error closing session '${id}': ${error.message}`);
       }
     }
 
     this.sessions.clear();
+    this.defaultSessionId = 'default';
     await this.closeBrowser();
 
     this.logger.info('All sessions destroyed');

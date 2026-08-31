@@ -92,3 +92,89 @@ describe('session teardown notifies the owner', () => {
     expect((manager as unknown as { sessions: Map<string, unknown> }).sessions.has('live')).toBe(false);
   });
 });
+
+/**
+ * `destroyAll` must run the same teardown (#423).
+ *
+ * It closed contexts and called `sessions.clear()`, and fired the
+ * callback for none of them — while the comment on `destroySession` and
+ * the one where the callback is registered BOTH said destroyAll was
+ * covered. The test above only ever exercised `destroySession`, so
+ * nothing contradicted them.
+ *
+ * Nothing leaked in practice: the only caller is the shutdown path,
+ * followed by `process.exit`. The false claim was the defect.
+ */
+describe('destroyAll runs the same teardown as destroySession (#423)', () => {
+  async function managerWithSessions(ids: string[]) {
+    jest.resetModules();
+    const { SessionManager } = await import('../../services/SessionManager');
+    const manager = new SessionManager(true);
+    const closed: string[] = [];
+    for (const id of ids) {
+      (manager as unknown as { sessions: Map<string, unknown> }).sessions.set(id, {
+        controller: {},
+        context: { close: jest.fn(async () => { closed.push(id); }) },
+        page: {}, created: new Date(), lastActivity: new Date(),
+      });
+    }
+    return { manager, closed };
+  }
+
+  it('fires the callback for every session', async () => {
+    const { manager } = await managerWithSessions(['a', 'b', 'c']);
+    const destroyed: string[] = [];
+    manager.onSessionDestroyed = (id: string): void => { destroyed.push(id); };
+
+    await manager.destroyAll();
+
+    expect(destroyed.sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('still closes every context', async () => {
+    // The behaviour that already worked must survive the fix.
+    const { manager, closed } = await managerWithSessions(['a', 'b']);
+    await manager.destroyAll();
+
+    expect(closed.sort()).toEqual(['a', 'b']);
+    expect(manager.listSessions()).toEqual([]);
+  });
+
+  it('resets the default session id', async () => {
+    const { manager } = await managerWithSessions(['live']);
+    manager.setDefaultSession('live');
+
+    await manager.destroyAll();
+
+    expect(manager.getDefaultSessionId()).toBe('default');
+  });
+});
+
+/**
+ * A destroyed session must be unreachable from the moment it is doomed,
+ * not from the moment its context finishes closing (#423).
+ */
+describe('destroySession removes the session before awaiting the close', () => {
+  it('a lookup during the close does not return a controller', async () => {
+    jest.resetModules();
+    const { SessionManager } = await import('../../services/SessionManager');
+    const manager = new SessionManager(true);
+
+    let sawDuringClose: unknown = 'not checked';
+    (manager as unknown as { sessions: Map<string, unknown> }).sessions.set('live', {
+      controller: { id: 'live' },
+      context: {
+        close: jest.fn(async () => {
+          // The window that used to hand out a controller on a closing
+          // page — and stamp lastActivity on it.
+          sawDuringClose = manager.getSession('live');
+        }),
+      },
+      page: {}, created: new Date(), lastActivity: new Date(),
+    });
+
+    await manager.destroySession('live');
+
+    expect(sawDuringClose).toBeUndefined();
+  });
+});
