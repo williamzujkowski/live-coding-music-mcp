@@ -711,7 +711,11 @@ export class StrudelMCPServer {
     // behaviour, so this can only ever add a re-injection that was
     // needed, never drop one that was working.
     let service = this.audioCaptureServices.get(key);
-    if (!service || service.isInjectedInto?.(page) === false) {
+    // Awaited: the check asks the page whether the recorder is still
+    // there, because a Playwright `Page` outlives the JS realm it points
+    // at and a reload wipes the recorder while identity still matches
+    // (#437).
+    if (!service || (await service.isInjectedInto?.(page)) === false) {
       service = new AudioCaptureService();
       await service.injectRecorder(page);
       this.audioCaptureServices.set(key, service);
