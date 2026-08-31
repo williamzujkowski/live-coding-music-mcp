@@ -573,23 +573,26 @@ new density cases through `IsolatedStrudelEngine` too.
     |---|---|---|---|
     | House (classic) | 125 | 125, 125, 125, 125 | 125, 125, 125, 125 |
     | Driving techno | 130 | 130, 130, 130, 130 | 130, 130, 130, 130 |
-    | Modern trap | 140 | 141, 141, 141, 141 | 141, 141, 141, 70 |
-    | Drum & bass (classic) | 174 | 117, 115, 117, 115 | 115, 115, 115, 174 |
-    | Amen break | 165 | 83, 83, 83, 83 | 83, 83, 132, 130 |
+    | Modern trap | 140 | 140, 140, 140, 140 | 140, 140, 140, 140 |
+    | Drum & bass (classic) | 174 | 174, 174, 174, 174 | 87, 174, 174, 174 |
+    | Amen break | 165 | 164, 83, 83, 83 | 164, 83, 83, 82 |
     | Ambient pad / Jazz | 70 / 120 | no tempo | no tempo |
 
-    **Two runs, because one was misleading.** I first recorded run A
-    alone and wrote "stable everywhere". Run B shows trap flipping to
-    half-time on its fourth poll and the amen break moving between 83 and
-    130 — so the readings are stable for house and techno, mostly stable
-    for trap, and not stable for dnb or the amen break. The 82 BPM spread
-    #352 reported is gone; a residual octave flip is not.
+    Two runs, always — a single run once read clean across the board and
+    I wrote "stable everywhere" on the strength of it, which a second run
+    contradicted.
 
-    Accurate: house and techno, exactly, every time. Trap, apart from the
-    occasional half-time. Wrong: dnb reads roughly two-thirds of its
-    tempo (#370), and the amen break sits between half-time and 130. The
-    two non-percussive examples report no tempo rather than guessing,
-    which is the right answer for a pad with a three-second attack.
+    Four of five percussive examples read exactly, every poll. Drum and
+    bass reached this only with octave-family scoring (#370): before it,
+    the 120-centred prior overturned a correlation that already favoured
+    174, and 115 was unrecoverable because its double (230) sits outside
+    the 40-200 window so the half-time walk had nowhere to go.
+
+    The amen break reads 164 on its first poll and settles to half-time
+    after — a defensible hearing of that break, but the switch means one
+    of the two is not a measurement. Unresolved. The two non-percussive
+    examples report no tempo rather than guessing, which is the right
+    answer for a pad with a three-second attack.
 - Key detection uses Krumhansl-Schmuckler with Pearson correlation and no
   mode boosts (#320). It recovers all 24 canonical profiles exactly, but
   it depends on chroma resolution: at the shipped `fft_size: 2048`

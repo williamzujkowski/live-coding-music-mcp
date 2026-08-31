@@ -110,6 +110,16 @@ export class AudioAnalyzer {
   static readonly ONSET_REFRACTORY_MS = 50;
 
   /**
+   * How much a candidate's octave relatives count toward its score,
+   * relative to the candidate itself.
+   *
+   * Enough to break a near-tie the prior would otherwise decide the
+   * wrong way, not enough to let a strong relative carry a weak
+   * candidate.
+   */
+  private static readonly FAMILY_CORROBORATION = 0.5;
+
+  /**
    * Below this, `detectTempo` reports no tempo instead of a number.
    *
    * A BPM with confidence 0.00 is not a weak measurement, it is the
@@ -1019,6 +1029,48 @@ export class AudioAnalyzer {
    * @example
    * // onsets every 172ms from a 174 BPM track -> ~345
    */
+  /**
+   * How strongly a candidate's whole octave family correlates, not just
+   * the candidate.
+   *
+   * Measured on a real 174 BPM reading, the raw correlation favoured 174
+   * over 115 (.0041 against .0039) and the 120-centred prior overturned
+   * it: 174 weighs 0.866, 115 weighs 0.998, and 13% was enough. 115 is
+   * then a trap — it sits near the prior's centre AND its double, 230
+   * BPM, is outside the 40-200 window, so the half-time walk has nowhere
+   * to go and the reading can never be corrected.
+   *
+   * 115 is not an octave of 174 at all. It is a cross-rhythm: six
+   * sixteenths where the beat is four.
+   *
+   * Families separate them on evidence rather than on where the prior's
+   * centre was guessed. 43.5 / 87 / 174 all correlate strongly; 115's
+   * family is 57.5 / 115 / 230, one weak and one out of range. Whether a
+   * tempo's halves and doubles also correlate is a property of the
+   * music.
+   *
+   * Members outside the reportable BPM range still count as evidence —
+   * 230 BPM is not an answer this returns, but its correlation says
+   * something about whether 115 is real.
+   *
+   * @param correlation - Autocorrelation of the onset envelope
+   * @param lag - Candidate lag, in bins
+   * @returns Summed correlation across the candidate's octave family
+   */
+  static familyStrength(correlation: readonly number[], lag: number): number {
+    const own = lag > 0 && lag < correlation.length ? correlation[lag] : 0;
+    let relatives = 0;
+    for (const multiple of [0.25, 0.5, 2, 4]) {
+      const member = Math.round(lag * multiple);
+      if (member > 0 && member < correlation.length) relatives += correlation[member];
+    }
+    // The candidate leads; its family corroborates. A plain sum makes
+    // every member of a family score alike and lets a strong relative
+    // carry a weak candidate, which broke a pure 90 BPM train (read as
+    // 120) and a triplet fixture.
+    return own + AudioAnalyzer.FAMILY_CORROBORATION * relatives;
+  }
+
   beatPeriodFromOnsets(onsets: OnsetInput): number | null {
     const times = onsetTimes(onsets);
     const strengths = onsetStrengths(onsets);
@@ -1101,7 +1153,7 @@ export class AudioAnalyzer {
       // correlate, and a listener hears the slower one as the beat.
       const octaves = Math.log2(bpm / 120);
       const weight = Math.exp(-(octaves * octaves) / 2);
-      const score = correlation[lag] * weight;
+      const score = AudioAnalyzer.familyStrength(correlation, lag) * weight;
       if (score > bestScore) {
         bestScore = score;
         bestLag = lag;
