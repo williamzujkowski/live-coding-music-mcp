@@ -21,12 +21,12 @@
     "test:nocov": "jest",
     "test:watch": "jest --watch",
     "test:integration": "node tests/strudel-integration.js",
-    "test:browser": "HEADLESS=true jest --runInBand --forceExit --coverage=false --testPathPattern=browser",
+    "test:browser": "HEADLESS=true jest --runInBand --forceExit --coverage=false --testPathPattern=__tests__/browser/",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "docker:build": "docker build -t live-coding-music-mcp .",
     "docker:run": "docker-compose up",
-    "prepublishOnly": "npm run build && npm run test:nocov -- --testPathIgnorePatterns=browser",
+    "prepublishOnly": "npm run build && npm run test:nocov -- --testPathIgnorePatterns=__tests__/browser/",
     "prepare": "npm run build",
     "validate": "echo '{\"jsonrpc\":\"2.0\",\"method\":\"tools/list\",\"id\":1}' | node dist/index.js",
     "benchmark": "tsx src/__tests__/benchmarks/latency.benchmark.ts",
@@ -35,7 +35,7 @@
     "test:sandbox": "tsx scripts/verify-sandbox.ts",
     "test:export-audio": "tsx scripts/verify-export-audio.ts",
     "test:ai-transport": "tsx scripts/verify-ai-transport.ts",
-    "test:fast": "jest --coverage --testPathIgnorePatterns=browser"
+    "test:fast": "jest --coverage --testPathIgnorePatterns=__tests__/browser/"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

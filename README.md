@@ -18,7 +18,7 @@
 
 A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.cc/) from Claude for AI-assisted live-coding music, pattern generation, and algorithmic composition.
 
-**Current State: Beta.** The core workflow (init → compose → playback → analyze) works reliably with real audio output. `npm test` reports ~2570 passing tests, <!-- COVERAGE:START -->88.84% statement coverage / 78.97% branch coverage<!-- COVERAGE:END -->. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
+**Current State: Beta.** The core workflow (init → compose → playback → analyze) works reliably with real audio output. `npm test` reports ~3060 passing tests, <!-- COVERAGE:START -->88.99% statement coverage / 79.99% branch coverage<!-- COVERAGE:END -->. CI is hardened with OpenSSF Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, and lint as a blocking gate.
 
 **What "Beta" means here:**
 - Tool schemas are stable within minor versions; breaking changes require a major bump
@@ -56,9 +56,9 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 - **Result envelope** on every `tools/call`: clients branch on `{ ok, errorCategory, isRetryable }` instead of parsing free-text.
 
 ### Testing & CI status
-- **~2570 passing tests**: `npm test` runs ~2540 unit/integration/example tests in parallel, then 36 browser-validation tests serially against real Chromium. The coverage figure below is from the first tier, which is the one CI also runs — the browser tier adds ~0.2 points and CI does not execute it, so counting it would document coverage nothing verifies.
+- **~3060 passing tests**: `npm test` runs ~3020 unit/integration/example tests in parallel, then 36 browser-validation tests serially against real Chromium. The coverage figure below is from the first tier, which is the one CI also runs — the browser tier adds ~0.2 points and CI does not execute it, so counting it would document coverage nothing verifies.
 <!-- COVERAGE:START -->
-- **88.84% statement coverage / 78.97% branch coverage** (93.07% functions, 89.40% lines), checked against `coverage/coverage-summary.json` by a drift guard.
+- **88.99% statement coverage / 79.99% branch coverage** (90.5% functions, 89.75% lines), checked against `coverage/coverage-summary.json` by a drift guard.
 <!-- COVERAGE:END -->
 - **Lint blocking in CI**: 0 errors, ~195 warnings (mostly `any` in test mocks).
 - **OIDC trusted publishing** to npm with SLSA build provenance attestation on every release.
@@ -67,18 +67,17 @@ A Model Context Protocol (MCP) server that drives [Strudel.cc](https://strudel.c
 
 ### Example patterns
 
-18 example patterns ship in [`patterns/examples/`](patterns/examples/), grouped by genre:
+7 example patterns ship in [`patterns/examples/`](patterns/examples/), grouped by genre:
 
-- **Techno**: hard-techno, minimal-techno
-- **House**: deep-house, tech-house
-- **Drum & Bass**: liquid-dnb, neurofunk
-- **Ambient**: dark-ambient, drone
-- **Trap**: modern-trap, cloud-trap
-- **Jungle**: classic-jungle, ragga-jungle
-- **Jazz**: bebop, modal-jazz
-- **Longform** (multi-minute pieces): dark-ambient-journey, driving-techno, liquid-dnb-roller, nu-jazz-session
+- **Ambient**: ambient-pad (70 BPM)
+- **Dnb**: dnb-classic (174 BPM)
+- **House**: house-classic (125 BPM)
+- **Jazz**: jazz-ii-v-i (120 BPM)
+- **Jungle**: amen-break (165 BPM)
+- **Techno**: techno-driving (130 BPM)
+- **Trap**: trap-modern (140 BPM)
 
-Each example is a JSON file with pattern code, BPM, key, and a description. See [`patterns/examples/README.md`](patterns/examples/README.md) for details. Agents can also list these via the `strudel://examples` MCP resource without making any tool calls.
+Each example is a JSON file with pattern code, BPM, key, and a description, and each sets the tempo it declares (#367). See [`patterns/examples/README.md`](patterns/examples/README.md) for details. Agents can also list these via the `strudel://examples` MCP resource without making any tool calls.
 
 ## Migrating from `@williamzujkowski/strudel-mcp-server`
 

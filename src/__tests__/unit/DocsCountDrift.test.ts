@@ -42,8 +42,18 @@ function actualToolCount(): number {
  * have to count them.
  */
 function actualBrowserTestCount(): { declarations: number } {
-  const file = join(ROOT, 'src', '__tests__', 'browser', 'ExampleValidation.browser.test.ts');
-  return { declarations: (readFileSync(file, 'utf-8').match(/\bit\(/g) ?? []).length };
+  // Every file in the browser directory, not one named file. The tier
+  // has had exactly one member for a while, but hard-coding that meant
+  // the guard measured a file while the docs described a tier — and when
+  // `test:browser` was silently pulling in six unit suites by name
+  // (#376), this could not see the difference.
+  const dir = join(ROOT, 'src', '__tests__', 'browser');
+  let declarations = 0;
+  for (const file of readdirSync(dir)) {
+    if (!/\.(test|spec)\.ts$/.test(file)) continue;
+    declarations += (readFileSync(join(dir, file), 'utf-8').match(/\bit[.(]/g) ?? []).length;
+  }
+  return { declarations };
 }
 
 describe('documented tool count (#246)', () => {
