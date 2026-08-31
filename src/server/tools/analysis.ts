@@ -18,6 +18,7 @@ import type { ToolContext, ToolModule } from './types.js';
 import { empty, err, ok } from './types.js';
 import { InputValidator } from '../../utils/InputValidator.js';
 import { IsolatedRunnerError } from '../../services/IsolatedEngineRunner.js';
+import { ValidationError } from '../../utils/CategorisedError.js';
 
 const SESSION_ID_PROP = {
   session_id: {
@@ -376,6 +377,13 @@ async function run(name: string, args: any, ctx: ToolContext): Promise<unknown> 
         // caller to go run the validator would send them to a tool that
         // will die the same way. Let it reach isolationFailure (#307).
         if (error instanceof IsolatedRunnerError) throw error;
+        // A refusal that already knows it is the caller's input keeps
+        // that verdict. Flattening it into this shape sent it through
+        // the dispatcher as a bare message, which categorised "Pattern
+        // produces roughly 2e10 events, above the 50000 cap" as
+        // `internal` — found by the protocol route check, after two
+        // rounds of fixing this exact class of bug (#382).
+        if (error instanceof ValidationError) return err('validation', error.message);
         const message = error instanceof Error ? error.message : String(error);
         return {
           error: message,

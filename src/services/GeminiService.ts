@@ -1,5 +1,6 @@
 import { Logger } from '../utils/Logger.js';
 import { AiAuthError, AiRateLimitError } from './ai/AiTransport.js';
+import { TransientError } from '../utils/CategorisedError.js';
 import { GoogleAuth } from 'google-auth-library';
 import type { AiTransportEntry } from './ai/AiTransport.js';
 import { cliTransports, hasCliTransport } from './ai/CliTransport.js';
@@ -947,7 +948,7 @@ Consider:
   private parseAudioResponse(response: string): AudioFeedback {
     try {
       const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('No JSON found in response');
+      if (!jsonMatch) throw new TransientError('No JSON found in response');
 
       const parsed = JSON.parse(jsonMatch[0]);
       return {
@@ -972,7 +973,7 @@ Consider:
   private parseVariationResponse(response: string): PatternSuggestion[] {
     try {
       const jsonMatch = response.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) throw new Error('No JSON array found in response');
+      if (!jsonMatch) throw new TransientError('No JSON array found in response');
 
       const parsed = JSON.parse(jsonMatch[0]);
       return parsed.map((item: any) => ({
@@ -989,7 +990,7 @@ Consider:
   private parseCreativeFeedbackResponse(response: string): CreativeFeedback {
     try {
       const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('No JSON found in response');
+      if (!jsonMatch) throw new TransientError('No JSON found in response');
 
       const parsed = JSON.parse(jsonMatch[0]);
       return {

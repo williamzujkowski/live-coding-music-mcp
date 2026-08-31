@@ -17,7 +17,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { categorizeError } from '../../server/tools/types';
-import { BusinessError, ValidationError } from '../../utils/CategorisedError';
+import { BusinessError, TransientError, ValidationError } from '../../utils/CategorisedError';
 import { AiAuthError } from '../../services/ai/AiTransport';
 
 describe('categorised errors carry their own verdict (#382)', () => {
@@ -30,6 +30,14 @@ describe('categorised errors carry their own verdict (#382)', () => {
 
   it('treats a business failure as setup, not breakage', () => {
     expect(categorizeError(new BusinessError('Maximum session limit (5) reached.'))).toBe('business');
+  });
+
+  it('treats unparseable model output as worth retrying', () => {
+    // "No JSON found in response" means the model wrote prose where a
+    // JSON block was asked for. The next attempt often does not, and the
+    // message contains no word the matcher recognises — so it landed in
+    // `internal` and told the caller not to bother.
+    expect(categorizeError(new TransientError('No JSON found in response'))).toBe('transient');
   });
 
   it('treats an auth failure as permission, whatever it says', () => {
@@ -86,7 +94,7 @@ describe('the throw sites that were miscategorised stay fixed (#382)', () => {
   const SITES = throwSites();
 
   /** The messages this issue named. Each must no longer be `internal`. */
-  const FIXED: [string, 'validation' | 'business'][] = [
+  const FIXED: [string, 'validation' | 'business' | 'transient'][] = [
     ['Steps cannot exceed', 'validation'],
     ['cannot exceed steps', 'validation'],
     ['Number of sounds must match', 'validation'],
@@ -95,6 +103,7 @@ describe('the throw sites that were miscategorised stay fixed (#382)', () => {
     ['MIDI base64 input too large', 'validation'],
     ['MIDI input too large', 'validation'],
     ['Maximum session limit', 'business'],
+    ['No JSON found in response', 'transient'],
     ['has no active page yet', 'business'],
   ];
 
@@ -109,7 +118,8 @@ describe('the throw sites that were miscategorised stay fixed (#382)', () => {
     // The class name is what carries the category, so assert on it rather
     // than re-running the matcher over a message that would pass for
     // the wrong reason.
-    expect(site.cls).toBe(expected === 'validation' ? 'ValidationError' : 'BusinessError');
+    const wanted = { validation: 'ValidationError', business: 'BusinessError', transient: 'TransientError' };
+    expect(site.cls).toBe(wanted[expected]);
   });
 });
 
