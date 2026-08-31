@@ -228,3 +228,46 @@ describe('IsolatedEngineRunner — containment (#307)', () => {
     runner2.dispose();
   }, 15000);
 });
+
+describe('a category survives the IPC boundary (#382)', () => {
+  it('rebuilds the child\'s validation failure as a validation failure', async () => {
+    // A class cannot cross IPC — the parent reconstructs an error from a
+    // JSON payload — so the verdict travels as a field. Without it the
+    // child's "Result exceeds the transfer limit. Narrow the query"
+    // arrived as a bare Error, was categorised by phrase, and landed in
+    // `internal`: not retryable, and not the caller's fault, when it is
+    // exactly the caller's to fix.
+    const categorised = path.join(dir, 'categorised.cjs');
+    writeFileSync(
+      categorised,
+      `process.on('message', (m) => process.send({
+         id: m.id, ok: false,
+         error: { name: 'TransferError', message: 'Result exceeds the limit. Narrow the query.', category: 'validation' },
+       }));`,
+      'utf8'
+    );
+    const runner2 = new IsolatedEngineRunner({ childPath: categorised, maxOldSpaceMb: 64, timeoutMs: 4000 });
+    const error = await runner2.call('validate', ['x']).catch((e: unknown) => e);
+    runner2.dispose();
+
+    const { categorizeError } = await import('../../server/tools/types');
+    expect(categorizeError(error)).toBe('validation');
+  }, 15000);
+
+  it('leaves an uncategorised child error alone', async () => {
+    // Only the child's own errors carry a verdict. Anything else keeps
+    // its name and is categorised the old way.
+    const plain = path.join(dir, 'plain-error.cjs');
+    writeFileSync(
+      plain,
+      `process.on('message', (m) => process.send({
+         id: m.id, ok: false, error: { name: 'SyntaxError', message: 'Unexpected token' },
+       }));`,
+      'utf8'
+    );
+    const runner2 = new IsolatedEngineRunner({ childPath: plain, maxOldSpaceMb: 64, timeoutMs: 4000 });
+    const error = await runner2.call('validate', ['x']).catch((e: unknown) => e);
+    runner2.dispose();
+    expect((error as Error).name).toBe('SyntaxError');
+  }, 15000);
+});
