@@ -90,14 +90,4 @@ describe('recovered failures survive the recovery (#286)', () => {
     expect(rescued).toBe('0/1');
   });
 
-  it('clearAllErrorHistory clears the recovered log too', async () => {
-    const r = new ErrorRecovery();
-    let n = 0;
-    await r.handlePatternWrite(async () => { if (++n < 2) throw new Error('x'); return 'ok'; }, 'p');
-    expect(r.getErrorStats()['Pattern Write'].recovered).toBe(1);
-
-    r.clearAllErrorHistory();
-    // The row remains (it is instrumented) but the counts are gone.
-    expect(r.getErrorStats()['Pattern Write'].recovered).toBe(0);
-  });
 });

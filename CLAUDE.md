@@ -155,7 +155,7 @@ Adding context guidelines to CLAUDE.md after line 70.
 ## Project Purpose
 This is an **open source, actively developed** MCP server enabling AI agents to generate music via Strudel.cc using browser automation.
 
-**Current State:** Beta. `npm test` runs two tiers: ~2330 unit/integration tests in parallel, then 31 browser tests serially — they contend for Chromium and the live site, which made the combined parallel run flaky (#267). 20 skipped, 0 failing. <!-- COVERAGE:START -->88.02% statement / 77.72% branch coverage<!-- COVERAGE:END -->. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
+**Current State:** Beta. `npm test` runs two tiers: ~2330 unit/integration tests in parallel, then 31 browser tests serially — they contend for Chromium and the live site, which made the combined parallel run flaky (#267). 20 skipped, 0 failing. <!-- COVERAGE:START -->88.77% statement / 78.82% branch coverage<!-- COVERAGE:END -->. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
 
 ## GitHub Issues Workflow
 
@@ -507,7 +507,7 @@ src/
 ├── utils/
 │   ├── Logger.ts               # Logging (22 lines)
 │   ├── PatternValidator.ts     # Validation (286 lines)
-│   ├── ErrorRecovery.ts        # Error handling (412 lines; 8 of 10 public methods have no production caller — #309)
+│   ├── ErrorRecovery.ts        # Error handling (267 lines; only handlePatternWrite is reached from live code)
 │   ├── PerformanceMonitor.ts   # Monitoring (156 lines)
 │   ├── InputValidator.ts       # Input validation (349 lines)
 │   ├── SafePath.ts             # Filename confinement for exports (#224)
