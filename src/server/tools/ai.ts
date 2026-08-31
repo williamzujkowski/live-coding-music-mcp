@@ -432,7 +432,7 @@ async function jamWith(
  * to guessing from words in the text, which is how `jam_with` came to
  * read a tempo off a comment (#397).
  *
- * `declaredBpm`, not `playedBpm`: this reads patterns written by someone
+ * `declaredBpm`, not `impliedBpm`: this reads patterns written by someone
  * else, and only the number they wrote is knowable. Working out what one
  * will actually sound like takes an assumption about beats per cycle
  * that holds for what this project generates and not for an arbitrary

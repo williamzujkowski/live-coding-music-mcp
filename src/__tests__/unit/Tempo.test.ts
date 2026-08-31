@@ -13,7 +13,7 @@ import {
   BARS_PER_CYCLE,
   BEATS_PER_CYCLE,
   declaredBpm,
-  playedBpm,
+  impliedBpm,
 } from '../../utils/Tempo';
 import { extractBpm } from '../../services/StrudelEngineHelpers';
 import { PatternGenerator } from '../../services/PatternGenerator';
@@ -55,7 +55,7 @@ describe('declaredBpm — the number the author wrote', () => {
   });
 });
 
-describe('playedBpm — what the scheduler will actually do', () => {
+describe('impliedBpm — what the scheduler will actually do', () => {
   it.each([
     ['setcpm(130/4)', 130],
     ['setcps(174/60/4)', 174],
@@ -64,16 +64,28 @@ describe('playedBpm — what the scheduler will actually do', () => {
     ['setcps(174/60)', 696],
     ['setcps(90/60/2)', 180],
   ])('%s plays at %i BPM', (code, want) => {
-    expect(playedBpm(code)).toBeCloseTo(want, 6);
+    expect(impliedBpm(code)).toBeCloseTo(want, 6);
   });
 
   it('agrees with declaredBpm on every style the generator emits', () => {
     const generator = new PatternGenerator();
     for (const style of DRUM_STYLES) {
       const pattern = generator.generateCompletePattern(style, 'C', 174);
-      expect(playedBpm(pattern)).toBeCloseTo(174, 6);
+      expect(impliedBpm(pattern)).toBeCloseTo(174, 6);
       expect(declaredBpm(pattern)).toBe(174);
     }
+  });
+});
+
+describe('impliedBpm reads the tempo call and nothing else', () => {
+  it('does not account for .slow(), which the shipped corpus relies on', () => {
+    // `patterns/examples/dnb/dnb-classic.json` is `setcpm(174/2)` over a
+    // one-bar stack with `.slow(2)`, and plays at 174. Asserted so the
+    // docblock's limitation is a fact and not a hope — anyone reaching
+    // for this on a hand-written pattern needs to see it.
+    const corpus = 'setcpm(174/2)\nstack("[bd ~ ~ bd]").s().slow(2)';
+    expect(impliedBpm(corpus)).toBeCloseTo(348, 6);
+    expect(declaredBpm(corpus)).toBe(174); // the answer a caller wants
   });
 });
 
@@ -118,7 +130,7 @@ describe('MIDI import declares the tempo of the file it read (#397)', () => {
     expect(summary.bpm).toBe(bpm);
     // Not `toContain('setcpm(120/4)')` — that pins the spelling, and the
     // spelling is not what was wrong. This is what it will sound like.
-    expect(playedBpm(pattern)).toBeCloseTo(bpm, 6);
+    expect(impliedBpm(pattern)).toBeCloseTo(bpm, 6);
   });
 
   it('puts one bar in one cycle, which is what the divisor assumes', () => {
@@ -187,6 +199,6 @@ describe('export_midi carries the pattern tempo through (#399)', () => {
     expect(exported.success).toBe(true);
     const back = new MIDIImportService().convertBuffer(Buffer.from(exported.output!, 'base64'));
     expect(back.summary.bpm).toBe(174);
-    expect(playedBpm(back.pattern)).toBeCloseTo(174, 6);
+    expect(impliedBpm(back.pattern)).toBeCloseTo(174, 6);
   });
 });

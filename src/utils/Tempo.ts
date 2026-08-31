@@ -56,7 +56,7 @@ const TEMPO_CALL = /set(cpm|cps)\s*\(\s*(\d+(?:\.\d+)?(?:\s*\/\s*\d+(?:\.\d+)?)*
  *
  * A bare `setcpm(120)` has no divisor to strip, so it reads as 120. That
  * is the pre-existing convention (#341) and it is what hand-written
- * patterns in the wild mean; `playedBpm` answers the other question.
+ * patterns in the wild mean; `impliedBpm` answers the other question.
  *
  * Arithmetic is parsed by splitting on `/`. Never eval — this runs on
  * pattern text that came from a tool argument.
@@ -68,16 +68,22 @@ export function declaredBpm(code: string): number | undefined {
 }
 
 /**
- * The BPM a pattern will actually play at, or undefined when it declares
- * no tempo.
+ * The BPM a pattern's tempo call implies, or undefined when it has none.
  *
- * This is the honest answer for anything that reports a tempo back to a
- * caller: it works the arithmetic through and multiplies by
- * `BEATS_PER_CYCLE`. For a correctly written pattern it equals
- * `declaredBpm`; for the four-times-too-fast calls that #395 fixed it is
- * four times larger, which is the point.
+ * Works the arithmetic through and multiplies by `BEATS_PER_CYCLE`, so
+ * it answers the question `declaredBpm` does not: for a correctly
+ * written pattern the two agree, and for the four-times-too-fast calls
+ * #395 fixed this one is four times larger. That gap is the whole bug,
+ * and a test that only reads the numerator cannot see it.
+ *
+ * **The tempo call only.** `.slow(2)` and `.fast(2)` rescale time and
+ * are not accounted for here — the shipped corpus pairs `setcpm(174/2)`
+ * with `.slow(2)` and plays at 174, which this reports as 348. Use it
+ * on patterns whose timing lives entirely in the tempo call, which is
+ * everything this project generates. `declaredBpm` is the right answer
+ * for a pattern someone else wrote.
  */
-export function playedBpm(code: string): number | undefined {
+export function impliedBpm(code: string): number | undefined {
   const parts = tempoParts(code);
   if (parts === null) return undefined;
   const value = parts.values.reduce((a, b) => a / b);
