@@ -1,7 +1,7 @@
 {
   "name": "Amen break",
   "genre": "jungle",
-  "pattern": "stack(\n  \"[bd ~ bd ~] [~ ~ ~ ~] [~ ~ bd bd] [~ ~ ~ ~]\",\n  \"[~ ~ ~ ~] [sd ~ ~ sd] [~ sd ~ ~] [sd ~ ~ sd]\",\n  \"[hh ~ hh ~] [hh ~ hh ~] [hh ~ hh ~] [hh ~ hh ~]\",\n  \"[~ ~ ~ ~] [~ ~ ~ ~] [~ ~ oh ~] [~ ~ ~ ~]\"\n).s().slow(2)",
+  "pattern": "setcpm(165/2)\nstack(\n  \"[bd ~ bd ~] [~ ~ ~ ~] [~ ~ bd bd] [~ ~ ~ ~]\",\n  \"[~ ~ ~ ~] [sd ~ ~ sd] [~ sd ~ ~] [sd ~ ~ sd]\",\n  \"[hh ~ hh ~] [hh ~ hh ~] [hh ~ hh ~] [hh ~ hh ~]\",\n  \"[~ ~ ~ ~] [~ ~ ~ ~] [~ ~ oh ~] [~ ~ ~ ~]\"\n).s().slow(2)",
   "bpm": 165,
   "key": "C",
   "description": "The Amen break, the foundational jungle rhythm: displaced kicks and ghosted snares against straight hats.",

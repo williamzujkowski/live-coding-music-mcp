@@ -1,7 +1,7 @@
 {
   "name": "Modern trap",
   "genre": "trap",
-  "pattern": "stack(\n  s(\"bd ~ ~ ~ ~ ~ bd ~\"),\n  s(\"~ ~ ~ ~ sd ~ ~ ~\"),\n  s(\"hh*16\").gain(0.35),\n  note(\"f1 ~ ~ f1 ~ c2 ~ ~\").s(\"sine\").lpf(200).gain(0.9),\n  note(\"<Fm Db Ab Eb>\").s(\"triangle\").struct(\"1 ~ ~ ~\").release(0.6).gain(0.3)\n)",
+  "pattern": "setcpm(140/4)\nstack(\n  s(\"bd ~ ~ ~ ~ ~ bd ~\"),\n  s(\"~ ~ ~ ~ sd ~ ~ ~\"),\n  s(\"hh*16\").gain(0.35),\n  note(\"f1 ~ ~ f1 ~ c2 ~ ~\").s(\"sine\").lpf(200).gain(0.9),\n  note(\"<Fm Db Ab Eb>\").s(\"triangle\").struct(\"1 ~ ~ ~\").release(0.6).gain(0.3)\n)",
   "bpm": 140,
   "key": "F minor",
   "progression": "Fm - Db - Ab - Eb (i - bVI - bIII - bVII)",
@@ -15,7 +15,7 @@
   "source": {
     "license": "AGPL-3.0-or-later",
     "origin": "written for this repository",
-    "note": "No licensed source exists for this genre \u2014 Strudel's drum corpus has no techno, trap, ambient or jazz entries, and the community collections are unlicensed. Written by hand; the harmony is stated explicitly in `key` and `progression` so it can be checked against music theory rather than against this project's own analyzer."
+    "note": "No licensed source exists for this genre — Strudel's drum corpus has no techno, trap, ambient or jazz entries, and the community collections are unlicensed. Written by hand; the harmony is stated explicitly in `key` and `progression` so it can be checked against music theory rather than against this project's own analyzer."
   },
   "timestamp": "2026-08-31T00:00:00.000Z"
 }
