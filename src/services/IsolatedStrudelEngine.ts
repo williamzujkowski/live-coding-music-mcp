@@ -33,9 +33,23 @@ export const DEFAULT_ENGINE_HEAP_MB = 256;
 /** Wall-clock deadline for one evaluation. Covers hangs the heap cap cannot. */
 export const DEFAULT_ENGINE_TIMEOUT_MS = 5000;
 
+/** Where the child lives, and whether it needs a TypeScript loader. */
+export interface ChildEntrypointSpec {
+  childPath: string;
+  needsTsx: boolean;
+}
+
 export interface IsolatedStrudelEngineOptions {
   /** Override the child entrypoint. Tests use this; production resolves it. */
   childPath?: string;
+  /**
+   * Override how the entrypoint is located. Production resolves it with a
+   * dynamic import, which is ASYNCHRONOUS — and that asynchrony is the
+   * window in which `dispose()` can race a start. Passing `childPath`
+   * closes the window entirely, so a test that used it could not
+   * reproduce the race it claimed to cover. This seam exists so one can.
+   */
+  resolveEntrypoint?: () => Promise<ChildEntrypointSpec>;
   /** Extra `execArgv` for the child, e.g. a TypeScript loader. */
   extraExecArgv?: string[];
   maxOldSpaceMb?: number;
@@ -126,11 +140,17 @@ export class IsolatedStrudelEngine implements LocalPatternEngine {
       // `import.meta`, which cannot be parsed by this project's Jest.
       // See engineChildPath.ts for why that is not negotiable.
       try {
-        const { resolveChildEntrypoint } = await import('./engineChildPath.js');
-        const entrypoint = resolveChildEntrypoint();
+        const resolve =
+          this.options.resolveEntrypoint ??
+          (async (): Promise<ChildEntrypointSpec> => {
+            const { resolveChildEntrypoint } = await import('./engineChildPath.js');
+            return resolveChildEntrypoint();
+          });
+        const entrypoint = await resolve();
         childPath = entrypoint.childPath;
         if (entrypoint.needsTsx) extraExecArgv = ['--import', 'tsx', ...extraExecArgv];
       } catch (error: unknown) {
+        if (error instanceof IsolatedRunnerError) throw error;
         const detail = error instanceof Error ? error.message : String(error);
         throw new IsolatedRunnerError(
           `Could not locate the isolated pattern engine child: ${detail}`,

@@ -48,6 +48,18 @@ describe('local engine isolation wiring (#307)', () => {
     expect(SERVER).toMatch(/strudelEngine\.dispose\(\)/);
   });
 
+  it('cannot hang in shutdown, and does not swallow a second signal', () => {
+    // Both awaits in shutdown talk to a browser over CDP, and a wedged
+    // one never answers. Hanging there is the one path that CAN orphan
+    // the engine child, because the supervisor's eventual SIGKILL gives
+    // nobody a chance to dispose it.
+    expect(SERVER).toMatch(/forceExit/);
+    expect(SERVER).toMatch(/\.unref\(\)/);
+    expect(SERVER).toMatch(/SHUTDOWN_GRACE_MS/);
+    // A second Ctrl+C must do something.
+    expect(SERVER).toMatch(/during shutdown/);
+  });
+
   it('keeps the four local-engine tools on the isolated path', () => {
     const analysis = readFileSync(
       path.join(ROOT, 'src', 'server', 'tools', 'analysis.ts'),

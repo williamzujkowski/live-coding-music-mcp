@@ -60,6 +60,13 @@ function loadConfig(): ReturnType<typeof parseServerConfig> {
   }
 }
 
+/**
+ * How long shutdown may take before the process exits anyway. Browser
+ * cleanup talks to a wedged Chromium over CDP often enough that "wait
+ * forever" is not an option (#307).
+ */
+const SHUTDOWN_GRACE_MS = 5000;
+
 const config = loadConfig();
 const audioAnalysisConfig = config.audioAnalysis;
 
@@ -676,15 +683,34 @@ export class StrudelMCPServer {
     // the deployments where nobody is watching a terminal (#307).
     let shuttingDown = false;
     const shutdown = async (signal: string): Promise<void> => {
-      if (shuttingDown) return;
+      if (shuttingDown) {
+        // A second signal means the operator is not willing to wait any
+        // longer, and they are usually right. Swallowing it left Ctrl+C
+        // doing nothing at all while a wedged browser held the first
+        // shutdown open forever.
+        this.logger.warn(`${signal} during shutdown — exiting now.`);
+        process.exit(1);
+      }
       shuttingDown = true;
       this.logger.info(`Shutting down (${signal})...`);
+
+      // cleanup() and destroyAll() both talk to a browser over CDP, and a
+      // wedged one never answers. Without this the process hangs in
+      // shutdown indefinitely and the supervisor eventually SIGKILLs it,
+      // which is the one path that CAN orphan the engine child. unref'd
+      // so it never keeps a healthy process alive.
+      const forceExit = setTimeout(() => {
+        this.logger.error(`Shutdown exceeded ${String(SHUTDOWN_GRACE_MS)}ms — forcing exit.`);
+        process.exit(1);
+      }, SHUTDOWN_GRACE_MS);
+      forceExit.unref();
       // Disposed FIRST and synchronously. The two awaits below can hang
       // on a wedged browser, and the child must not outlive us because
       // cleanup took too long.
       this.strudelEngine.dispose();
       await this.controller.cleanup();
       await this.sessionManager.destroyAll();
+      clearTimeout(forceExit);
       process.exit(0);
     };
 
