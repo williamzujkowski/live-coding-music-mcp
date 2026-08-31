@@ -124,6 +124,16 @@ export class AudioAnalyzer {
           error?: string;
         } | null,
         lastAnalysisTime: 0,
+        /**
+         * Real hardware sample rate, read from the AudioContext.
+         *
+         * 44100 was assumed throughout, and 22050 was hardcoded as the
+         * Nyquist. The AudioContext rate follows the hardware and is
+         * commonly 48000 (typical on Linux/Chrome), where every reported
+         * frequency came out 8.8% low — 1.47 semitones, enough to label
+         * a real C as B or A# (#321/#323).
+         */
+        sampleRate: 44100,
 
         connect() {
           const originalGainConnect = GainNode.prototype.connect as any;
@@ -134,6 +144,7 @@ export class AudioAnalyzer {
               intercepted = true;
 
               const ctx = args[0].context as AudioContext;
+              (window as any).strudelAudioAnalyzer.sampleRate = ctx.sampleRate;
               (window as any).strudelAudioAnalyzer.analyser = ctx.createAnalyser();
               // Configurable via config.audio_analysis in config.json (#195).
               (window as any).strudelAudioAnalyzer.analyser.fftSize = cfg.fftSize;
@@ -215,8 +226,16 @@ export class AudioAnalyzer {
           }
 
           const average = sum / length;
-          const centroid = sum > 0 ? weightedSum / sum : 0;
-          const peakFreq = (peakIndex / length) * 22050;
+          // Hz per bin. `weightedSum` accumulates `i * value`, so the
+          // raw centroid is a BIN INDEX; comparing it against Hz-scale
+          // thresholds made "bright" need bin 500 of 512, i.e. 21.5 kHz
+          // out of a 22 kHz maximum — unreachable — and made the answer
+          // depend on fftSize (#323).
+          const nyquist = (this.sampleRate as number) / 2;
+          const hzPerBin = nyquist / length;
+          const centroidBin = sum > 0 ? weightedSum / sum : 0;
+          const centroid = centroidBin * hzPerBin;
+          const peakFreq = peakIndex * hzPerBin;
 
           const bass = bassSum / Math.max(1, bassEnd);
           const lowMid = lowMidSum / Math.max(1, lowMidEnd - bassEnd);
@@ -243,7 +262,10 @@ export class AudioAnalyzer {
               isSilent: average < 1,
 
               bassToTrebleRatio: treble > 0 ? (bass / treble).toFixed(2) : 'N/A',
-              brightness: centroid > 500 ? 'bright' : centroid > 200 ? 'balanced' : 'dark'
+              // Hz now, and reachable. Roughly: mostly-bass content
+              // sits under 1.5 kHz, a full mix lands 1.5-4 kHz, and
+              // hat/cymbal-dominated material runs above.
+              brightness: centroid > 4000 ? 'bright' : centroid > 1500 ? 'balanced' : 'dark'
             }
           };
 
@@ -836,7 +858,14 @@ export class AudioAnalyzer {
     let syncopationScore = 0;
 
     for (let i = 1; i < onsets.length; i++) {
-      const phase = (onsets[i] % (meanInterval * 4)) / meanInterval;
+      // Relative to the first onset, not to the Unix epoch.
+      // `onsets[i]` is a Date.now() value, so this modulo used to depend
+      // on what time of day it was: the same nine onsets 500ms apart
+      // scored 0.000 at one epoch offset and 1.000 at another, and a
+      // perfectly regular grid reported maximum syncopation roughly
+      // three-quarters of the time (#323).
+      const elapsed = onsets[i] - onsets[0];
+      const phase = (elapsed % (meanInterval * 4)) / meanInterval;
 
       // Check if onset is on an off-beat (not on 0, 1, 2, 3)
       const nearestBeat = Math.round(phase);
@@ -862,7 +891,10 @@ export class AudioAnalyzer {
     const pattern = new Array(patternLength).fill('.');
 
     for (const onset of onsets) {
-      const position = Math.round((onset % (meanInterval * patternLength)) / meanInterval);
+      // Same epoch bug as detectSyncopation: relative to the first onset.
+      const position = Math.round(
+        ((onset - onsets[0]) % (meanInterval * patternLength)) / meanInterval,
+      );
       if (position < patternLength) {
         pattern[position] = 'X';
       }
