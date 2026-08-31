@@ -212,10 +212,19 @@ describe('MCP Server Integration Tests', () => {
       expect(serverAny.isInitialized).toBe(false);
     });
 
-    test('should track generated patterns', () => {
+    test('should hold at most one pre-init pattern, and consume it', () => {
       const serverAny = server as any;
 
-      expect(serverAny.generatedPatterns).toBeInstanceOf(Map);
+      // A single slot, not a map. Both readers only ever took the last
+      // value, so the map's other entries were pure growth — and failing
+      // to consume it let a second init replay a stale pattern over live
+      // work (#262).
+      expect(serverAny.pendingPattern).toBeNull();
+
+      serverAny.pendingPattern = 'STASHED';
+      expect(serverAny.takePendingPattern()).toBe('STASHED');
+      expect(serverAny.pendingPattern).toBeNull();
+      expect(serverAny.takePendingPattern()).toBeNull();
     });
   });
 
