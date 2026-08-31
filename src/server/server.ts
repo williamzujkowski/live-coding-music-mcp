@@ -99,7 +99,16 @@ export class StrudelMCPServer {
   /** Maximum history entries per session to prevent memory leaks */
   private readonly MAX_HISTORY = 100;
   private isInitialized: boolean = false;
-  private generatedPatterns: Map<string, string> = new Map();
+  /**
+   * A pattern produced before a browser existed, held for the next init.
+   *
+   * One slot, not a map. Both readers only ever took the last value, so
+   * the map's other entries were pure growth — nothing deleted from it,
+   * up to 10KB each, for the life of the process. Its keys were also
+   * `pattern_${Date.now()}`, so two stashes in the same millisecond
+   * collided and one was silently dropped (#262).
+   */
+  private pendingPattern: string | null = null;
 
   constructor() {
     this.server = new Server(
@@ -266,9 +275,8 @@ export class StrudelMCPServer {
     }
 
     if (!this.isInitialized) {
-      // Default session: return the last pre-init generated pattern if any
-      const lastPattern = Array.from(this.generatedPatterns.values()).pop();
-      return lastPattern || '';
+      // Default session: return the pre-init generated pattern if any
+      return this.pendingPattern ?? '';
     }
 
     try {
@@ -276,6 +284,20 @@ export class StrudelMCPServer {
     } catch {
       return '';
     }
+  }
+
+  /**
+   * Returns the stashed pre-init pattern and clears it.
+   *
+   * Consuming rather than peeking is what stops a later init replaying a
+   * stale pattern over live work (#262).
+   *
+   * @returns The pending pattern, or null when there is none
+   */
+  private takePendingPattern(): string | null {
+    const pending = this.pendingPattern;
+    this.pendingPattern = null;
+    return pending;
   }
 
   private async writePatternSafe(pattern: string, sessionId?: string): Promise<string> {
@@ -289,8 +311,7 @@ export class StrudelMCPServer {
 
     if (!this.isInitialized) {
       // Default session: stash the pattern for the next init/auto-init
-      const id = `pattern_${Date.now()}`;
-      this.generatedPatterns.set(id, pattern);
+      this.pendingPattern = pattern;
       return `Pattern generated (initialize Strudel to use it): ${pattern.substring(0, 50)}...`;
     }
 
@@ -455,13 +476,20 @@ export class StrudelMCPServer {
       if (this._page) {
         await this.getAudioCaptureService();
       }
-      // Replay any pattern generated before init landed.
-      if (this.generatedPatterns.size > 0) {
-        const lastPattern = Array.from(this.generatedPatterns.values()).pop();
-        if (lastPattern) {
-          await this.controller.writePattern(lastPattern);
-          return `${initResult}. Loaded generated pattern.`;
-        }
+      // Replay any pattern generated before init landed, then forget it.
+      //
+      // Clearing is the whole point: the stash exists to bridge the gap
+      // before a browser exists, and that gap closes the first time init
+      // succeeds. Without the clear, a second init — which agents call
+      // routinely, since it reports "Already initialized" and reads as a
+      // no-op — silently overwrote the live editor with a pattern from
+      // before the first init. Undo could not recover it either, because
+      // this writes through the controller and only edit_pattern pushes
+      // history (#262).
+      const pending = this.takePendingPattern();
+      if (pending !== null) {
+        await this.controller.writePattern(pending);
+        return `${initResult}. Loaded generated pattern.`;
       }
       return initResult;
     }
