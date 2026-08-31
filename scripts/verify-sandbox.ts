@@ -21,6 +21,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { StrudelEngine, EVALUATOR_EXPORTS } from '../src/services/StrudelEngine.js';
+import { MusicTheory } from '../src/services/MusicTheory.js';
 
 // A pattern that escaped the sandbox would create this file.
 const MARKER = join(tmpdir(), 'strudel-sandbox-escape-marker');
@@ -286,6 +287,40 @@ async function main(): Promise<void> {
       } else {
         failures++;
         console.error(`  FAIL  unhelpful message: ${message.slice(0, 80)}`);
+      }
+    }
+  }
+
+  console.log('\nEuclidean rhythms match Strudel\'s own bjork() (#319):');
+  {
+    // Jest cannot import @strudel/core (ESM), so the exhaustive
+    // comparison lives here, where the real module is already loaded.
+    // The Jest tests pin literal values READ OUT OF STRUDEL; this
+    // proves those literals were not cherry-picked.
+    const strudel = await import('@strudel/core');
+    const bjork = (strudel as unknown as { bjork?: (k: number, n: number) => boolean[] }).bjork;
+    if (typeof bjork !== 'function') {
+      console.log('  skip  @strudel/core no longer exports bjork');
+    } else {
+      let compared = 0;
+      let mismatched = 0;
+      let firstMismatch = '';
+      for (let n = 1; n <= 32; n++) {
+        for (let k = 1; k <= n; k++) {
+          const theirs = bjork(k, n).map(x => (x ? 1 : 0)).join('');
+          const mine = MusicTheory.bjorklund(k, n).map(x => (x ? 1 : 0)).join('');
+          compared++;
+          if (theirs !== mine) {
+            mismatched++;
+            if (!firstMismatch) firstMismatch = `E(${String(k)},${String(n)}) strudel=${theirs} ours=${mine}`;
+          }
+        }
+      }
+      if (mismatched > 0) {
+        failures++;
+        console.error(`  FAIL  ${String(mismatched)}/${String(compared)} differ, e.g. ${firstMismatch}`);
+      } else {
+        console.log(`  ok    ${String(compared)} (k,n) pairs up to n=32, zero differences`);
       }
     }
   }
