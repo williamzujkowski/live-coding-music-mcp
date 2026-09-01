@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import { randomBytes } from 'crypto';
 import * as path from 'path';
 import { Logger } from './utils/Logger.js';
-import { ValidationError } from './utils/CategorisedError.js';
+import { ValidationError, BusinessError } from './utils/CategorisedError.js';
 
 /**
  * Narrows a parsed JSON value to a pattern, or null when it is not one.
@@ -41,8 +41,6 @@ interface PatternData {
 export class PatternStore {
   private patternCache: Map<string, PatternData> = new Map();
   private listCache: { patterns: PatternData[], timestamp: number, skipped: number } | null = null;
-  /** Set by the read `listDetailed` wraps; never read except through it. */
-  private skippedInLastRead = 0;
   private readonly LIST_CACHE_TTL = 5000; // 5 seconds
   private readonly MAX_CACHE_SIZE = 100; // LRU cache limit
   private directoryEnsured: boolean = false;
@@ -154,7 +152,17 @@ export class PatternStore {
     const data: PatternData = {
       name,
       content,
-      tags,
+      // Copied, not aliased. The caller's array was stored by reference
+      // and cached, so mutating it after the save changed what `load`
+      // returned while the file on disk kept the original — the cache
+      // and the disk disagreeing, which is the thing #428 exists to
+      // prevent:
+      //
+      //   const tags = ['x'];
+      //   await save('p', 'code', tags);
+      //   tags[0] = 'y';
+      //   (await load('p')).tags   // ['y'], file holds ['x']  (#473)
+      tags: [...tags],
       timestamp: new Date().toISOString(),
     };
 
@@ -276,28 +284,41 @@ export class PatternStore {
   /**
    * Patterns, plus how many files could not be read.
    *
-   * The count travels WITH the data rather than sitting on the instance:
-   * a `getLastSkipped()` would belong to whichever listing finished most
-   * recently, and two concurrent calls would cross their answers.
-   *
    * A partial listing presented as complete is the same lie as reporting
    * zero, quieter — the store logs what it skipped and no MCP client
    * reads the log (#426; #335 is the precedent for making a warning
    * reach the caller).
    */
   async listDetailed(tag?: string): Promise<{ patterns: PatternData[]; skipped: number }> {
-    const patterns = await this.list(tag);
-    return { patterns, skipped: this.skippedInLastRead };
+    return this.readAll(tag);
   }
 
   async list(tag?: string): Promise<PatternData[]> {
+    return (await this.readAll(tag)).patterns;
+  }
+
+  /**
+   * The one read. Returns the count WITH the data.
+   *
+   * This used to leave the count on the instance as `skippedInLastRead`
+   * and have `listDetailed` pick it up after awaiting `list`. The
+   * docstring above it disclaimed exactly that design — "a
+   * `getLastSkipped()` would belong to whichever listing finished most
+   * recently, and two concurrent calls would cross their answers" —
+   * while the code did it anyway: the field is written inside `list`
+   * and read after an await, so two concurrent listings genuinely
+   * could, and the second one's count would be reported for the first
+   * one's patterns (#473).
+   *
+   * Returning both from one call is what makes the docstring true.
+   */
+  private async readAll(tag?: string): Promise<{ patterns: PatternData[]; skipped: number }> {
     // Use cached list if available and not expired
     const now = Date.now();
     if (!tag && this.listCache && (now - this.listCache.timestamp) < this.LIST_CACHE_TTL) {
       // The cached listing carries its own skipped count, so a cache hit
       // does not inherit the previous uncached read's.
-      this.skippedInLastRead = this.listCache.skipped;
-      return this.listCache.patterns;
+      return { patterns: this.listCache.patterns, skipped: this.listCache.skipped };
     }
 
     try {
@@ -340,7 +361,6 @@ export class PatternStore {
         }
         allPatterns.push(pattern);
       }
-      this.skippedInLastRead = skipped.length;
       if (skipped.length > 0) {
         this.logger.warn(
           `Skipped ${String(skipped.length)} unreadable or malformed pattern file(s)`,
@@ -362,10 +382,27 @@ export class PatternStore {
         this.listCache = { patterns: sorted, timestamp: now, skipped: skipped.length };
       }
 
-      return sorted;
+      return { patterns: sorted, skipped: skipped.length };
     } catch (error) {
+      // A directory that cannot be READ is not a directory with no
+      // patterns in it.
+      //
+      // Individual bad files are already handled above by `allSettled`
+      // and counted in `skipped`, so this catch only fires when the
+      // whole directory is unavailable — the readdir or the
+      // ensureDirectory failed. Returning `[]` reported that as a clean
+      // empty listing:
+      //
+      //   chmod 000 <store>;  listDetailed()
+      //     -> {"patterns":[],"skipped":0}
+      //
+      // which tells the caller they have no saved patterns when the
+      // truth is that nothing could be looked at. That is #426's lie
+      // exactly, reached down a different path (#473).
       this.logger.warn(`Failed to list patterns${tag ? ` with tag: ${tag}` : ''}`, error);
-      return [];
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new BusinessError(
+        `Cannot read the pattern directory ${this.basePath}: ${reason}`);
     }
   }
 
