@@ -702,21 +702,9 @@ export class MIDIExportService {
     // (#432). Laid out independently and concatenated, which is what
     // `parsePatternNotes` already does across separate `s(...)` calls in
     // a stack — this is the same thing one nesting level down.
-    const lanes = MIDIExportService.splitLanes(soundString);
-    if (lanes.length > 1) {
-      return lanes.flatMap(lane => this.parseDrumString(lane, startTime));
-    }
+    const unknown: string[] = [];
+    const events = this.layoutDrums(soundString, startTime, BEATS_PER_BAR, unknown);
 
-    const tokens = MIDIExportService.expandOperators(
-      MIDIExportService.tokenize(soundString),
-      token => { this.unrepresented.add(token); },
-      token => { this.partial.add(token); },
-    );
-    if (tokens.length === 0) return [];
-
-    const isRest = (t: string) => t === '~' || t === '-' || t === 'r';
-    const unknown = tokens.filter(
-      t => !isRest(t) && !Object.hasOwn(SAMPLE_TO_MIDI, t.toLowerCase()));
     if (unknown.length > 0) {
       // The whole lane is dropped when any token is unrecognised — a
       // deliberate choice, since a partial drum lane is a different
@@ -727,19 +715,93 @@ export class MIDIExportService {
       for (const token of unknown) this.unrepresented.add(token);
       return [];
     }
+    return events;
+  }
 
-    const step = BEATS_PER_BAR / tokens.length;
+  /**
+   * Lays a drum fragment out across a window of `span` beats.
+   *
+   * The same rule as `layoutNotes`, one nesting level at a time: a
+   * COMMA separates parallel lanes, each of which gets the whole
+   * window; a SPACE subdivides, and `@n` weights the share.
+   *
+   * The drum path had no bracket branch at all, so `s("[bd sd] hh")` —
+   * an ordinary subdivided step — produced ZERO notes: `[bd sd]` is not
+   * a sample name, so the unknown-token rule dropped the whole lane
+   * (#433 item 7). The note path got this in #469; this is the same
+   * treatment one file over.
+   *
+   * Unknown leaves are collected rather than reported here, so the
+   * caller can apply the all-or-nothing rule to the lane as a whole.
+   *
+   * @param source - Drum fragment, brackets already unwrapped
+   * @param start - Window start, in beats
+   * @param span - Window width, in beats
+   * @param unknown - Collects leaf tokens that are not samples or rests
+   * @returns Percussion events laid out across the window
+   */
+  private layoutDrums(
+    source: string,
+    start: number,
+    span: number,
+    unknown: string[],
+  ): NoteEvent[] {
+    const lanes = MIDIExportService.splitLanes(source);
+    if (lanes.length > 1) {
+      return lanes.flatMap(lane => this.layoutDrums(lane, start, span, unknown));
+    }
+
+    const parts = MIDIExportService.expandOperators(
+      MIDIExportService.tokenize(source),
+      token => { unknown.push(token); },
+      token => { this.partial.add(token); },
+    );
+    if (parts.length === 0) return [];
+
+    // Weighted, as Strudel divides a cycle (#477).
+    const weighed = parts.map((part) => {
+      const match = /^(.+?)@(\d+(?:\.\d+)?)$/.exec(part);
+      if (!match) return { token: part, weight: 1 };
+      const weight = Number.parseFloat(match[2]);
+      return Number.isFinite(weight) && weight > 0
+        ? { token: match[1], weight }
+        : { token: match[1], weight: 1 };
+    });
+    const totalWeight = weighed.reduce((sum, w) => sum + w.weight, 0);
+    if (totalWeight <= 0) return [];
+    const unit = span / totalWeight;
+
+    const isRest = (t: string) => t === '~' || t === '-' || t === 'r';
     const events: NoteEvent[] = [];
-    tokens.forEach((token, index) => {
-      if (isRest(token)) return;
+    let offset = 0;
+
+    for (const { token, weight } of weighed) {
+      const at = start + offset;
+      const step = weight * unit;
+      offset += step;
+
+      if (isRest(token)) continue;
+
+      const bracketed = /^\[(.*)\]$/.exec(token);
+      if (bracketed) {
+        events.push(...this.layoutDrums(bracketed[1], at, step, unknown));
+        continue;
+      }
+
+      const sample = token.toLowerCase();
+      if (!Object.hasOwn(SAMPLE_TO_MIDI, sample)) {
+        unknown.push(token);
+        continue;
+      }
+
       events.push({
-        note: SAMPLE_TO_MIDI[token.toLowerCase()],
-        time: startTime + index * step,
+        note: SAMPLE_TO_MIDI[sample],
+        time: at,
         duration: step,
         velocity: 100,
         channel: GM_PERCUSSION_CHANNEL,
       });
-    });
+    }
     return events;
   }
 
