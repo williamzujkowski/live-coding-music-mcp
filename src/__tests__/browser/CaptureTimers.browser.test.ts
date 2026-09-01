@@ -157,4 +157,47 @@ describe('Capture timers (real page, real timers)', () => {
     expect(a.bytes).toBe(b.bytes);
     expect(a.bytes).toBeGreaterThan(0);
   });
+
+  it('a re-inject does not leave the old capture\'s timers armed', async () => {
+    // `injectRecorder` overwrites `strudelAudioCapture` outright, and
+    // `server.ts` can build a fresh service for a page that already
+    // carries one. A cap timer or stop watchdog surviving that would
+    // fire against the NEW object and empty its chunks — which is
+    // exactly how the previous capture's watchdog destroyed the next
+    // one in #464, and the shape #479 found on the analyzer.
+    expect(await start(60_000)).toEqual({ success: true });
+    await idle(200);
+
+    const orphan = await page.evaluate(/* istanbul ignore next */ () => {
+      const c = (window as any).strudelAudioCapture;
+      (window as any).__orphanCapture = c;
+      return { capTimer: c.capTimer !== null };
+    });
+    expect(orphan.capTimer).toBe(true); // armed before the re-inject
+
+    await service.injectRecorder(page);
+
+    const after = await page.evaluate(/* istanbul ignore next */ () => {
+      const old = (window as any).__orphanCapture;
+      return { capTimer: old.capTimer, watchdog: old.stopWatchdog, capturing: old.isCapturing };
+    });
+    expect(after.capTimer).toBeNull();
+    expect(after.watchdog).toBeNull();
+    expect(after.capturing).toBe(false);
+
+    // And the fresh object is usable.
+    await page.evaluate(/* istanbul ignore next */ () => {
+      const c = (window as any).strudelAudioCapture;
+      const ctx = new AudioContext();
+      const dest = ctx.createMediaStreamDestination();
+      const osc = ctx.createOscillator();
+      osc.connect(dest);
+      osc.start();
+      c.mediaStreamDest = dest;
+      c.isConnected = true;
+    });
+    expect(await start()).toEqual({ success: true });
+    await idle(300);
+    expect((await stop()).success).toBe(true);
+  });
 });

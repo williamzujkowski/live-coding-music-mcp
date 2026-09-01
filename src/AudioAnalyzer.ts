@@ -234,6 +234,22 @@ export class AudioAnalyzer {
     const cfg = { fftSize: this.fftSize, smoothing: this.smoothing };
     /* istanbul ignore next -- browser-injected IIFE, covered by integration tests */
     await page.evaluate(/* istanbul ignore next */ (cfg: { fftSize: number; smoothing: number }) => {
+      // Stop the previous collector before replacing the object it
+      // belongs to.
+      //
+      // This assignment overwrites `strudelAudioAnalyzer` outright, and
+      // the old object's 20ms interval does not stop just because
+      // nothing points at it any more. It kept sampling into an
+      // orphaned array and held the old AnalyserNode — and through it
+      // the old AudioContext — reachable for the life of the page.
+      // Measured in real Chromium: 16 samples in 300ms after a second
+      // inject (#479).
+      //
+      // This is also `stopFluxTracking`'s first production caller. It
+      // was written in #322 and never invoked, so the collector had no
+      // way to stop at all.
+      (window as any).strudelAudioAnalyzer?.stopFluxTracking?.();
+
       (window as any).strudelAudioAnalyzer = {
         analyser: null as AnalyserNode | null,
         dataArray: null as Uint8Array | null,
