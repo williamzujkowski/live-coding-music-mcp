@@ -652,11 +652,27 @@ export class MIDIExportService {
         continue;
       }
 
-      // name@n — duration weight. Keep the note, drop the weight.
-      const weighted = /^(.+?)@\d+(?:\.\d+)?$/.exec(token);
+      // name@n — duration weight. PRESERVED, and applied by the
+      // layout rather than stripped here.
+      //
+      // This used to drop the weight and report the token as partially
+      // exported. Dropping it does not merely lose the duration, it
+      // moves every note after it. Strudel divides the cycle by TOTAL
+      // WEIGHT, measured:
+      //
+      //   mini('c4@4 e4')    ->  c4[0.000-0.800]  e4[0.800-1.000]
+      //   export (before)    ->  c4@0/2           e4@2/2
+      //
+      // — the same layout as the unweighted `c4 e4`, so `c4@3 e4@1`
+      // put e4 at the halfway point instead of three quarters in.
+      // Onsets, not just durations (#477).
+      const weighted = /^(.+?)@(\d+(?:\.\d+)?)$/.exec(token);
       if (weighted) {
-        out.push(...MIDIExportService.expandOperators([weighted[1]], onUnrepresented, onPartial));
-        onPartial(token);
+        const inner = MIDIExportService.expandOperators(
+          [weighted[1]], onUnrepresented, onPartial);
+        // A weight applies to the token it was written on. Expanding
+        // `[a b]@2` yields several, and each carries the weight.
+        out.push(...inner.map(t => `${t}@${weighted[2]}`));
         continue;
       }
 
@@ -799,11 +815,29 @@ export class MIDIExportService {
     );
     if (parts.length === 0) return [];
 
-    const step = span / parts.length;
-    const notes: NoteEvent[] = [];
+    // Weighted layout, as Strudel does it: the window is divided by the
+    // TOTAL weight, and each token takes its own share. An unweighted
+    // token weighs 1, so an unweighted sequence divides evenly exactly
+    // as before.
+    const weighed = parts.map((part) => {
+      const match = /^(.+?)@(\d+(?:\.\d+)?)$/.exec(part);
+      if (!match) return { token: part, weight: 1 };
+      const weight = Number.parseFloat(match[2]);
+      return Number.isFinite(weight) && weight > 0
+        ? { token: match[1], weight }
+        : { token: match[1], weight: 1 };
+    });
+    const totalWeight = weighed.reduce((sum, w) => sum + w.weight, 0);
+    if (totalWeight <= 0) return [];
+    const unit = span / totalWeight;
 
-    parts.forEach((part, index) => {
-      const at = start + index * step;
+    const notes: NoteEvent[] = [];
+    let offset = 0;
+
+    weighed.forEach(({ token: part, weight }) => {
+      const at = start + offset;
+      const step = weight * unit;
+      offset += step;
 
       if (part === '~' || part === '-' || part === 'r') return;
 

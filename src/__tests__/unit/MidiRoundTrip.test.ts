@@ -23,28 +23,51 @@ function roundTrip(pattern: string, stepsPerCycle = 16): string {
   return back.pattern.split('\n').find(l => l.includes('note(')) ?? '';
 }
 
+/**
+ * The step a note starts on, counting mini-notation weights.
+ *
+ * These assertions used to index into the space-split token list, which
+ * assumed one token per step. Import carries note duration now, so a
+ * held note is one weighted token covering several steps (`c4@2`) and
+ * an index is no longer a position. The question each test is asking —
+ * does this note come back at the right TIME — is unchanged (#477).
+ */
+function stepOf(lane: string, name: string): number {
+  const body = /"([^"]*)"/.exec(lane)?.[1] ?? '';
+  let step = 0;
+  for (const raw of body.split(' ')) {
+    const weighted = /^(.+?)@(\d+(?:\.\d+)?)$/.exec(raw);
+    const token = weighted ? weighted[1] : raw;
+    if (token === name) return step;
+    step += weighted ? Number(weighted[2]) : 1;
+  }
+  return -1;
+}
+
 describe('a scale survives as a scale (#336)', () => {
   it('eight evenly spaced notes come back evenly spaced', () => {
     // Came back as note("c4 [d4,e4] [f4,g4] [a4,b4] c5 ~ ~ ...") —
     // a scale turned into chords by the 4x compression.
     const lane = roundTrip('note("c4 d4 e4 f4 g4 a4 b4 c5")');
-    expect(lane).toContain('c4 ~ d4 ~ e4 ~ f4 ~ g4 ~ a4 ~ b4 ~ c5');
+    // Eight notes over sixteen steps: one every two steps, in order.
+    ['c4', 'd4', 'e4', 'f4', 'g4', 'a4', 'b4', 'c5'].forEach((note, index) => {
+      expect(stepOf(lane, note)).toBe(index * 2);
+    });
     expect(lane).not.toContain(',');   // no collapsed chords
   });
 
   it('three notes land at even thirds of the bar', () => {
     const lane = roundTrip('note("c3 e3 g3")');
-    const steps = lane.match(/"([^"]*)"/)?.[1].split(' ') ?? [];
-    expect(steps.indexOf('c3')).toBe(0);
+    expect(stepOf(lane, 'c3')).toBe(0);
     // 16 steps / 3 notes; quantization puts them near 5 and 11.
-    expect(steps.indexOf('e3')).toBeGreaterThan(3);
-    expect(steps.indexOf('g3')).toBeGreaterThan(9);
+    expect(stepOf(lane, 'e3')).toBeGreaterThan(3);
+    expect(stepOf(lane, 'g3')).toBeGreaterThan(9);
   });
 
   it('two notes split the bar in half', () => {
-    const steps = roundTrip('note("c4 e4")').match(/"([^"]*)"/)?.[1].split(' ') ?? [];
-    expect(steps.indexOf('c4')).toBe(0);
-    expect(steps.indexOf('e4')).toBe(8);
+    const lane = roundTrip('note("c4 e4")');
+    expect(stepOf(lane, 'c4')).toBe(0);
+    expect(stepOf(lane, 'e4')).toBe(8);
   });
 
   it('the two services share the constant, so they cannot drift apart', () => {

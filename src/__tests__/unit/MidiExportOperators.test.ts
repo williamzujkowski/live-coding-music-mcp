@@ -17,7 +17,11 @@ describe('operator expansion (#335)', () => {
     ['c4*4', ['c4', 'c4', 'c4', 'c4']],
     ['c4*1', ['c4']],
     ['c4!2', ['c4', 'c4']],
-    ['c4@3', ['c4']],           // weight dropped, note kept
+    // The weight is PRESERVED and applied by the layout. Dropping it
+    // did not merely lose the duration, it moved every note after it:
+    // `c4@3 e4` laid out as equal halves, so e4 sounded at the bar's
+    // midpoint instead of three quarters in (#477).
+    ['c4@3', ['c4@3']],
     ['<c4 e4 g4>', ['c4']],     // first option of the alternation
     ['c4', ['c4']],             // untouched
     ['[c4 e4]', ['[c4 e4]']],   // brackets pass through to the chord branch

@@ -165,11 +165,14 @@ function buildDrumLane(
  * notation within a single step).
  */
 function buildPitchLane(
-  notes: { beats: number; midi: number }[],
+  notes: { beats: number; midi: number; lengthBeats?: number }[],
   stepsPerBeat: number,
   totalSteps: number,
-): string[] {
+): { slots: string[]; holds: number[] } {
   const slots = new Array<string[] | null>(totalSteps).fill(null);
+  // How long each occupied step holds, in steps. A note's own length,
+  // clipped below so it never runs into the next onset on this lane.
+  const holds = new Array<number>(totalSteps).fill(1);
   for (const n of notes) {
     const step = Math.round(n.beats * stepsPerBeat);
     if (step < 0 || step >= totalSteps) continue;
@@ -179,20 +182,67 @@ function buildPitchLane(
     } else {
       slots[step]!.push(name);
     }
+    if (n.lengthBeats !== undefined) {
+      // A chord's members share one token, so the shortest of them sets
+      // the hold — sustaining the others would be inventing notes.
+      const inSteps = Math.max(1, Math.round(n.lengthBeats * stepsPerBeat));
+      holds[step] = holds[step] === 1 && slots[step]!.length === 1
+        ? inSteps
+        : Math.min(holds[step], inSteps);
+    }
   }
-  return slots.map((s) => {
-    if (s === null) return '~';
-    if (s.length === 1) return s[0];
-    return `[${s.join(',')}]`;
-  });
+
+  // Clip each hold at the next occupied step: one lane is one voice.
+  for (let i = 0; i < totalSteps; i++) {
+    if (slots[i] === null) continue;
+    let next = i + 1;
+    while (next < totalSteps && slots[next] === null) next++;
+    holds[i] = Math.min(holds[i], next - i);
+  }
+  return {
+    slots: slots.map((s) => {
+      if (s === null) return '~';
+      if (s.length === 1) return s[0];
+      return `[${s.join(',')}]`;
+    }),
+    holds,
+  };
 }
 
 /** Render a per-step token array as a Strudel mini-notation string, split into bars. */
-function renderBars(slots: string[], stepsPerCycle: number, bars: number): string {
+function renderBars(
+  slots: string[],
+  holds: number[],
+  stepsPerCycle: number,
+  bars: number,
+  onClipped: () => void = () => undefined,
+): string {
   const barStrings: string[] = [];
   for (let b = 0; b < bars; b++) {
-    const slice = slots.slice(b * stepsPerCycle, (b + 1) * stepsPerCycle);
-    barStrings.push(slice.join(' '));
+    const tokens: string[] = [];
+    // Weights within a bar must sum to `stepsPerCycle`, or the bar's
+    // own division changes. `c4@4` followed by twelve rests is 4+12=16
+    // units, so c4 occupies 4/16 of the cycle — measured:
+    //
+    //   mini('c4@4 ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~')  ->  "c4"[0.000-0.250]
+    //
+    // A hold is clipped at the bar boundary, since a bar is one token
+    // list and cannot lend weight to the next (#477).
+    for (let i = 0; i < stepsPerCycle; ) {
+      const at = b * stepsPerCycle + i;
+      // No `??` fallback: `at` is a number in [0, totalSteps) — the
+      // loop bounds are `bars * stepsPerCycle`, which is exactly the
+      // length of both arrays — so neither read can miss. The #308
+      // guard flags `table[key] ?? fallback` on sight, and it is right
+      // to: the fallback would have been dead code hiding a bug.
+      const token = slots[at];
+      const wanted = Math.max(holds[at], 1);
+      const held = Math.min(wanted, stepsPerCycle - i);
+      if (held < wanted) onClipped();
+      tokens.push(held > 1 ? `${token}@${String(held)}` : token);
+      i += held;
+    }
+    barStrings.push(tokens.join(' '));
   }
   if (barStrings.length === 1) {
     return barStrings[0];
@@ -391,6 +441,8 @@ export class MIDIImportService {
 
     const lanes: string[] = [];
     let renderedNotes = 0;
+    /** Notes whose length ran past the end of their bar and was cut there. */
+    let clippedHolds = 0;
 
     for (const track of midi.tracks) {
       if (track.notes.length === 0) continue;
@@ -414,12 +466,18 @@ export class MIDIImportService {
           const slots = buildDrumLane(bySample.get(sample)!, sample, stepsPerBeat, totalSteps);
           // Counted from the SLOTS, before rendering (#478).
           renderedNotes += slots.filter(slot => slot !== '~').length;
-          const body = renderBars(slots, stepsPerCycle, bars);
+          // Percussion is one-shot: a sample's length is its own, not
+          // the note's, so drum lanes hold for exactly one step.
+          const body = renderBars(slots, slots.map(() => 1), stepsPerCycle, bars);
           lanes.push(`  s("${body}")`);
         }
       } else {
-        const slots = buildPitchLane(
-          track.notes.map((n: any) => ({ beats: n.ticks / ppq, midi: n.midi })),
+        const { slots, holds } = buildPitchLane(
+          track.notes.map((n: any) => ({
+            beats: n.ticks / ppq,
+            midi: n.midi,
+            lengthBeats: n.durationTicks / ppq,
+          })),
           stepsPerBeat,
           totalSteps,
         );
@@ -429,7 +487,8 @@ export class MIDIImportService {
         // reading `.length` off it counts characters.
         renderedNotes += slots.reduce<number>((n, slot) =>
           n + (slot === '~' ? 0 : slot.replace(/[[\]]/g, '').split(',').length), 0);
-        const body = renderBars(slots, stepsPerCycle, bars);
+        const body = renderBars(slots, holds, stepsPerCycle, bars,
+          () => { clippedHolds++; });
         lanes.push(`  note("${body}").s("piano")`);
       }
     }
@@ -459,6 +518,17 @@ export class MIDIImportService {
     // notes over two bars reported ten. Single-bar patterns have no
     // such punctuation, which is why every existing test agreed with
     // it (#478).
+
+    // A bar is one token list and cannot lend weight to the next, so a
+    // note still sounding at the bar line is cut there. Reported rather
+    // than done quietly — a loss nobody is told about is
+    // indistinguishable from correct output (#336, #477).
+    if (clippedHolds > 0) {
+      discarded.push(
+        `${String(clippedHolds)} note(s) still sounding at a bar line — ` +
+        'held to the end of their bar, not across it'
+      );
+    }
 
     const tempoCall = `setcpm(${String(exactBpm)}/${String(BEATS_PER_CYCLE)})`;
     const out = lanes.length === 0
