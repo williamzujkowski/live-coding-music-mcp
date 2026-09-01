@@ -12,20 +12,30 @@
  * step in a single string can only hold one token, so hat hits that
  * land on the same step as a kick get silently overwritten.
  *
+ * Note LENGTH is carried, as a mini-notation weight (#477). Strudel
+ * divides a bar by total weight, so `c4@8` plus eight rests is still
+ * sixteen units and holds c4 for half the bar without moving anything
+ * beside it. Before that every note occupied exactly one step, so a
+ * whole-bar note, a half note and a staccato stab all emitted the
+ * identical pattern and nothing said the length had gone.
+ *
  * Round-trip is not lossless: timing is quantized, velocity is dropped,
  * voice information for two-voice melodies on one channel collapses
  * into chord tokens. Phase 2-4 issues track each of those.
  *
- * Two further losses, reported in `summary.discarded` rather than left
- * silent (#336): only the FIRST tempo is read, so a file with tempo
- * changes imports at its opening tempo; and the grid is fixed at 4/4,
- * so any other meter is laid onto 4/4 bars that will not line up.
+ * Three further losses, reported in `summary.discarded` rather than
+ * left silent (#336, #477): only the FIRST tempo is read, so a file
+ * with tempo changes imports at its opening tempo; the grid is fixed at
+ * 4/4, so any other meter is laid onto 4/4 bars that will not line up;
+ * and a note still sounding at a bar line is held to the end of its bar
+ * rather than across it, since a bar is one token list and cannot lend
+ * weight to the next.
  *
  * @example
  * const svc = new MIDIImportService();
  * const result = svc.convertBuffer(buffer);
  * console.log(result.pattern);
- * // setcpm(120)
+ * // setcpm(120/4)
  * // stack(
  * //   s("bd ~ ~ ~ ~ ~ ~ ~ bd ~ ~ ~ ~ ~ ~ ~"),
  * //   ...
