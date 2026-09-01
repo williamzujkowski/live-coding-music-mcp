@@ -34,6 +34,12 @@ export interface AudioCaptureResult {
   format: string;
   /** Timestamp when recording completed */
   timestamp: number;
+  /**
+   * Set when the recording is not the one that was asked for — it hit
+   * `maxDuration`, or the recorder had to be abandoned. The page said so
+   * and the Node side used to drop it on the floor (#464).
+   */
+  warning?: string;
 }
 
 /**
@@ -128,6 +134,10 @@ export class AudioCaptureService {
         stopping: null as Promise<unknown> | null,
         /** Auto-stop at maxDuration; cleared when a stop lands first. */
         capTimer: null as ReturnType<typeof setTimeout> | null,
+        /** Set when the cap ended the recording, so a later stop knows. */
+        reachedCap: false,
+        /** Watchdog for a stop that never completes; cleared when it does. */
+        stopWatchdog: null as ReturnType<typeof setTimeout> | null,
         mediaStreamDest: null as MediaStreamAudioDestinationNode | null,
         recorder: null as MediaRecorder | null,
         isConnected: false,
@@ -183,9 +193,21 @@ export class AudioCaptureService {
           }
 
           try {
-            // Reset state
+            // Reset state. Timers included: a leftover timer from an
+            // earlier capture fires against THIS one, and both of them
+            // reach in and empty `chunks` (#464).
             capture.chunks = [];
             capture.error = null;
+            capture.reachedCap = false;
+            if (capture.capTimer !== null) {
+              clearTimeout(capture.capTimer);
+              capture.capTimer = null;
+            }
+            if (capture.stopWatchdog !== null) {
+              clearTimeout(capture.stopWatchdog);
+              capture.stopWatchdog = null;
+            }
+            capture.stopping = null;
 
             // Create MediaRecorder with WebM/Opus codec (Gemini compatible)
             const options: MediaRecorderOptions = {
@@ -218,12 +240,19 @@ export class AudioCaptureService {
             // A streaming capture had no upper bound at all: it
             // accumulated a 100ms blob in page memory until someone
             // stopped it, and `maxDuration` — advertised by the tool —
-            // was accepted and discarded (#437). The recorder stops
-            // itself at the cap now; the chunks stay, so a later `stop`
-            // returns what was recorded.
+            // was accepted and discarded (#437).
+            //
+            // The cap stops the recorder and marks WHY. Without the mark
+            // the recording was thrown away: `onstop` clears
+            // `isCapturing`, so a later `stop` fell into the "No capture
+            // in progress" branch with every chunk still sitting in
+            // `capture.chunks`. The comment here used to claim the
+            // opposite — and with a ten-minute default on every capture,
+            // any long take lost all of its audio (#464).
             if (typeof maxDurationMs === 'number' && maxDurationMs > 0) {
               capture.capTimer = setTimeout(() => {
                 if (!capture.isCapturing) return;
+                capture.reachedCap = true;
                 try { capture.recorder.stop(); } catch { /* already stopped */ }
               }, maxDurationMs);
             }
@@ -254,10 +283,26 @@ export class AudioCaptureService {
           duration?: number;
           format?: string;
           error?: string;
+          warning?: string;
         }> {
           const capture = (window as any).strudelAudioCapture;
 
           if (!capture.recorder || !capture.isCapturing) {
+            // The cap ended it. That is a finished recording, not an
+            // absent one — hand it over (#464).
+            if (capture.reachedCap === true && capture.chunks.length > 0) {
+              const collected = capture.chunks;
+              capture.chunks = [];
+              capture.reachedCap = false;
+              return {
+                success: true,
+                blob: new Blob(collected, { type: 'audio/webm;codecs=opus' }),
+                duration: Date.now() - capture.startTime,
+                format: 'audio/webm;codecs=opus',
+                warning: 'Recording stopped at maxDuration; this is the audio up to that point.',
+              };
+            }
+
             // A recorder error clears `isCapturing` too, so this branch
             // covered two very different situations with one message.
             // `capture.error` was set and nothing ever read it — the
@@ -292,13 +337,33 @@ export class AudioCaptureService {
           capture.stopping = new Promise((resolve) => {
             const recorder = capture.recorder;
             const startTime = capture.startTime;
+            // Both timers die on whichever path settles first. The
+            // watchdog handle was not kept at all, so it outlived its
+            // own capture and fired during the NEXT one — passing its
+            // guard, clearing `isCapturing` and emptying `chunks`, which
+            // destroyed a recording that was going perfectly well. The
+            // cap timer leaked the same way across captures and could
+            // stop a recorder that belonged to a later take (#464).
+            // Method shorthand, not `const clearTimers = () => {}`:
+            // esbuild rewrites the arrow into `__name(fn, "fn")` and
+            // `__name` does not exist in page context. Written as an
+            // arrow first; PageEvaluateNameWrapping.test.ts caught it.
+            const timers = {
+              clear(): void {
+                if (capture.capTimer !== null) {
+                  clearTimeout(capture.capTimer);
+                  capture.capTimer = null;
+                }
+                if (capture.stopWatchdog !== null) {
+                  clearTimeout(capture.stopWatchdog);
+                  capture.stopWatchdog = null;
+                }
+              },
+            };
 
             recorder.onstop = () => {
               capture.isCapturing = false;
-              if (capture.capTimer !== null) {
-                clearTimeout(capture.capTimer);
-                capture.capTimer = null;
-              }
+              timers.clear();
 
               // An error that fired after this handler was installed
               // still delivers `dataavailable` and `stop`, so this used
@@ -337,8 +402,13 @@ export class AudioCaptureService {
             // call waits forever. Resolving with whatever was collected
             // is a worse recording than the caller asked for and an
             // infinitely better outcome than no answer (#437).
-            setTimeout(() => {
-              if (!capture.isCapturing && capture.chunks.length === 0) return;
+            capture.stopWatchdog = setTimeout(() => {
+              // Always settles. This used to `return` without resolving
+              // when the capture was already flagged done and empty —
+              // which is precisely the never-returning request #437 was
+              // written to remove, reintroduced by its own fix (#464).
+              capture.stopWatchdog = null;
+              timers.clear();
               capture.isCapturing = false;
               const collected = capture.chunks;
               capture.chunks = [];
@@ -450,6 +520,7 @@ export class AudioCaptureService {
         audio: btoa(binary),
         duration: captureResult.duration,
         format: captureResult.format,
+        warning: captureResult.warning,
       };
     });
 
@@ -469,7 +540,8 @@ export class AudioCaptureService {
       blob,
       duration: result.duration as number,
       format: result.format as string,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      ...(result.warning ? { warning: result.warning as string } : {}),
     };
   }
 
