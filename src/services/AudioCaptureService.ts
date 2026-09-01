@@ -129,6 +129,28 @@ export class AudioCaptureService {
   async injectRecorder(page: Page): Promise<void> {
     /* istanbul ignore next -- browser-injected IIFE, covered by integration tests */
     await page.evaluate(/* istanbul ignore next */ () => {
+      // Clear the previous object's timers before replacing it.
+      //
+      // This assignment overwrites `strudelAudioCapture` outright, and
+      // a `setTimeout` does not stop because nothing points at its
+      // owner any more. `server.ts` builds a fresh service for a page
+      // that may already carry an injected object, so a cap timer or a
+      // stop watchdog from the old one could still fire — and both of
+      // them reach in and empty `chunks`, which is how the previous
+      // capture's watchdog destroyed the NEXT capture in #464.
+      //
+      // The same hazard, measured on the analyzer's collector, is
+      // #479: a re-inject there left the old 20ms interval sampling
+      // into an orphaned array.
+      const previous = (window as any).strudelAudioCapture;
+      if (previous) {
+        if (previous.capTimer) clearTimeout(previous.capTimer);
+        if (previous.stopWatchdog) clearTimeout(previous.stopWatchdog);
+        previous.capTimer = null;
+        previous.stopWatchdog = null;
+        previous.isCapturing = false;
+      }
+
       (window as any).strudelAudioCapture = {
         /** In-flight stop, so a second one waits rather than racing it. */
         stopping: null as Promise<unknown> | null,

@@ -19,6 +19,20 @@
  * transcription of the page-side logic — that code only exists inside a
  * `page.evaluate` closure — and the last test reads the shipped source
  * so the transcription cannot drift from it unnoticed.
+ *
+ * WHAT THIS FILE DOES NOT COVER. The state machine below is a
+ * TRANSCRIPTION of the one inside `page.evaluate`, driven with fake
+ * timers, because a closure handed to the browser as a string cannot be
+ * imported. A copy cannot disagree with its original, so passing here
+ * says the transcription behaves as its author intended — not that the
+ * shipped closure does. Three timer bugs landed in #464 that no test in
+ * this shape could fail, and #486 found a fourth that neither copy could
+ * even express, since neither contains an `inject()`.
+ *
+ * The shipped closure is covered by `browser/CaptureTimers.browser.test.ts`,
+ * which drives the real `injectRecorder` output in real Chromium.
+ * Behaviour that depends on real timers, real MediaRecorder or the
+ * lifecycle of the injected object belongs there, not here (#479).
  */
 
 function makeCapture(): Record<string, any> {

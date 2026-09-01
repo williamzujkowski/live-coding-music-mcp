@@ -124,6 +124,9 @@ export class StrudelController {
    * (or a crash) closed the page out from under us, and by callers
    * that want to verify before issuing a tool call (#202).
    */
+  /** The page whose console this controller is already listening to. */
+  private consoleMonitoredPage: Page | null = null;
+
   isAlive(): boolean {
     return this.browser !== null && this._page !== null && !this._page.isClosed();
   }
@@ -260,6 +263,15 @@ export class StrudelController {
    */
   setupConsoleMonitoring(): void {
     if (!this._page) return;
+    // One listener per page.
+    //
+    // `page.on` appends, and nothing removed the previous listener, so
+    // a second call recorded every console message twice and doubled
+    // the error count `diagnostics` reports. `initialize()` calls this,
+    // and so does SessionManager on its own path; they do not currently
+    // overlap, but nothing stopped them (#488).
+    if (this.consoleMonitoredPage === this._page) return;
+    this.consoleMonitoredPage = this._page;
 
     this._page.on('console', (msg) => {
       const type = msg.type();
@@ -715,6 +727,8 @@ export class StrudelController {
       await this.browser.close();
       this.browser = null;
       this._page = null;
+      // The next page gets its own listener (#488).
+      this.consoleMonitoredPage = null;
     }
   }
 
@@ -878,9 +892,21 @@ export class StrudelController {
     }
 
     const current = await this.getCurrentPattern();
-    // Escape regex special characters to prevent injection
+    // Both sides literal.
+    //
+    // The search was escaped and the REPLACEMENT was not, so
+    // `String.replace` interpreted its special patterns. Measured:
+    //
+    //   replaceInPattern('bd', '$&x')   -> "bdx"    wanted "$&x"
+    //   replaceInPattern('bd', 'a$`b')  -> "ab"     wanted "a$`b"
+    //   replaceInPattern('bd', 'x$$y')  -> "x$y"    wanted "x$$y"
+    //
+    // The comment above the escape said it was there "to prevent
+    // injection", which is exactly half of the job it was doing.
+    // A replacer function is passed the match and its return value is
+    // used verbatim, so nothing in `replace` is interpreted (#488).
     const escaped = this.escapeRegex(search);
-    const newPattern = current.replace(new RegExp(escaped, 'g'), replace);
+    const newPattern = current.replace(new RegExp(escaped, 'g'), () => replace);
 
     if (current === newPattern) {
       return `No matches found for: ${search}`;
@@ -1109,8 +1135,21 @@ export class StrudelController {
    */
   async getDiagnostics(): Promise<BrowserDiagnostics> {
     const diagnostics: BrowserDiagnostics = {
-      browserConnected: this.browser !== null,
-      pageLoaded: this._page !== null,
+      // Connectivity, not existence.
+      //
+      // These were `this.browser !== null` and `this._page !== null`, so
+      // closing the browser out from under the controller left
+      // diagnostics reporting a connected browser and a loaded page.
+      // `isAlive()` two hundred lines up already asks `isClosed()`; the
+      // tool whose entire job is reporting system state was the one
+      // place that did not (#488).
+      //
+      // Note `browser` is deliberately null for session-managed
+      // controllers, which do not own it — so this reads false there,
+      // as it did before. That is a separate reporting gap, filed
+      // rather than papered over here.
+      browserConnected: this.browser?.isConnected() ?? false,
+      pageLoaded: this._page !== null && !this._page.isClosed(),
       editorReady: false,
       audioConnected: false,
       cacheStatus: {
