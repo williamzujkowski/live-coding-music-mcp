@@ -140,7 +140,11 @@ const ALLOWED_NODE_TYPES = new Set([
   'UnaryExpression', 'LogicalExpression', 'ConditionalExpression',
   'SpreadElement', 'RestElement', 'AssignmentExpression', 'UpdateExpression',
   'ArrayPattern', 'ObjectPattern', 'AssignmentPattern', 'SequenceExpression',
-  'ChainExpression', 'ParenthesizedExpression', 'EmptyStatement',
+  // No 'ParenthesizedExpression': acorn only produces that node with
+  // `preserveParens: true`, which this parser does not pass, so the
+  // entry never matched anything. Verified — `(note("c"))` parses to
+  // Program/ExpressionStatement/CallExpression/Identifier/Literal (#491).
+  'ChainExpression', 'EmptyStatement',
   'IfStatement', 'ForStatement', 'ForOfStatement', 'WhileStatement',
   'BreakStatement', 'ContinueStatement',
 ]);
@@ -256,8 +260,23 @@ export function assertPatternIsSafe(code: string, allowedGlobals: Iterable<strin
     // escape (#SANDBOX).
     // Cheap upper bound on allocation-shaped input. See
     // MAX_NUMERIC_LITERAL: a fast-fail, not a control.
-    if (node.type === 'Literal' && typeof node.value === 'number') {
-      if (Number.isFinite(node.value) && Math.abs(node.value) > MAX_NUMERIC_LITERAL) {
+    // `bigint` counts too.
+    //
+    // This tested `typeof node.value === 'number'` only, so a bigint
+    // literal walked straight past it: `Array(Number(50000000n)).fill(7)`
+    // was accepted by the AST check. Measured, the isolated child's heap
+    // cap caught it and returned a clean error, so it was contained
+    // rather than an escape — but a fast-fail that any `n` suffix
+    // sidesteps is not the fast-fail it claims to be (#491).
+    if (node.type === 'Literal'
+        && (typeof node.value === 'number' || typeof node.value === 'bigint')) {
+      const magnitude = typeof node.value === 'bigint'
+        ? (node.value < 0n ? -node.value : node.value)
+        : Math.abs(node.value);
+      const overLimit = typeof magnitude === 'bigint'
+        ? magnitude > BigInt(MAX_NUMERIC_LITERAL)
+        : Number.isFinite(magnitude) && magnitude > MAX_NUMERIC_LITERAL;
+      if (overLimit) {
         throw new PatternSafetyError(
           `Pattern contains the number ${String(node.value)}, above the ` +
           `${String(MAX_NUMERIC_LITERAL)} limit. Numbers that large usually mean ` +

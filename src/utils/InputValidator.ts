@@ -211,7 +211,9 @@ export class InputValidator {
    *
    * @example
    * InputValidator.validateRootNote('C');    // ✓ Valid
-   * InputValidator.validateRootNote('f#');   // ✓ Valid (normalized to F#)
+   * InputValidator.validateRootNote('f#');   // ✓ Valid — accepted, NOT
+   *                                          //   normalized; returns void
+   *                                          //   and the caller keeps 'f#' (#491)
    * InputValidator.validateRootNote('X');    // ✗ Throws: Invalid root note
    */
   static validateRootNote(note: string): void {
@@ -267,9 +269,15 @@ export class InputValidator {
    *
    * @param str - String to validate
    * @param fieldName - Field name for error messages
-   * @param maxLength - Maximum allowed length (default: 1000)
-   * @param allowEmpty - Whether to allow empty strings (default: false for identifiers, true for content)
-   * @throws {Error} When string exceeds maximum length or is not a string
+   * @param maxLength - Maximum allowed length, in UTF-16 code units
+   *   (default: 1000). Must be a finite non-negative number.
+   * @param allowEmpty - Whether to allow empty strings. The default is
+   *   `true`; callers that need an identifier pass `false` explicitly.
+   *   This said "false for identifiers, true for content", describing a
+   *   default that varies by field name and never existed — the default
+   *   is one value and it is `true` (#491).
+   * @throws {Error} When string exceeds maximum length, is not a string,
+   *   or `maxLength` is not a usable bound
    *
    * @example
    * InputValidator.validateStringLength('hello', 'pattern', 100);  // ✓ Valid
@@ -282,12 +290,29 @@ export class InputValidator {
       throw new Error(`${fieldName} must be a string`);
     }
 
+    // A bound that cannot bound anything is a caller bug, not a limit.
+    //
+    // `str.length > NaN` is false, as is every comparison with NaN, so
+    // a NaN maxLength silently disabled the check entirely: a
+    // million-character string was accepted by the function whose whole
+    // purpose is preventing resource exhaustion. `maxLength` itself was
+    // never validated (#491).
+    if (!Number.isFinite(maxLength) || maxLength < 0) {
+      throw new Error(
+        `${fieldName} length check misconfigured: maxLength must be a finite ` +
+        `non-negative number, got ${String(maxLength)}`);
+    }
+
     if (!allowEmpty && str.trim().length === 0) {
       throw new Error(`${fieldName} cannot be empty`);
     }
 
+    // UTF-16 code units, which is what `.length` counts and what a
+    // resource bound should count. The message used to say "characters",
+    // so a single emoji was reported as 2 of them (#491).
     if (str.length > maxLength) {
-      throw new Error(`${fieldName} too long (max ${maxLength} characters, got ${str.length})`);
+      throw new Error(
+        `${fieldName} too long (max ${maxLength} UTF-16 code units, got ${str.length})`);
     }
   }
 
