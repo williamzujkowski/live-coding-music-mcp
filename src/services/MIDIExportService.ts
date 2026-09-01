@@ -732,28 +732,6 @@ export class MIDIExportService {
     startTime: number,
     asMidiNumbers: boolean = false
   ): NoteEvent[] {
-    const notes: NoteEvent[] = [];
-    // Tokenize with brackets kept whole.
-    //
-    // Splitting on /[\s,]+/ first meant the `startsWith('[')` branch
-    // below could only ever see a bracket containing no spaces or
-    // commas — i.e. never a real chord. `[c4 e4] g4` became
-    // ["[c4", "e4]", "g4"], and "e4]" fails noteNameToMidi, so the last
-    // note of every chord was dropped. Import emits exactly this
-    // notation, so its own output could not be re-exported (#336).
-    // Parallel lanes, as in parseDrumString (#432). `note("c4 e4, g4")`
-    // sounds g4 with c4 at beat 0, not two thirds of the way through.
-    const lanes = MIDIExportService.splitLanes(noteString);
-    if (lanes.length > 1) {
-      return lanes.flatMap(lane => this.parseNoteString(lane, startTime, asMidiNumbers));
-    }
-
-    const parts = MIDIExportService.expandOperators(
-      MIDIExportService.tokenize(noteString),
-      token => { this.unrepresented.add(token); },
-      token => { this.partial.add(token); },
-    );
-
     // One pattern string spans one BAR, not one beat.
     //
     // Export treated a whole note("...") as 1 beat while import lays a
@@ -763,68 +741,92 @@ export class MIDIExportService {
     // the mismatch, which then triggered the documented chord-collapse
     // and looked like a quantization loss. It was a unit disagreement
     // (#336).
-    const noteDuration = parts.length > 0 ? BEATS_PER_BAR / parts.length : BEATS_PER_BAR;
+    return this.layoutNotes(noteString, startTime, BEATS_PER_BAR, asMidiNumbers);
+  }
+
+  /**
+   * Lays a mini-notation fragment out across a window of `span` beats.
+   *
+   * One rule, applied at every depth: a COMMA separates parallel lanes,
+   * each of which gets the whole window; a SPACE subdivides a lane, and
+   * each token gets an equal share. A chord is not a special case —
+   * `[c4,e4,g4]` is three one-token lanes, so all three land at the
+   * window's start holding its full width, which is what a chord is.
+   *
+   * Bracket handling used to live inline with its own rules:
+   * `isChord = subContent.includes(',')` followed by
+   * `subContent.split(/[\s,]+/)`, which flattened both separators and
+   * then applied one verdict to the lot. A bracket mixing them was laid
+   * out wrong: `[c4 e4, g4]` is the sequence `c4 e4` played against a
+   * held `g4`, and it exported as a three-note chord at beat 0 — c4 and
+   * e4 simultaneous, and both four times too long (#469).
+   *
+   * Recursing also fixed nesting for free: the old code stripped every
+   * bracket in the token with `replace(/[[\]]/g, '')`, so the inner
+   * structure of `[[c4 e4] g4]` was erased before anything read it.
+   *
+   * @param source - Mini-notation fragment, brackets already unwrapped
+   * @param start - Window start, in beats
+   * @param span - Window width, in beats
+   * @param asMidiNumbers - Parse tokens as raw MIDI numbers, not names
+   * @returns Note events laid out across the window
+   */
+  private layoutNotes(
+    source: string,
+    start: number,
+    span: number,
+    asMidiNumbers: boolean,
+  ): NoteEvent[] {
+    // Parallel lanes, as in parseDrumString (#432). `note("c4 e4, g4")`
+    // sounds g4 with c4 at beat 0, not two thirds of the way through.
+    const lanes = MIDIExportService.splitLanes(source);
+    if (lanes.length > 1) {
+      return lanes.flatMap(lane => this.layoutNotes(lane, start, span, asMidiNumbers));
+    }
+
+    // Tokenize with brackets kept whole.
+    //
+    // Splitting on /[\s,]+/ first meant the bracket branch below could
+    // only ever see a bracket containing no spaces or commas — i.e.
+    // never a real chord. `[c4 e4] g4` became ["[c4", "e4]", "g4"], and
+    // "e4]" fails noteNameToMidi, so the last note of every chord was
+    // dropped. Import emits exactly this notation, so its own output
+    // could not be re-exported (#336).
+    const parts = MIDIExportService.expandOperators(
+      MIDIExportService.tokenize(source),
+      token => { this.unrepresented.add(token); },
+      token => { this.partial.add(token); },
+    );
+    if (parts.length === 0) return [];
+
+    const step = span / parts.length;
+    const notes: NoteEvent[] = [];
 
     parts.forEach((part, index) => {
-      // Check for rest
-      if (part === '~' || part === '-' || part === 'r') {
+      const at = start + index * step;
+
+      if (part === '~' || part === '-' || part === 'r') return;
+
+      const bracketed = /^\[(.*)\]$/.exec(part);
+      if (bracketed) {
+        notes.push(...this.layoutNotes(bracketed[1], at, step, asMidiNumbers));
         return;
       }
 
-      // Mini-notation operators this parser does not implement. They
-      // used to be dropped in silence: a realistic five-lane generated
-      // pattern exported as success:true with noteCount 2, because
-      // `*`, `!`, `@` and `<>` are in essentially every pattern the
-      // generator produces. Recording them lets the caller be told
-      // (#335).
-
-
-      // Handle sub-patterns in brackets [c4 e4]
-      if (part.startsWith('[')) {
-        const subContent = part.replace(/[[\]]/g, '');
-        // A comma inside the bracket is a CHORD — simultaneous, each
-        // note holding the whole step. A space is a SUBDIVISION — the
-        // step is split between them.
-        //
-        // Both were treated as a chord with shortened notes: every part
-        // got the step's start time and `noteDuration / subParts.length`.
-        // So `[c4 d4] e4` stacked c4 and d4 at beat 0 instead of
-        // subdividing, and `[c4,e4,g4]` — which is exactly what IMPORT
-        // emits for simultaneous notes — came back a third as long as it
-        // should be (#433 items 2 and 3).
-        const isChord = subContent.includes(',');
-        const subParts = subContent.split(/[\s,]+/).filter(p => p.length > 0);
-        const subDuration = isChord ? noteDuration : noteDuration / subParts.length;
-        subParts.forEach((subPart, subIndex) => {
-          const midi = asMidiNumbers
-            ? parseInt(subPart, 10)
-            : this.noteNameToMidi(subPart);
-
-          if (midi !== null && !isNaN(midi) && midi >= 0 && midi <= 127) {
-            notes.push({
-              note: midi,
-              time: startTime + index * noteDuration
-                + (isChord ? 0 : subIndex * subDuration),
-              duration: subDuration,
-              velocity: 100
-            });
-          }
-        });
-        return;
-      }
-
-      const midi = asMidiNumbers
-        ? parseInt(part, 10)
-        : this.noteNameToMidi(part);
+      const midi = asMidiNumbers ? parseInt(part, 10) : this.noteNameToMidi(part);
 
       if (midi !== null && !isNaN(midi) && midi >= 0 && midi <= 127) {
-        notes.push({
-          note: midi,
-          time: startTime + index * noteDuration,
-          duration: noteDuration,
-          velocity: 100
-        });
+        notes.push({ note: midi, time: at, duration: step, velocity: 100 });
+        return;
       }
+
+      // A name this parser cannot read is LOST, and it used to be lost
+      // in silence: `note("c4 zz g4")` exported two notes with
+      // success:true, no warning and no `unrepresented` entry, so the
+      // caller had no way to learn a note had gone missing. The drum
+      // lane got exactly this fix in #433; the note lane never did
+      // (#469).
+      this.unrepresented.add(part);
     });
 
     return notes;
