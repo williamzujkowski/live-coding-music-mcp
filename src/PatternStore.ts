@@ -12,6 +12,14 @@ import { ValidationError } from './utils/CategorisedError.js';
  * `timestamp` threw further downstream and took the whole listing with
  * it (#426).
  */
+/**
+ * Longest pattern name that can actually be saved.
+ *
+ * 255 (the filesystem's limit on one path component) minus `.json` and
+ * minus the `.<16 hex>.tmp` suffix the atomic write needs beside it.
+ */
+const MAX_PATTERN_NAME_LENGTH = 255 - '.json'.length - ('.'.length + 16 + '.tmp'.length);
+
 function asPatternData(value: unknown): PatternData | null {
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Record<string, unknown>;
@@ -239,7 +247,21 @@ export class PatternStore {
 
     try {
       const data = await fs.readFile(filepath, 'utf-8');
-      const pattern = JSON.parse(data);
+      // Validated, like every other reader.
+      //
+      // `load` parsed the JSON and returned it, so a file holding
+      // `{"nonsense": 1}` or `[1,2,3]` came back as a PatternData that
+      // is nothing of the kind — and callers read `.code` off it and
+      // wrote `undefined` into the editor. `listDetailed` and
+      // `readIfPresent` both run `asPatternData`; this one never got
+      // the #426 hardening, so the two disagreed about the same file:
+      // the listing skipped it as malformed while `load` handed it
+      // straight back (#471).
+      const pattern = asPatternData(JSON.parse(data));
+      if (pattern === null) {
+        this.logger.warn(`Pattern file is not a pattern: ${filename}`);
+        return null;
+      }
 
       // Update cache with LRU eviction
       this.setCacheWithLRU(cacheKey, pattern);
@@ -381,9 +403,25 @@ export class PatternStore {
       .replace(/[^a-z0-9_-]/gi, '_')
       .toLowerCase();
 
-    // Validate length
-    if (cleaned.length === 0 || cleaned.length > 255) {
-      throw new ValidationError('Pattern name must be between 1 and 255 characters');
+    // Validate length against the ceiling that actually exists.
+    //
+    // The stem is not the whole filename. `.json` costs 5 bytes, and
+    // the atomic write needs `<file>.<16 hex>.tmp` to fit in the same
+    // directory entry, which costs 21 more. A 255-byte component is the
+    // limit on ext4 and on every filesystem this runs on, so the real
+    // ceiling for the stem is 229.
+    //
+    // This check said 255 and let anything under it through to fail as
+    // a raw ENAMETOOLONG from `fs` — an uncategorised Error, so the
+    // envelope called it `internal` and not retryable, when it is
+    // exactly the caller's input being too long (#471, and the same
+    // class of miscategorisation as #382). Saving a 230-character name
+    // has never worked; it now says so, in a message with the number
+    // in it.
+    if (cleaned.length === 0 || cleaned.length > MAX_PATTERN_NAME_LENGTH) {
+      throw new ValidationError(
+        `Pattern name must be between 1 and ${MAX_PATTERN_NAME_LENGTH} characters `
+        + `after sanitizing; got ${cleaned.length}.`);
     }
 
     // Prevent reserved filenames on Windows

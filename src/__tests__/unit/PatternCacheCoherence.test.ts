@@ -16,7 +16,7 @@
  * left a pattern cached that was never persisted.
  */
 
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { PatternStore } from '../../PatternStore';
@@ -58,17 +58,35 @@ describe('the cache and the disk agree (#428)', () => {
   });
 
   it('does not cache a pattern whose write failed', async () => {
-    // A 255-character name passes InputValidator's limit and
-    // `sanitizeFilename`, which measures the stem without `.json` — and
-    // then fails ENAMETOOLONG on the 260-byte component.
+    // The write has to fail at the FILESYSTEM, after the name has been
+    // accepted — that is the only path on which a cache entry could be
+    // written for a file that does not exist.
+    //
+    // This used to force it with a 255-character name, which reached
+    // `fs` and failed ENAMETOOLONG. #471 moved that rejection forward
+    // into `sanitizeFilename`, where it belongs (it is the caller's
+    // input, and as an uncategorised `Error` from `fs` the envelope
+    // called it `internal`), so the name no longer gets that far. A
+    // directory sitting on the target path fails the rename instead,
+    // which exercises the same coherence question.
     const store = new PatternStore(dir);
-    const tooLong = 'a'.repeat(255);
+    const name = 'blocked-by-a-directory';
+    mkdirSync(join(dir, `${name}.json`));
 
-    await expect(store.save(tooLong, 'never-persisted', ['t'])).rejects.toThrow();
+    await expect(store.save(name, 'never-persisted', ['t'])).rejects.toThrow();
 
-    expect(existsSync(join(dir, `${tooLong}.json`))).toBe(false);
     // The load must not conjure it out of the cache.
-    expect(await store.load(tooLong)).toBeNull();
+    expect(await store.load(name)).toBeNull();
+  });
+
+  it('refuses a name too long to write, before touching the disk', async () => {
+    // 255 minus `.json` minus the atomic write's `.<16 hex>.tmp` (#471).
+    const store = new PatternStore(dir);
+    const tooLong = 'a'.repeat(230);
+
+    await expect(store.save(tooLong, 'never-persisted', ['t']))
+      .rejects.toThrow(/229 characters/);
+    expect(existsSync(join(dir, `${tooLong}.json`))).toBe(false);
   });
 
   it('a normal save/load round trip still works', async () => {
