@@ -155,7 +155,7 @@ Adding context guidelines to CLAUDE.md after line 70.
 ## Project Purpose
 This is an **open source, actively developed** MCP server enabling AI agents to generate music via Strudel.cc using browser automation.
 
-**Current State:** Beta. `npm test` runs two tiers: ~3140 unit/integration tests in parallel, then 36 browser tests serially — they contend for Chromium and the live site, which made the combined parallel run flaky (#267). 20 skipped, 0 failing. <!-- COVERAGE:START -->88.99% statement / 79.99% branch coverage<!-- COVERAGE:END -->. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
+**Current State:** Beta. `npm test` runs two tiers: ~3350 unit/integration tests in parallel, then 54 browser tests serially — they contend for Chromium and the live site, which made the combined parallel run flaky (#267). 20 skipped, 0 failing. <!-- COVERAGE:START -->89.84% statement / 80.66% branch coverage<!-- COVERAGE:END -->. CI hardened (Scorecard, SHA-pinned actions, CODEOWNERS, Dependabot, lint blocking). Tool schemas are stable within minor versions. Multi-session shipped (v3.0.0 / #108) — sessions have isolated browser, history, and audio capture state. v4.0.0 removed the 58 deprecated tool aliases from #120 (#178). See GitHub Issues for the roadmap. Contributions welcome.
 
 ## GitHub Issues Workflow
 
@@ -427,6 +427,36 @@ enforces the pragma.
 The general rule: a function heading for `page.evaluate` must survive
 whatever the local toolchain injects into it. Two tools already inject
 something; assume a third will.
+
+**And it must be TESTED where it runs.** Code inside a `page.evaluate`
+closure exists only as a string handed to the browser, so it cannot be
+imported — and the tests that grew around that constraint re-type the
+state machine into the test file and drive the copy with fake timers
+(`CaptureErrorSurfaced.test.ts`, `ConcurrentStopHang.test.ts`). A copy
+cannot disagree with its original. Those suites assert that a
+transcription behaves as its author intended, which is true by
+construction.
+
+Measured cost: three timer bugs landed in #464 inside a commit whose
+entire subject was a timer bug, and not one of them could fail a test.
+`grep -rn "maxDuration\|capTimer" src/__tests__/` returned one hit
+beforehand — a `capTimer: null` initializer — for a documented tool
+parameter with a default applied to every capture.
+
+`CaptureTimers.browser.test.ts` is the shape that works: it drives the
+real `injectRecorder` output in real Chromium with an oscillator into a
+`MediaStreamDestination` standing in for Strudel, so it needs no
+network and runs in ~10s. Two things it taught:
+
+- A concurrency case only reproduces when both calls are issued from
+  inside ONE `page.evaluate`. Two round-trips serialize over CDP, so
+  the second arrives after the first has settled — a different
+  scenario. The first version of that test passed for the wrong reason.
+- Write the browser test before believing a page-side fix. Both #464
+  headline defects fail it against `origin/main`; neither failed
+  anything before.
+
+Tracked in #479.
 
 ### Error Recovery
 ```typescript
