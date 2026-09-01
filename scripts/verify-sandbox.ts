@@ -506,6 +506,35 @@ async function main(): Promise<void> {
     }
   }
 
+  // A generated fill really does span the bars it claims.
+  //
+  // This lives here, not in Jest, because it needs the REAL engine:
+  // @strudel/core is ESM and Jest is not configured for it, so a unit
+  // test can only assert the generated string. `bars` used to append
+  // `.fast(N)`, which compresses the fill into 1/N of one cycle — so
+  // the output occupied a single bar however large `bars` got, while
+  // the schema promised a length and the handler reported one (#482).
+  {
+    const engine = new StrudelEngine();
+    const generator = new PatternGenerator();
+    const fill = generator.generateFill('techno', 4);
+    const counts: number[] = [];
+    for (let cycle = 0; cycle < 5; cycle++) {
+      const haps = await engine.queryEvents(fill, cycle, cycle + 1);
+      counts.push(Array.isArray(haps) ? haps.length : 0);
+    }
+    // Three bars of the figure, a busier fourth, then back to the top.
+    const spans = counts[0] > 0
+      && counts[1] === counts[0] && counts[2] === counts[0]
+      && counts[3] > counts[0] && counts[4] === counts[0];
+    if (spans) {
+      console.log(`  ok    a 4-bar fill spans 4 cycles [${counts.join(', ')}]`);
+    } else {
+      failures++;
+      console.error(`  FAIL  4-bar fill did not span 4 cycles: [${counts.join(', ')}]`);
+    }
+  }
+
   if (failures > 0) {
     console.error(`\n${String(failures)} check(s) failed.`);
     process.exit(1);

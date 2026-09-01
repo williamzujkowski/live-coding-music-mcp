@@ -278,10 +278,17 @@ describe('PatternGenerator', () => {
     });
 
     test('should handle different bar lengths', () => {
+      // This asserted the literal text `.fast(1)` / `.fast(2)`, which
+      // locked in the implementation rather than any intended
+      // behaviour — and the implementation was backwards: `.fast(N)`
+      // compresses the fill into 1/N of ONE cycle, so asking for more
+      // bars made it shorter. `bars` is a length now, so a two-bar fill
+      // is two cycles of material (#482).
       const fill1 = generator.generateFill('house', 1);
       const fill2 = generator.generateFill('house', 2);
-      expect(fill1).toContain('.fast(1)');
-      expect(fill2).toContain('.fast(2)');
+      expect(fill1).not.toContain('cat(');
+      expect(fill2).toContain('cat(');
+      expect(fill2).not.toContain('.fast(2)).fast(2)');
     });
 
     test('should generate fills for all supported styles', () => {

@@ -1,8 +1,11 @@
 import { MusicTheory } from './MusicTheory.js';
-import { STYLE_ALIASES, resolveDrumStyle } from './StyleRegistry.js';
+import { STYLE_ALIASES, resolveDrumStyle, defaultTempoFor } from './StyleRegistry.js';
 import { lookup } from '../utils/TableLookup.js';
 import { ValidationError } from '../utils/CategorisedError.js';
 import { BEATS_PER_CYCLE } from '../utils/Tempo.js';
+
+/** Longest fill this will assemble, so `bars` cannot build a huge string. */
+const MAX_FILL_BARS = 64;
 
 export class PatternGenerator {
   private theory = new MusicTheory();
@@ -282,7 +285,7 @@ export class PatternGenerator {
    * @param bpm - Tempo in beats per minute (default: 120)
    * @returns Complete Strudel pattern with drums, bass, chords, and melody
    */
-  generateCompletePattern(style: string, key: string = 'C', bpm: number = 120): string {
+  generateCompletePattern(style: string, key: string = 'C', bpm?: number): string {
     // Handle aliases and special genres
     // hasOwn, not `??`: STYLE_ALIASES is a plain object literal, so
     // STYLE_ALIASES['constructor'] returns Object and ['__proto__'] the
@@ -293,14 +296,29 @@ export class PatternGenerator {
       ? STYLE_ALIASES[lowerStyle]
       : lowerStyle;
 
+    // The style's own tempo when the caller did not name one.
+    //
+    // The parameter defaulted to 120, so `bpm || 170` below could never
+    // reach 170 — `bpm` was never falsy. Every per-style fallback here
+    // was dead code and every specialized genre generated at 120:
+    // intelligent_dnb at 120 rather than 170, trip_hop at 120 rather
+    // than 90, boom_bap at 120 rather than 92, and plain techno at 120
+    // rather than 130.
+    //
+    // `compose` passes `defaultTempoFor(style)` explicitly, so the
+    // shipped tool path was already right and only direct callers saw
+    // this. Reading the same registry here makes the two agree instead
+    // of relying on every caller to remember (#482).
+    const tempo = bpm ?? defaultTempoFor(resolvedStyle);
+
     // Use specialized generators for new genres
     switch (resolvedStyle) {
       case 'intelligent_dnb':
-        return this.generateIntelligentDnB(key, bpm || 170);
+        return this.generateIntelligentDnB(key, tempo);
       case 'trip_hop':
-        return this.generateTripHop(key, bpm || 90);
+        return this.generateTripHop(key, tempo);
       case 'boom_bap':
-        return this.generateBoomBap(key, bpm || 92);
+        return this.generateBoomBap(key, tempo);
     }
 
     // Default generation for other styles
@@ -357,12 +375,12 @@ export class PatternGenerator {
     // a techno pattern (#279).
     const drumStyle = resolveDrumStyle(resolvedStyle);
     const header = drumStyle.supported
-      ? `// ${drumStyle.resolved} pattern in ${key} at ${bpm} BPM`
-      : `// ${drumStyle.resolved} pattern in ${key} at ${bpm} BPM` +
+      ? `// ${drumStyle.resolved} pattern in ${key} at ${tempo} BPM`
+      : `// ${drumStyle.resolved} pattern in ${key} at ${tempo} BPM` +
         ` (no drums defined for "${resolvedStyle}")`;
 
     return `${header}
-setcpm(${bpm}/${String(BEATS_PER_CYCLE)})
+setcpm(${tempo}/${String(BEATS_PER_CYCLE)})
 
 stack(
   // Drums
@@ -391,7 +409,7 @@ stack(
     
     return `// Intelligent DnB in ${key} at ${tempo} BPM
 // Style: LTJ Bukem / Good Looking Records
-setcps(${tempo}/60/${String(BEATS_PER_CYCLE)})
+setcpm(${tempo}/${String(BEATS_PER_CYCLE)})
 samples('github:tidalcycles/dirt-samples')
 
 let chords = chord("<${safeKey}m9 ${fourth}m9 ${seventh}m9 ${third}maj7>/4").dict('ireal')
@@ -472,7 +490,7 @@ stack(
     
     return `// Trip Hop in ${key} at ${tempo} BPM
 // Style: Portishead / Massive Attack
-setcps(${tempo}/60/${String(BEATS_PER_CYCLE)})
+setcpm(${tempo}/${String(BEATS_PER_CYCLE)})
 
 stack(
   // === DRUMS - Slow, heavy, dusty ===
@@ -561,7 +579,7 @@ stack(
     
     return `// Boom Bap in ${key} at ${tempo} BPM
 // Style: DJ Premier / Alchemist / Daringer
-setcps(${tempo}/60/${String(BEATS_PER_CYCLE)})
+setcpm(${tempo}/${String(BEATS_PER_CYCLE)})
 
 stack(
   // === DRUMS - Hard hitting, swing ===
@@ -641,11 +659,25 @@ stack(
    */
   generateVariation(pattern: string, variationType: string = 'subtle'): string {
     const variations: Record<string, string> = {
+      // `.rev` and `.palindrome` need their CALL PARENTHESES.
+      //
+      // `pattern.rev` is a function, not a Pattern, so `every(4, x =>
+      // x.rev)` hands Strudel a function where it wants a pattern.
+      // Measured against @strudel/core, on the cycles where the
+      // transform applies:
+      //
+      //   sequence(pure('bd'), pure('sd'))          -> "bd"@0 "sd"@0.5
+      //   .every(4, x => x.rev)                     -> undefined@0
+      //   .every(4, x => x.rev())                   -> "bd"@0.5 "sd"@0
+      //
+      // One valueless event in place of the music, every fourth cycle,
+      // and it throws nothing — so a pattern that looks right goes
+      // partly silent (#482).
       subtle: '.sometimes(x => x.fast(2))',
-      moderate: '.every(4, x => x.rev).sometimes(x => x.fast(2))',
+      moderate: '.every(4, x => x.rev()).sometimes(x => x.fast(2))',
       extreme: '.every(2, x => x.jux(rev)).sometimes(x => x.iter(4))',
-      glitch: '.sometimes(x => x.chop(8).rev).rarely(x => x.speed(-1))',
-      evolving: '.slow(4).every(8, x => x.fast(2)).every(16, x => x.palindrome)'
+      glitch: '.sometimes(x => x.chop(8).rev()).rarely(x => x.speed(-1))',
+      evolving: '.slow(4).every(8, x => x.fast(2)).every(16, x => x.palindrome())'
     };
     
     return pattern + lookup(variations, variationType, variations.subtle);
@@ -658,18 +690,55 @@ stack(
    * @returns Strudel fill pattern code
    */
   generateFill(style: string, bars: number = 1): string {
+    // One BAR of material per style. `bars` assembles them below.
     const fills: Record<string, string> = {
-      techno: `s("bd*8, cp*4").fast(${bars})`,
-      house: `s("bd*4, cp*2, hh*16").fast(${bars})`,
-      dnb: `s("bd*8, sn*8").fast(${bars * 2})`,
-      trap: `s("bd*4, hh*32").fast(${bars})`,
-      breakbeat: `s("bd cp bd cp, hh*8").iter(4).fast(${bars})`,
-      intelligent_dnb: `s("breaks165").fit().slice(16, "0 2 4 6 8 10 12 14 1 3 5 7 9 11 13 15").gain(0.7).fast(${bars})`,
-      trip_hop: `s("bd ~ sd ~, hh*4").room(0.5).fast(${bars})`,
-      boom_bap: `s("bd sd bd sd, hh*8").swing(0.1).fast(${bars})`
+      techno: 's("bd*8, cp*4")',
+      house: 's("bd*4, cp*2, hh*16")',
+      // dnb's fill is double-time by character, not by bar count.
+      dnb: 's("bd*8, sn*8").fast(2)',
+      trap: 's("bd*4, hh*32")',
+      breakbeat: 's("bd cp bd cp, hh*8").iter(4)',
+      intelligent_dnb:
+        's("breaks165").fit().slice(16, "0 2 4 6 8 10 12 14 1 3 5 7 9 11 13 15").gain(0.7)',
+      trip_hop: 's("bd ~ sd ~, hh*4").room(0.5)',
+      boom_bap: 's("bd sd bd sd, hh*8").swing(0.1)',
     };
-    
-    return lookup(fills, style, fills.techno);
+
+    // Resolve the style the same way every other generator does.
+    //
+    // `lookup` is an exact-key match, so this alone saw neither the
+    // alias table nor a capital letter: `generateFill('triphop')` and
+    // `generateFill('House')` both fell through to the techno fill,
+    // while `generateDrumPattern` resolved both correctly (#482).
+    const lowerStyle = String(style ?? '').toLowerCase();
+    const resolvedStyle = Object.hasOwn(STYLE_ALIASES, lowerStyle)
+      ? STYLE_ALIASES[lowerStyle]
+      : lowerStyle;
+    const base = lookup(fills, resolvedStyle, fills.techno);
+
+    // `bars` is a LENGTH, which is what the tool schema promises and
+    // what the handler's "Generated N bar fill" message claims.
+    //
+    // It used to append `.fast(bars)`. In Strudel that compresses the
+    // pattern into 1/N of ONE cycle and repeats it N times inside that
+    // cycle, so asking for more bars made the fill shorter and denser
+    // and the output occupied one bar however large `bars` got. The
+    // schema and the message were both false for any bars != 1, and
+    // the unit test asserted the literal text `.fast(2)` — locking in
+    // the implementation rather than any intended behaviour, the exact
+    // anti-pattern the tempo postmortem warns about (#482).
+    //
+    // `cat` takes one cycle per argument, measured:
+    //
+    //   cat(a, a, a, b)  ->  cycle 0: a   1: a   2: a   3: b   4: a
+    //
+    // so N bars is N arguments, and the last one is the base at double
+    // time — the ordinary way a fill builds into the next phrase.
+    const count = Number.isInteger(bars) && bars > 1 ? Math.min(bars, MAX_FILL_BARS) : 1;
+    if (count === 1) return base;
+
+    const earlier = new Array<string>(count - 1).fill(base);
+    return `cat(${[...earlier, `${base}.fast(2)`].join(', ')})`;
   }
 
   /**
