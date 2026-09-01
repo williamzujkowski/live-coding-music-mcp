@@ -34,6 +34,7 @@
 
 import * as midiModule from '@tonejs/midi';
 import { BEATS_PER_BAR, BEATS_PER_CYCLE } from '../utils/Tempo.js';
+import { ValidationError } from '../utils/CategorisedError.js';
 
 const Midi = (midiModule as any).Midi || (midiModule as any).default?.Midi;
 
@@ -61,6 +62,13 @@ export interface MIDIImportSummary {
   unmapped_drums: number[];
   /** Grid resolution actually used. */
   steps_per_cycle: number;
+  /**
+   * Note events parsed, when that differs from the number rendered.
+   *
+   * Set at runtime by #463 and never declared here, so no TypeScript
+   * consumer could see it (#475). Absent when the two agree.
+   */
+  notesParsed?: number;
   /**
    * Things the import silently discarded.
    *
@@ -310,13 +318,44 @@ export class MIDIImportService {
         `Pass bars=<n> to import a prefix.`
       );
     }
-    const bars = Math.min(options.bars ?? fileBars, MAX_BARS);
+    // A CAP, which is what the option is documented as. It used to be
+    // taken literally in both directions, so a one-bar file imported
+    // with `bars: 2` emitted two bars — the second one entirely rests —
+    // and reported `bars: 2`. A cap that lengthens its input is not a
+    // cap, and the extra bar is silence the file does not contain
+    // (#475).
+    const bars = Math.min(options.bars ?? fileBars, fileBars, MAX_BARS);
     const totalSteps = bars * stepsPerCycle;
 
     // Belt and braces before the per-step allocations below: stepsPerCycle
     // and bars are both bounded above, so this should be unreachable.
     if (!Number.isSafeInteger(totalSteps) || totalSteps < 1 || totalSteps > MAX_BARS * 64) {
       throw new Error(`Refusing to render ${totalSteps} steps.`);
+    }
+
+    // Caller-supplied sample names are INTERPOLATED into the pattern
+    // string, so they have to be names.
+    //
+    // `drum_map: { 36: 'x"y' }` produced
+    //
+    //   s("x"y ~ ~ ~ ...")
+    //
+    // which is not valid Strudel and not valid anything — the quote
+    // closes the string and the rest of the bar becomes syntax. The
+    // same class as the scale-name injection: a value that reaches
+    // generated code without ever being checked as an identifier
+    // (#475).
+    //
+    // Strudel sample names are word characters, with `:n` selecting a
+    // variant within a bank. Nothing else can appear here.
+    const SAMPLE_NAME = /^[a-z0-9_]+(?::\d+)?$/i;
+    for (const [note, sample] of Object.entries(options.drum_map ?? {})) {
+      if (typeof sample !== 'string' || !SAMPLE_NAME.test(sample)) {
+        throw new ValidationError(
+          `Invalid drum_map sample name for note ${note}: ${JSON.stringify(sample)}. `
+          + 'Sample names are letters, digits and underscores, optionally followed '
+          + 'by ":" and a variant number.');
+      }
     }
 
     const drumMap: Record<number, string> = { ...GM_DRUM_MAP, ...(options.drum_map ?? {}) };
