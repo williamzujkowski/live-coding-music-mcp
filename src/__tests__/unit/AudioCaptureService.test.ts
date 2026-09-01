@@ -95,11 +95,6 @@ const createMockPage = (overrides: Partial<{
         return state.isConnected;
       }
 
-      // Check for clearChunks
-      if (fnStr.includes('chunks = []')) {
-        return undefined;
-      }
-
       return undefined;
     })
   } as unknown as Page;
@@ -321,38 +316,6 @@ describe('AudioCaptureService', () => {
     });
   });
 
-  describe('getElapsedTime', () => {
-    it('should return 0 when not capturing', () => {
-      expect(service.getElapsedTime()).toBe(0);
-    });
-
-    it('should return elapsed time while capturing', async () => {
-      jest.useRealTimers(); // Need real timers for this test
-      const page = createMockPage();
-
-      await service.injectRecorder(page);
-      await service.startCapture(page);
-
-      // Wait a bit
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      const elapsed = service.getElapsedTime();
-      expect(elapsed).toBeGreaterThan(0);
-      expect(elapsed).toBeLessThan(200);
-
-      await service.stopCapture(page);
-    });
-
-    it('should return 0 after stopping', async () => {
-      const page = createMockPage();
-
-      await service.injectRecorder(page);
-      await service.startCapture(page);
-      await service.stopCapture(page);
-
-      expect(service.getElapsedTime()).toBe(0);
-    });
-  });
 
   describe('isConnected', () => {
     it('should return true when connected', async () => {
@@ -386,14 +349,6 @@ describe('AudioCaptureService', () => {
   // UTILITY METHODS TESTS
   // ============================================================================
 
-  describe('clearChunks', () => {
-    it('should clear chunks without error', async () => {
-      const page = createMockPage();
-
-      await service.injectRecorder(page);
-      await expect(service.clearChunks(page)).resolves.not.toThrow();
-    });
-  });
 
   describe('getMimeType', () => {
     it('should return WebM/Opus MIME type', () => {

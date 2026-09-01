@@ -173,6 +173,19 @@ export class AudioExportService {
         'Captured audio is silent. Is a pattern playing? ' +
         'Call playback({ action: "play" }) before exporting.'
       );
+    } else if (payload.peak === undefined) {
+      // Not measured is not the same as not silent.
+      //
+      // A WebM capture the browser could not decode returns without a
+      // peak, so `silent` is false and the check above never fires. The
+      // tool promises it "reports silent captures instead of writing a
+      // silent file and claiming success" — and that promise was kept
+      // by staying quiet about a file it had not been able to look at
+      // (#437 item 2). Say so instead.
+      warnings.push(
+        'Captured audio could not be decoded, so it was not checked for silence. '
+        + 'The bytes are the recorder\'s own output and may be empty.'
+      );
     }
 
     const base: AudioExportResult = {
