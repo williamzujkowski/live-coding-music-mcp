@@ -177,10 +177,15 @@ async function stopAudioCapture(ctx: ToolContext, sid?: string): Promise<unknown
     const buf = await result.blob.arrayBuffer();
     return {
       success: true,
-      message: `Captured ${result.duration}ms of audio`,
+      // A capture that hit `maxDuration` is shorter than the caller
+      // asked for. Saying so is the whole point of the page computing
+      // it — this handler used to drop it (#464).
+      message: `Captured ${result.duration}ms of audio`
+        + (result.warning ? ` — ${result.warning}` : ''),
       audio: blobToBase64(buf),
       duration: result.duration,
       format: result.format,
+      ...(result.warning ? { warning: result.warning } : {}),
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

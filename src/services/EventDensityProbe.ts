@@ -332,7 +332,7 @@ export function probeEventDensity(
             spanFraction: probeSpan / span,
           };
         }
-        // A FULL window counts, distinct or not.
+        // EVERY window that reaches here counts, distinct or not.
         //
         // The distinctness gate exists to stop a rate being extrapolated
         // from a handful of stacked events — `s("bd").slow(64)` returns
@@ -353,11 +353,18 @@ export function probeEventDensity(
         // the ladder stopped) but failed `minDistinct` (so it was not
         // recorded), and `countedFloor` stayed under the cap because
         // eight small windows hold few events in absolute terms (#460).
-        const windowIsFull = onsets.length >= sampleTarget;
-        if (believable || windowIsFull || !canGrow) {
-          sampledOnsets += onsets.length;
-          sampledSpan += probeSpan;
-        }
+        //
+        // Unconditional, and it has to say so. The fix for that wrote
+        // `if (believable || windowIsFull || !canGrow)` — inside a
+        // branch already guarded by `onsets.length >= sampleTarget ||
+        // !canGrow`, which implies it. The condition was always true,
+        // so `believable` had no effect here and the code described a
+        // gate it did not have. Reaching this line means the window is
+        // full or maximal; both count, so there is nothing to test
+        // (#464). `believable` still gates the obviously-huge shortcut
+        // above, which is the place the distinctness rule belongs.
+        sampledOnsets += onsets.length;
+        sampledSpan += probeSpan;
         break;
       }
     }
