@@ -56,7 +56,7 @@ describe('a lossy export reports the loss (#335)', () => {
       expect(r.warning).toBeUndefined();
     });
 
-  it.each(['note("c4@3 e4")', 'note("<c4 e4>")'])(
+  it.each(['note("<c4 e4>")'])(
     '%s exports with the loss declared', pattern => {
       // These cannot be fully represented in one bar, so they export
       // what they can and say what they could not.
@@ -64,6 +64,18 @@ describe('a lossy export reports the loss (#335)', () => {
       expect(r.success).toBe(true);
       expect(r.warning).toBeDefined();
     });
+
+  it('note("c4@3 e4") is no longer lossy — the weight is honoured', () => {
+    // This used to be listed beside the alternation above as an
+    // irreducible loss. It never was: Strudel divides the cycle by
+    // total weight, so `c4@3 e4` is a three-quarter c4 then e4.
+    // Dropping the weight moved e4 to the midpoint, and the report
+    // called that "a duration weight is dropped" when the onset was
+    // wrong too (#477).
+    const r = service().exportToBase64('note("c4@3 e4")');
+    expect(r.success).toBe(true);
+    expect(r.warning).toBeUndefined();
+  });
 
   it('says nothing when nothing was lost', () => {
     const r = service().exportToBase64('note("c4 e4 g4")');

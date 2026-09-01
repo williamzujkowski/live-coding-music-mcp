@@ -61,9 +61,13 @@ describe('MIDI import is tick-relative', () => {
   });
 
   it('lays every quarter note on its own beat', () => {
+    // The notes are half-beat long, so each holds two of the sixteen
+    // steps and the following two rests are covered — `c4@2` rather
+    // than `c4 ~`. Weights sum to 16 per bar either way, so the ONSETS
+    // are unchanged, which is what this test is about (#477).
     const { pattern } = service.convertBuffer(evenQuarters(), {});
     expect(pattern).toContain(
-      '<[c4 ~ ~ ~ c#4 ~ ~ ~ d4 ~ ~ ~ d#4 ~ ~ ~] [e4 ~ ~ ~ f4 ~ ~ ~ f#4 ~ ~ ~ g4 ~ ~ ~]>');
+      '<[c4@2 ~ ~ c#4@2 ~ ~ d4@2 ~ ~ d#4@2 ~ ~] [e4@2 ~ ~ f4@2 ~ ~ f#4@2 ~ ~ g4@2 ~ ~]>');
   });
 });
 
