@@ -586,13 +586,13 @@ describe('InputValidator', () => {
       test('should throw error for string exceeding default limit', () => {
         const longString = 'a'.repeat(1001);
         expect(() => InputValidator.validateStringLength(longString, 'test'))
-          .toThrow('test too long (max 1000 characters, got 1001)');
+          .toThrow('test too long (max 1000 UTF-16 code units, got 1001)');
       });
 
       test('should throw error for string exceeding custom limit', () => {
         const longString = 'a'.repeat(101);
         expect(() => InputValidator.validateStringLength(longString, 'test', 100))
-          .toThrow('test too long (max 100 characters, got 101)');
+          .toThrow('test too long (max 100 UTF-16 code units, got 101)');
       });
 
       test('should provide correct field name in error', () => {
