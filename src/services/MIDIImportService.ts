@@ -145,14 +145,14 @@ function midiToNoteName(midi: number): string {
  * name or `~` (rest). The caller renders one s() lane per result.
  */
 function buildDrumLane(
-  notes: { time: number }[],
+  notes: { beats: number }[],
   sample: string,
-  stepSeconds: number,
+  stepsPerBeat: number,
   totalSteps: number,
 ): string[] {
   const slots = new Array<string>(totalSteps).fill('~');
   for (const n of notes) {
-    const step = Math.round(n.time / stepSeconds);
+    const step = Math.round(n.beats * stepsPerBeat);
     if (step < 0 || step >= totalSteps) continue;
     slots[step] = sample;
   }
@@ -165,13 +165,13 @@ function buildDrumLane(
  * notation within a single step).
  */
 function buildPitchLane(
-  notes: { time: number; midi: number }[],
-  stepSeconds: number,
+  notes: { beats: number; midi: number }[],
+  stepsPerBeat: number,
   totalSteps: number,
 ): string[] {
   const slots = new Array<string[] | null>(totalSteps).fill(null);
   for (const n of notes) {
-    const step = Math.round(n.time / stepSeconds);
+    const step = Math.round(n.beats * stepsPerBeat);
     if (step < 0 || step >= totalSteps) continue;
     const name = midiToNoteName(n.midi);
     if (slots[step] === null) {
@@ -238,16 +238,24 @@ export class MIDIImportService {
       throw new Error(`MIDI file has too many tracks (${midi.tracks.length} > ${MAX_TRACKS}).`);
     }
 
+    // Ticks per quarter note. Everything positional below is derived
+    // from ticks so it stays independent of the file's tempo map (#478).
+    const ppq: number = midi.header.ppq;
+    if (!Number.isFinite(ppq) || ppq <= 0) {
+      throw new ValidationError(`MIDI file declares an unusable PPQ: ${String(ppq)}.`);
+    }
+
     // Count total notes pre-render so we can fail fast on pathological inputs.
     let totalNotes = 0;
-    let lastEnd = 0;
+    let lastEndBeats = 0;
     for (const t of midi.tracks) {
       for (const n of t.notes) {
         totalNotes++;
         if (totalNotes > MAX_NOTES) {
           throw new Error(`MIDI file has too many notes (>${MAX_NOTES}).`);
         }
-        if (n.time + n.duration > lastEnd) lastEnd = n.time + n.duration;
+        const endBeats = (n.ticks + n.durationTicks) / ppq;
+        if (endBeats > lastEndBeats) lastEndBeats = endBeats;
       }
     }
 
@@ -290,8 +298,8 @@ export class MIDIImportService {
       );
     }
 
-    // secondsPerBar below is hardcoded to BEATS_PER_BAR, so any other
-    // meter is laid onto a 4/4 grid.
+    // The grid below is BEATS_PER_BAR wide, so any other meter is laid
+    // onto a 4/4 grid.
     const signature = midi.header.timeSignatures?.[0]?.timeSignature;
     if (Array.isArray(signature) && (signature[0] !== 4 || signature[1] !== 4)) {
       discarded.push(
@@ -299,11 +307,31 @@ export class MIDIImportService {
         'the grid is 4/4, so bar lines will not line up'
       );
     }
-    const secondsPerBeat = 60 / exactBpm;
-    // Export reads the same constant, so a round trip cannot rescale
-    // time by disagreeing about the bar (#336, consolidated in #397).
-    const secondsPerBar = secondsPerBeat * BEATS_PER_BAR;
-    const stepSeconds = secondsPerBar / stepsPerCycle;
+    // Positions come from TICKS, not from seconds.
+    //
+    // The seconds chain that used to live here — secondsPerBeat,
+    // secondsPerBar, stepSeconds — is gone with the last reader of it;
+    // `eslint` is what noticed, since `tsc` does not flag an unused
+    // local. Export still reads BEATS_PER_BAR, so a round trip cannot
+    // rescale time by disagreeing about the bar (#336, #397).
+    //
+    // `@tonejs/midi` resolves `note.time` against the file's whole tempo
+    // MAP, while the pattern emits ONE `setcpm`. So a tempo change was
+    // baked into the spacing of a pattern that declares a constant
+    // tempo. Measured on eight even quarter notes over two bars with
+    // 120 BPM at tick 0 and 60 BPM at tick 1920:
+    //
+    //   <[c4 ~ ~ ~ c#4 ~ ~ ~ d4 ~ ~ ~ d#4 ~ ~ ~]
+    //    [e4 ~ ~ ~ ~ ~ ~ ~ f4 ~ ~ ~ ~ ~ ~ ~]
+    //    [f#4 ~ ~ ~ ~ ~ ~ ~ g4 ~ ~ ~ ~ ~ ~ ~]>
+    //
+    // Three bars from a two-bar file, the last four notes at half
+    // speed — while `discarded` said the later tempo "was dropped".
+    // It was not dropped; it was applied to the positions and denied in
+    // the summary, which is worse than dropping it (#478).
+    //
+    // Ticks are tempo-independent by definition, so this is now true.
+    const stepsPerBeat = stepsPerCycle / BEATS_PER_BAR;
 
     if (options.bars !== undefined) {
       if (!Number.isInteger(options.bars) || options.bars < 1 || options.bars > MAX_BARS) {
@@ -311,7 +339,7 @@ export class MIDIImportService {
       }
     }
 
-    const fileBars = Math.max(1, Math.ceil(lastEnd / secondsPerBar) || 1);
+    const fileBars = Math.max(1, Math.ceil(lastEndBeats / BEATS_PER_BAR) || 1);
     if (fileBars > MAX_BARS && options.bars === undefined) {
       throw new Error(
         `MIDI file spans too many bars (${fileBars} > ${MAX_BARS}). ` +
@@ -362,6 +390,7 @@ export class MIDIImportService {
     const unmappedSet = new Set<number>();
 
     const lanes: string[] = [];
+    let renderedNotes = 0;
 
     for (const track of midi.tracks) {
       if (track.notes.length === 0) continue;
@@ -369,7 +398,7 @@ export class MIDIImportService {
 
       if (isDrum) {
         // Group by mapped sample; emit one s() lane per sample.
-        const bySample = new Map<string, { midi: number; time: number }[]>();
+        const bySample = new Map<string, { midi: number; beats: number }[]>();
         for (const n of track.notes) {
           const sample = drumMap[n.midi];
           if (!sample) {
@@ -377,21 +406,29 @@ export class MIDIImportService {
             continue;
           }
           if (!bySample.has(sample)) bySample.set(sample, []);
-          bySample.get(sample)!.push({ midi: n.midi, time: n.time });
+          bySample.get(sample)!.push({ midi: n.midi, beats: n.ticks / ppq });
         }
         // Sort sample names deterministically so output is stable.
         const samples = Array.from(bySample.keys()).sort();
         for (const sample of samples) {
-          const slots = buildDrumLane(bySample.get(sample)!, sample, stepSeconds, totalSteps);
+          const slots = buildDrumLane(bySample.get(sample)!, sample, stepsPerBeat, totalSteps);
+          // Counted from the SLOTS, before rendering (#478).
+          renderedNotes += slots.filter(slot => slot !== '~').length;
           const body = renderBars(slots, stepsPerCycle, bars);
           lanes.push(`  s("${body}")`);
         }
       } else {
         const slots = buildPitchLane(
-          track.notes.map((n: any) => ({ time: n.time, midi: n.midi })),
-          stepSeconds,
+          track.notes.map((n: any) => ({ beats: n.ticks / ppq, midi: n.midi })),
+          stepsPerBeat,
           totalSteps,
         );
+        // A chord slot holds several notes and the pattern really does
+        // contain all of them, so `[c4,e4]` counts as two. `slots` here
+        // holds RENDERED tokens, so count the names inside the token —
+        // reading `.length` off it counts characters.
+        renderedNotes += slots.reduce<number>((n, slot) =>
+          n + (slot === '~' ? 0 : slot.replace(/[[\]]/g, '').split(',').length), 0);
         const body = renderBars(slots, stepsPerCycle, bars);
         lanes.push(`  note("${body}").s("piano")`);
       }
@@ -408,10 +445,20 @@ export class MIDIImportService {
     // beats-per-cycle conversion (#395).
     // Counted from the rendered lanes, so the summary describes the
     // pattern rather than the file it came from (#433).
-    const renderedNotes = lanes.reduce((total, lane) => {
-      const body = /"([^"]*)"/.exec(lane)?.[1] ?? '';
-      return total + body.split(/\s+/).filter(t => t.length > 0 && t !== '~').length;
-    }, 0);
+    // `renderedNotes` is accumulated as each lane is built, from the
+    // slot arrays themselves.
+    //
+    // It used to be recovered by re-parsing the RENDERED string:
+    // split the body on whitespace and count tokens that are not `~`.
+    // Multi-bar bodies attach punctuation to their edge tokens, so
+    //
+    //   <[c4 ~ ~ ~ ... ~] [e4 ~ ~ ~ ... ~]>
+    //
+    // yields `<[c4`, `~]`, `[e4` and `~]>` among its tokens — and
+    // `~]` is not equal to `~`, so two rests counted as notes. Eight
+    // notes over two bars reported ten. Single-bar patterns have no
+    // such punctuation, which is why every existing test agreed with
+    // it (#478).
 
     const tempoCall = `setcpm(${String(exactBpm)}/${String(BEATS_PER_CYCLE)})`;
     const out = lanes.length === 0
