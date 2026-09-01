@@ -14,6 +14,7 @@
 // @tonejs/midi is CommonJS - use dynamic import approach
 import * as midiModule from '@tonejs/midi';
 import { BEATS_PER_BAR } from '../utils/Tempo.js';
+import { MusicTheory } from './MusicTheory.js';
 
 // Handle both ESM and CJS interop
 const Midi = (midiModule as any).Midi || (midiModule as any).default?.Midi;
@@ -521,8 +522,13 @@ export class MIDIExportService {
     let depth = 0;
 
     for (const char of source) {
-      if (char === '[' || char === '<') depth++;
-      if (char === ']' || char === '>') depth = Math.max(0, depth - 1);
+      // Parentheses group too. Without them the comma in a euclidean
+      // rhythm read as a lane separator: `s("bd(3,8)")` split into
+      // `bd(3` and `8)`, neither a sample name, so one of the most
+      // common idioms in Strudel — and one `generate_rhythm` emits —
+      // exported ZERO notes (#464).
+      if (char === '[' || char === '<' || char === '(') depth++;
+      if (char === ']' || char === '>' || char === ')') depth = Math.max(0, depth - 1);
 
       if (char === ',' && depth === 0) {
         lanes.push(current);
@@ -546,8 +552,9 @@ export class MIDIExportService {
       // split on the space into ["<c4", "e4>"], neither of which is a
       // note or a recognisable alternation — so the whole token was
       // reported unrepresentable even after expansion existed (#335).
-      if (char === '[' || char === '<') depth++;
-      if (char === ']' || char === '>') depth = Math.max(0, depth - 1);
+      // Parentheses group too, for the euclid arguments (#464).
+      if (char === '[' || char === '<' || char === '(') depth++;
+      if (char === ']' || char === '>' || char === ')') depth = Math.max(0, depth - 1);
 
       const isSeparator = (char === ' ' || char === '\t' || char === '\n' || char === ',');
       if (isSeparator && depth === 0) {
@@ -598,6 +605,32 @@ export class MIDIExportService {
         if (options.length === 0) continue;
         out.push(...MIDIExportService.expandOperators([options[0]], onUnrepresented, onPartial));
         if (options.length > 1) onPartial(token);
+        continue;
+      }
+
+      // name(k,n) or name(k,n,rot) — euclidean rhythm. Expanded here
+      // rather than reported unrepresentable, so `s("bd(3,8)")` exports
+      // the tresillo it names (#464).
+      const euclid = /^(.+?)\((\d+)\s*,\s*(\d+)(?:\s*,\s*(-?\d+))?\)$/.exec(token);
+      if (euclid) {
+        const hits = Number.parseInt(euclid[2], 10);
+        const steps = Number.parseInt(euclid[3], 10);
+        // Same ceiling as repetition, and for the same reason: layout
+        // divides the bar by token count.
+        if (steps < 1 || steps > MAX_REPEAT || hits > steps) {
+          onUnrepresented(token);
+          continue;
+        }
+        const rotation = euclid[4] ? Number.parseInt(euclid[4], 10) : 0;
+        const inner = MIDIExportService.expandOperators(
+          [euclid[1]], onUnrepresented, onPartial);
+        const bits = MusicTheory.bjorklund(hits, steps);
+        for (let i = 0; i < steps; i++) {
+          // Positive rotation advances the pattern, matching `.euclid`'s
+          // third argument.
+          const bit = bits[(((i + rotation) % steps) + steps) % steps];
+          if (bit) out.push(...inner); else out.push('~');
+        }
         continue;
       }
 
