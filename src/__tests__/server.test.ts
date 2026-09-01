@@ -1615,7 +1615,6 @@ describe('StrudelMCPServer', () => {
             timestamp: Date.now()
           }),
           isCapturing: jest.fn().mockReturnValue(false),
-          getElapsedTime: jest.fn().mockReturnValue(0),
           isConnected: jest.fn().mockResolvedValue(true),
           clearChunks: jest.fn().mockResolvedValue(undefined),
           getMimeType: jest.fn().mockReturnValue('audio/webm;codecs=opus')

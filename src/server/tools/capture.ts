@@ -171,6 +171,21 @@ async function stopAudioCapture(ctx: ToolContext, sid?: string): Promise<unknown
   try {
     const service = await ctx.getAudioCaptureService(sid);
     if (!service.isCapturing()) {
+      // Distinguish "nothing is recording" from "something else is".
+      //
+      // `export_audio` drives the page-side recorder directly and never
+      // touches this service's mirror, so for the whole of an export
+      // this branch answered "No audio capture in progress" — the
+      // opposite of what was happening (#437 item 9). The export is
+      // left to finish on its own; stopping its recorder from here
+      // would leave its own stopCapture with nothing to collect.
+      const page = ctx.getController(sid).page;
+      // Optional-chained, as `server.ts` does for `isInjectedInto`.
+      if (page && (await service.isPageCapturing?.(page)) === true) {
+        return err('business',
+          'An audio export is recording on this page. It stops on its own when '
+          + 'its duration elapses; audio_capture cannot end it early.');
+      }
       return err('business', 'No audio capture in progress. Start capture first.');
     }
     const result = await service.stopCapture(ctx.getController(sid).page!);
@@ -194,7 +209,12 @@ async function stopAudioCapture(ctx: ToolContext, sid?: string): Promise<unknown
 }
 
 async function captureAudioSample(duration: number | undefined, ctx: ToolContext, sid?: string): Promise<unknown> {
-  const durationMs = duration || 5000;
+  // `?? 5000`, not `|| 5000`. Zero is a number the caller passed, and
+  // `||` swallowed it into the default, so `duration: 0` recorded five
+  // seconds instead of being refused by the bound two lines down. The
+  // same shape as every other falsy-vs-absent bug in this repo (#437
+  // item 7).
+  const durationMs = duration ?? 5000;
   if (durationMs < 100 || durationMs > 60000) {
     // Validation, not business: the caller passed a number outside the
     // allowed range, and no amount of setup changes that. My codemod

@@ -544,9 +544,17 @@ export class AudioCaptureService {
         format: captureResult.format,
         warning: captureResult.warning,
       };
+    }).finally(() => {
+      // Cleared whatever happens.
+      //
+      // This assignment sat after the await, so a rejected evaluate --
+      // a closed page, a navigation, a crashed renderer -- skipped it
+      // and left the Node mirror reading "capturing" for a capture that
+      // is over. Recoverable, since a later stop clears it, but it
+      // costs a wasted call and makes `isCapturing()` lie until then
+      // (#437 item 8).
+      this._isCapturing = false;
     });
-
-    this._isCapturing = false;
 
     if (!result.success) {
       throw new Error(result.error || 'Failed to stop capture');
@@ -599,19 +607,34 @@ export class AudioCaptureService {
   isCapturing(): boolean {
     return this._isCapturing;
   }
-
   /**
-   * Returns the elapsed capture time in milliseconds.
-   * Returns 0 if not currently capturing.
+   * Whether the PAGE thinks a capture is running, whoever started it.
    *
-   * @returns Elapsed time in milliseconds
+   * `isCapturing()` reports this service's own mirror. `export_audio`
+   * drives the page-side recorder directly and never touches that
+   * mirror, so for the whole of a 30s export the mirror read false and
+   * `audio_capture({action:'stop'})` answered "No audio capture in
+   * progress" — which is not true, and told the caller the opposite of
+   * what was happening (#437 item 9).
+   *
+   * Reported rather than acted on: stopping the export's recorder from
+   * here would leave the export's own `stopCapture` with nothing to
+   * collect, which is a worse outcome than saying what is going on.
+   *
+   * @param page - Playwright page instance
+   * @returns true when the injected recorder is mid-capture
    */
-  getElapsedTime(): number {
-    if (!this._isCapturing) {
-      return 0;
+  async isPageCapturing(page: Page): Promise<boolean> {
+    try {
+      return await page.evaluate(/* istanbul ignore next */ () =>
+        (window as any).strudelAudioCapture?.isCapturing === true);
+    } catch {
+      // An unreadable page is not a capturing one.
+      return false;
     }
-    return Date.now() - this._startTime;
   }
+
+
 
   /**
    * Checks if audio capture is connected to Strudel's audio output.
@@ -626,20 +649,6 @@ export class AudioCaptureService {
     });
   }
 
-  /**
-   * Clears any recorded chunks without stopping capture.
-   * Useful for discarding unwanted audio.
-   *
-   * @param page - Playwright page instance
-   */
-  async clearChunks(page: Page): Promise<void> {
-    await page.evaluate(/* istanbul ignore next */ () => {
-      const capture = (window as any).strudelAudioCapture;
-      if (capture) {
-        capture.chunks = [];
-      }
-    });
-  }
 
   /**
    * Gets the MIME type used for recording.
