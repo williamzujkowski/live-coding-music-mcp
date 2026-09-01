@@ -367,6 +367,13 @@ export class MIDIImportService {
     // direction: a grid built for 100.4 played at 100 walks apart just
     // the same (#433). A fractional cpm is valid and the divisor is the
     // beats-per-cycle conversion (#395).
+    // Counted from the rendered lanes, so the summary describes the
+    // pattern rather than the file it came from (#433).
+    const renderedNotes = lanes.reduce((total, lane) => {
+      const body = /"([^"]*)"/.exec(lane)?.[1] ?? '';
+      return total + body.split(/\s+/).filter(t => t.length > 0 && t !== '~').length;
+    }, 0);
+
     const tempoCall = `setcpm(${String(exactBpm)}/${String(BEATS_PER_CYCLE)})`;
     const out = lanes.length === 0
       ? `${tempoCall}\n\n// (no playable notes after parse)\nsilence`
@@ -378,7 +385,19 @@ export class MIDIImportService {
         bpm,
         bars,
         lanes: lanes.length,
-        notes: totalNotes,
+        // Notes the pattern actually contains.
+        //
+        // This reported every note PARSED, including those it then
+        // dropped — the ones past the `bars` cap and those on unmapped
+        // drum pitches. Measured, a file of ten notes on an unmapped
+        // percussion pitch reported `{lanes: 0, notes: 10}` beside the
+        // pattern `silence`: ten notes claimed for a pattern that
+        // contains none (#433).
+        notes: renderedNotes,
+        // The parsed count is still worth having — it is the difference
+        // between "the file was empty" and "the file was dropped" — so
+        // it is reported alongside rather than instead.
+        ...(totalNotes !== renderedNotes ? { notesParsed: totalNotes } : {}),
         unmapped_drums: Array.from(unmappedSet).sort((a, b) => a - b),
         steps_per_cycle: stepsPerCycle,
         ...(discarded.length > 0 ? { discarded } : {}),
