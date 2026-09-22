@@ -68,3 +68,62 @@ describe('sparse styles report no tempo rather than a confident wrong one (#419)
     expect(result.confidence).toBeGreaterThanOrEqual(0.1);
   });
 });
+
+describe('confidence comes from the correlation, not the interval spread (#506)', () => {
+  /** Seeded, so a negative control cannot pass by luck. */
+  const seeded = (seed: number) => {
+    let x = seed;
+    return () => (x = (x * 1103515245 + 12345) % 2147483648) / 2147483648;
+  };
+
+  const T = 1_700_000_000_000;
+
+  it.each([7, 99, 4242])('refuses intervals drawn flat (seed %i)', seed => {
+    const rand = seeded(seed);
+    let t = T;
+    const times: number[] = [];
+    for (let i = 0; i < 20; i++) { times.push(t); t += 150 + Math.round(rand() * 750); }
+
+    const result = new AudioAnalyzer().tempoFromOnsets(times);
+
+    // Under the interval-spread measure these scored 0.29, 0.45 and
+    // 0.42 — all above the floor, and the middle one ABOVE real
+    // ambient audio at 0.19. That inversion is the defect.
+    expect(result.bpm).toBe(0);
+  });
+
+  it.each([11, 555])('refuses onsets scattered through the window (seed %i)', seed => {
+    const rand = seeded(seed);
+    const times: number[] = [];
+    for (let i = 0; i < 24; i++) times.push(T + Math.round(rand() * 12000));
+    times.sort((a, b) => a - b);
+
+    expect(new AudioAnalyzer().tempoFromOnsets(times).bpm).toBe(0);
+  });
+
+  it('is certain about a clean train and says so', () => {
+    const clean = Array.from({ length: 14 }, (_, i) => T + i * 345);
+    const result = new AudioAnalyzer().tempoFromOnsets(clean);
+
+    expect(result.bpm).toBe(174);
+    expect(result.confidence).toBeGreaterThan(0.9);
+  });
+
+  it('separates every negative from every positive with no overlap', () => {
+    // The property the threshold rests on, asserted rather than left in
+    // a commit message. If a future change narrows this gap the
+    // threshold stops being safe, and this is what says so.
+    const rand = seeded(4242);
+    let t = T;
+    const noise: number[] = [];
+    for (let i = 0; i < 20; i++) { noise.push(t); t += 150 + Math.round(rand() * 750); }
+    const pulse = Array.from({ length: 14 }, (_, i) => T + i * 345);
+
+    const analyzer = new AudioAnalyzer();
+    const worstPositive = analyzer.tempoFromOnsets(pulse).confidence;
+    const bestNegative = analyzer.tempoFromOnsets(noise).confidence;
+
+    expect(bestNegative).toBeLessThan(worstPositive);
+    expect(worstPositive - bestNegative).toBeGreaterThan(0.3);
+  });
+});
