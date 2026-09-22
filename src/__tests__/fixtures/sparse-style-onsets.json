@@ -1,0 +1,146 @@
+{
+ "source": "Onsets dumped from _onsetHistory during headless playback of generated patterns at 130 BPM, 1.2s warmup then polls 1.2s apart. Times relative to the first onset.",
+ "note": "Each case is a reading the median fallback produced with NO confidence floor (#419). reportedBpm/reportedConfidence are what detectTempo returned before the fix.",
+ "cases": [
+  {
+   "label": "gen/ambient",
+   "declaredBpm": 130,
+   "reportedBpm": 184,
+   "reportedConfidence": 0,
+   "onsets": [
+    {
+     "t": 0,
+     "strength": 0.004373468137254902
+    },
+    {
+     "t": 60,
+     "strength": 0.005752144607843138
+    },
+    {
+     "t": 199,
+     "strength": 0.007398897058823529
+    },
+    {
+     "t": 300,
+     "strength": 0.006027879901960785
+    },
+    {
+     "t": 359,
+     "strength": 0.005798100490196079
+    },
+    {
+     "t": 421,
+     "strength": 0.05169270833333333
+    },
+    {
+     "t": 479,
+     "strength": 0.009183517156862745
+    },
+    {
+     "t": 899,
+     "strength": 0.015556066176470588
+    },
+    {
+     "t": 1359,
+     "strength": 0.016934742647058822
+    }
+   ]
+  },
+  {
+   "label": "gen/ambient",
+   "declaredBpm": 130,
+   "reportedBpm": 125,
+   "reportedConfidence": 0,
+   "onsets": [
+    {
+     "t": 0,
+     "strength": 0.004373468137254902
+    },
+    {
+     "t": 60,
+     "strength": 0.005752144607843138
+    },
+    {
+     "t": 199,
+     "strength": 0.007398897058823529
+    },
+    {
+     "t": 300,
+     "strength": 0.006027879901960785
+    },
+    {
+     "t": 359,
+     "strength": 0.005798100490196079
+    },
+    {
+     "t": 421,
+     "strength": 0.05169270833333333
+    },
+    {
+     "t": 479,
+     "strength": 0.009183517156862745
+    },
+    {
+     "t": 899,
+     "strength": 0.015556066176470588
+    },
+    {
+     "t": 1359,
+     "strength": 0.016934742647058822
+    },
+    {
+     "t": 2280,
+     "strength": 0.0404718137254902
+    },
+    {
+     "t": 2739,
+     "strength": 0.01564031862745098
+    }
+   ]
+  },
+  {
+   "label": "gen/jungle",
+   "declaredBpm": 130,
+   "reportedBpm": 184,
+   "reportedConfidence": 0,
+   "onsets": [
+    {
+     "t": 0,
+     "strength": 0.04736519607843137
+    },
+    {
+     "t": 81,
+     "strength": 0.01678921568627451
+    },
+    {
+     "t": 140,
+     "strength": 0.033019301470588236
+    },
+    {
+     "t": 341,
+     "strength": 0.010003063725490195
+    },
+    {
+     "t": 540,
+     "strength": 0.035393688725490195
+    },
+    {
+     "t": 622,
+     "strength": 0.016222426470588237
+    },
+    {
+     "t": 922,
+     "strength": 0.012522977941176471
+    },
+    {
+     "t": 1000,
+     "strength": 0.008272058823529412
+    },
+    {
+     "t": 1080,
+     "strength": 0.02536764705882353
+    }
+   ]
+  }
+ ]
+}

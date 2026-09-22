@@ -1403,9 +1403,22 @@ export class AudioAnalyzer {
       confidence *= 0.8;
     }
 
+    // The same floor the autocorrelation branch applies, which this
+    // branch never had.
+    //
+    // It is the one that let `gen/ambient` report 184 BPM at confidence
+    // 0.000 and `gen/jungle` report 184 at 0.000 — a number with nothing
+    // behind it, in the shape of a measurement. The reasoning on
+    // MIN_TEMPO_CONFIDENCE applies here unchanged; it was simply only
+    // written on one of the two exits (#419).
+    const finalConfidence = Math.min(1, confidence);
+    if (finalConfidence < AudioAnalyzer.MIN_TEMPO_CONFIDENCE) {
+      return { bpm: 0, confidence: finalConfidence, method: 'onset' };
+    }
+
     return {
       bpm: Math.round(bpm),
-      confidence: Math.min(1, confidence),
+      confidence: finalConfidence,
       method: 'onset'
     };
   }
