@@ -63,7 +63,9 @@ function detectInBuffers(samples: Sample[], bufferMs: number): number[] {
     (buffers[index] ??= []).push(sample);
   }
   for (const buffer of buffers) {
-    inner.mergeOnsetHistory(analyzer.onsetsFromFlux(buffer, inner._onsetHistory.length > 0));
+    inner.mergeOnsetHistory(
+      analyzer.onsetCandidatesFromFlux(buffer, inner._onsetHistory.length > 0)
+    );
   }
   return inner._onsetHistory.map(o => o.t);
 }
@@ -84,29 +86,34 @@ describe('buffered detection equals whole-series detection (#370)', () => {
     expect(buffered).toEqual(whole);
   });
 
-  // Marked failing on purpose: the property is right, the code does not
-  // meet it yet, and `it.failing` says so out loud instead of a weakened
-  // assertion pretending otherwise. It flips to a failure the moment
-  // someone fixes it, which is the point.
+  // Was `it.failing` while the residual was open: at a boundary of
+  // 1745ms the buffered path found 44 onsets to the whole-series path's
+  // 45, and threshold continuity plus boundary collapse explained
+  // neither. It does now.
   //
-  // At a boundary of 1745ms the buffered path finds 44 onsets to the
-  // whole-series path's 45 — one hi-hat at t=3540, 40ms into the third
-  // buffer, is lost. Threshold continuity and boundary collapse are both
-  // in place and neither explains it. Unresolved, tracked in #370.
-  it.failing('matches the whole-series count at every buffer boundary', () => {
+  // The buffer was collapsed on its own and then collapsed AGAIN at the
+  // boundary, which is not the same operation as collapsing the stream
+  // once: the first candidates of a buffer merged among themselves
+  // before they could be compared with what the previous buffer kept,
+  // so a frame the whole-series pass would have chosen as the peak was
+  // discarded before the merge ever saw it. `detectTempo` now hands
+  // `mergeOnsetHistory` the uncollapsed candidates and lets it collapse
+  // across the join (#370, #502).
+  it('matches the whole-series count at every buffer boundary', () => {
     const whole = detectWhole(SAMPLES);
     const buffered = detectInBuffers(SAMPLES, 1_745);
     expect(buffered.length).toBe(whole.length);
   });
 
-  it('is much closer than it was: no more than one onset differs', () => {
-    // Before threshold continuity and boundary collapse, an adversarial
-    // boundary split transients wholesale. This bounds the damage while
-    // the residual above is open.
+  it('matches exactly at every boundary, not just closely', () => {
+    // This used to bound the damage at "no more than one onset differs"
+    // because one did. Widening ONSET_REFRACTORY_MS to cover the
+    // smoothing tail took that to two, which is what sent anyone
+    // looking for the cause instead of raising the bound (#502).
     const whole = detectWhole(SAMPLES);
     for (const bufferMs of [1_745, 2_000, 2_500, 3_000]) {
       const buffered = detectInBuffers(SAMPLES, bufferMs);
-      expect(Math.abs(buffered.length - whole.length)).toBeLessThanOrEqual(1);
+      expect(buffered).toEqual(whole);
     }
   });
 

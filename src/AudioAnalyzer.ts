@@ -119,11 +119,40 @@ export class AudioAnalyzer {
    * How long after a detected transient further frames are treated as
    * part of it rather than as new onsets.
    *
-   * 50ms is below anything musical: 16th notes at 200 BPM are 75ms
-   * apart, and 32nds are rare enough that resolving them matters less
-   * than not shattering every kick into four.
+   * The reasoning for the original 50ms was right and the number was
+   * too small to deliver it. "Not shattering every kick into four" is
+   * exactly the goal; 50ms did not reach it, because the AnalyserNode
+   * runs with `smoothingTimeConstant = 0.8`, which spreads one
+   * transient over three or four frames of positive flux — 60 to 100ms.
+   * A refractory shorter than the tail of the hit it is suppressing
+   * suppresses nothing, so one kick became two onsets ~60ms apart.
+   *
+   * Measured: ambient had 7 of 33 inter-onset intervals at 100ms or
+   * less, where aubio on the same audio had none, and only 59% of our
+   * onsets landed on the beat grid against aubio's 89%. Those doubles
+   * inflate the inter-onset CV, which is what `tempoFromOnsets` turns
+   * into confidence — so a correct 130.4 BPM estimate was scored below
+   * MIN_TEMPO_CONFIDENCE and thrown away (#502).
+   *
+   * Swept against captured flux from six real patterns. The knee is
+   * sharp and it is at 65ms:
+   *
+   *     refractory   ambient      techno       dnb
+   *     50-60ms      65 @ 0.12    130 @ 0.49   65 @ 0.15
+   *     65-80ms      65 @ 0.19    130 @ 0.94   65 @ 0.42
+   *     90-100ms     65 @ 0.37    130 @ 0.94   65 @ 0.50
+   *     125ms        65 @ 0.48    130 @ 0.94   65 @ 0.52
+   *
+   * Not a trade: the material that already worked improves most, since
+   * techno was carrying the same doubles.
+   *
+   * 70 rather than 65, to sit past the knee rather than on it, and
+   * rather than the 90ms that scores better still: 16th notes at
+   * 200 BPM are 75ms apart, and the original comment was right to want
+   * headroom there. 125ms takes `intelligent_dnb` from 130 to 65, which
+   * is the far edge of this making things worse.
    */
-  static readonly ONSET_REFRACTORY_MS = 50;
+  static readonly ONSET_REFRACTORY_MS = 70;
 
   /**
    * How much a candidate's octave relatives count toward its score,
@@ -583,6 +612,33 @@ export class AudioAnalyzer {
     samples: { t: number; flux: number }[],
     continueStream = false
   ): OnsetObservation[] {
+    return AudioAnalyzer.collapseToPeaks(this.onsetCandidatesFromFlux(samples, continueStream));
+  }
+
+  /**
+   * Every frame that crossed the threshold, before collapsing.
+   *
+   * The buffered path needs these rather than the collapsed peaks,
+   * because collapsing per buffer and then collapsing the boundary
+   * again is not the same operation as collapsing the whole stream
+   * once. The first candidates of a buffer get merged among themselves
+   * before they can be compared with what the previous buffer kept, and
+   * a frame the whole-series pass would have chosen as the peak can be
+   * discarded before the boundary merge ever sees it.
+   *
+   * That was the residual left open in #370 — one onset in 45 at an
+   * adversarial 1745ms boundary — and it grew to two as soon as
+   * ONSET_REFRACTORY_MS was widened to cover the smoothing tail (#502),
+   * because a wider window puts more frames in each run.
+   *
+   * @param samples - Timestamped flux values, oldest first
+   * @param continueStream - True when this buffer continues one already in progress
+   * @returns Every frame judged an onset, uncollapsed, oldest first
+   */
+  onsetCandidatesFromFlux(
+    samples: { t: number; flux: number }[],
+    continueStream = false
+  ): OnsetObservation[] {
     // Resetting between buffers of ONE performance makes every boundary
     // a discontinuity: the first samples of each buffer fall back to the
     // fixed threshold instead of the adaptive one the stream had already
@@ -594,7 +650,7 @@ export class AudioAnalyzer {
     for (const sample of samples) {
       if (this.isOnset(sample.flux)) candidates.push({ t: sample.t, strength: sample.flux });
     }
-    return AudioAnalyzer.collapseToPeaks(candidates);
+    return candidates;
   }
 
   /**
@@ -1010,7 +1066,12 @@ export class AudioAnalyzer {
       if (buffered.length >= 8) {
         // Continuing the same stream: the previous buffer's threshold
         // state is what makes this buffer's first samples comparable.
-        const detected = this.onsetsFromFlux(buffered, this._onsetHistory.length > 0);
+        // Candidates, not peaks: `mergeOnsetHistory` collapses them
+        // together with what the previous buffer kept, so the collapse
+        // happens exactly once over the concatenated stream — which is
+        // what makes the buffered path equal the whole-series one
+        // (#370, #502).
+        const detected = this.onsetCandidatesFromFlux(buffered, this._onsetHistory.length > 0);
         this.mergeOnsetHistory(detected);
         return this.tempoFromOnsets([...this._onsetHistory]);
       }
