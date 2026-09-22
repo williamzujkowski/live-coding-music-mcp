@@ -320,7 +320,25 @@ npm run validate       # Test MCP protocol
 ```bash
 npm test              # Run Jest tests
 npm run test:watch    # Watch mode
+npm run calibrate:tempo   # our detector vs librosa and aubio, on real audio
 ```
+
+`calibrate:tempo` plays each pattern in real Chromium, polls
+`detectTempo` the way an agent would, then exports the WAV of that same
+playback and hands it to reference implementations. Both sides hear the
+identical audio, so a disagreement is about the detectors rather than
+about two recordings. `pip install librosa aubio` enables it; without
+them it still reports our readings and says what it could not compare
+against.
+
+**It settles the period. It does not settle the octave.** On a click
+track with no ambiguity at all, librosa reads a 165 BPM signal as 82.0
+or 166.7 depending only on its own `start_bpm`, and aubio reads a
+174 BPM click as 87.8. The octave is not in the audio; every estimator
+supplies it from a prior, ours included. Compare periods modulo the
+octave. And on a silent wav librosa reports 120.19 — the same "tempo
+prior's centre with a measurement's face on" that #366 named here — so
+results carry `rms` and `silent`.
 
 ### Adding New Tools
 
@@ -696,8 +714,39 @@ new density cases through `IsolatedStrudelEngine` too.
     breakbeat. `alternatives` carries the other octave and confidence is
     0.21 against techno's 0.93, so the uncertainty is already reported.
 
-    The two non-percussive examples report no tempo rather than guessing,
-    which is the right answer for a pad with a three-second attack.
+    **The flip is fixed, and not by any of the above.** Two changes did
+    it, and the second was the one nobody was looking for:
+
+      - `ONSET_REFRACTORY_MS` was 50ms while the AnalyserNode's
+        `smoothingTimeConstant = 0.8` spreads one transient over 60-100ms,
+        so one kick became two onsets and the inter-onset spread sank the
+        confidence. 70ms, swept rather than picked (#502).
+      - A reading is now withheld until a second, DIFFERENT onset window
+        agrees with it, and once confirmed is not displaced until some
+        other reading clears the same bar (#374, #501).
+
+    Measured after both, `npm run calibrate:tempo` twice: every style
+    reads `0, X, X` — withhold once, then never move. The amen break
+    settles on 83 and stays there; `gen/intelligent_dnb`, which flipped
+    130, 130, 86, 130, is stable at 130 in both runs.
+
+    The withheld first poll is a real cost: an agent that writes, plays
+    and polls ONCE gets no number where it used to get one. That number
+    was usually wrong — across nine styles at a short warmup, every
+    first-poll reading was wrong, up to 186 BPM for audio scheduled at
+    130. `bpm: 0` carries a `settling` flag so "no pulse here" and "ask
+    me again in a second" do not look alike.
+
+    The two non-percussive examples used to report no tempo, which was
+    the right answer for a pad with a three-second attack — but only
+    half the story. `npm run calibrate:tempo` showed aubio recovering
+    131.6 BPM from the same ambient and jungle audio we refused, so the
+    refusal was a floor rather than a ceiling. After #502 ambient reads
+    130 in one run of two and jungle reads 112 (librosa: 110.29) in
+    both. The residual is #506: confidence is computed from onset-
+    detector regularity and stands in for correlation quality, so it
+    discards estimates the correlation was certain about — 130.4 BPM in
+    seven of seven ambient windows.
 - Key detection uses Krumhansl-Schmuckler with Pearson correlation and no
   mode boosts (#320). It recovers all 24 canonical profiles exactly, but
   it depends on chroma resolution: at the shipped `fft_size: 2048`
