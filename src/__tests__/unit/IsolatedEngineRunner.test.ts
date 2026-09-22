@@ -69,6 +69,33 @@ afterAll(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+/**
+ * A deadline the capped payload cannot reach.
+ *
+ * Two containment mechanisms race on the `oom` payload — the heap cap
+ * and the wall-clock deadline — and these tests assert which one won.
+ * At the 2000ms the rest of the file uses, that was decided by machine
+ * load: the file passed alone and both OOM tests failed inside the
+ * 161-suite parallel tier, reporting `timeout` instead of `oom` (#497).
+ *
+ * Measured, not guessed. `new Array(5e7).fill(7)` is 400MB:
+ *
+ *  - under `--max-old-space-size=64`, V8 aborts in ~0.5s — it only has
+ *    to allocate 64MB before it gives up
+ *  - with no cap, it SUCCEEDS in ~15s on a loaded machine
+ *
+ * So a deadline well above the first and near the second takes the
+ * deadline out of the race without weakening anything: a build with no
+ * cap either resolves the call or trips the deadline, and neither is
+ * `oom`. That is the property the assertion exists for.
+ */
+const OOM_DEADLINE_MS = 20000;
+
+/** A runner for the two tests that assert the cap specifically. */
+function cappedRunner(): IsolatedEngineRunner {
+  return new IsolatedEngineRunner({ childPath, maxOldSpaceMb: 64, timeoutMs: OOM_DEADLINE_MS });
+}
+
 beforeEach(() => {
   runner = new IsolatedEngineRunner({ childPath, maxOldSpaceMb: 64, timeoutMs: 2000 });
 });
@@ -90,26 +117,38 @@ describe('IsolatedEngineRunner — containment (#307)', () => {
 
   it('survives new Array(5e7).fill(7) under a 64MB cap, and keeps working', async () => {
     const before = process.pid;
+    const capped = cappedRunner();
 
-    const error = await runner.call('oom', []).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(IsolatedRunnerError);
-    // Asserting the MECHANISM, not just the survival. Dropping
-    // --max-old-space-size makes the payload succeed on the default heap
-    // until the deadline kills it instead — survival still holds, so a
-    // test that only checked survival passed a build with no heap cap at
-    // all. It has to be the cap that stopped this.
-    expect((error as IsolatedRunnerError).kind).toBe('oom');
+    try {
+      const error = await capped.call('oom', []).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(IsolatedRunnerError);
+      // Asserting the MECHANISM, not just the survival. Dropping
+      // --max-old-space-size lets the payload complete on the default
+      // heap — survival still holds, so a test that only checked
+      // survival passed a build with no heap cap at all. It has to be
+      // the cap that stopped this, which is why the deadline is set
+      // above the payload's reach rather than left to race it (#497).
+      expect((error as IsolatedRunnerError).kind).toBe('oom');
 
-    // And the point of the whole exercise: this line runs at all.
-    expect(process.pid).toBe(before);
-    await expect(runner.call('echo', ['still here'])).resolves.toBe('still here');
+      // And the point of the whole exercise: this line runs at all.
+      expect(process.pid).toBe(before);
+      await expect(capped.call('echo', ['still here'])).resolves.toBe('still here');
+    } finally {
+      capped.dispose();
+    }
   }, 30000);
 
   it('reports the OOM as the caller\'s problem, not a transient one', async () => {
-    const error = await runner.call('oom', []).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(IsolatedRunnerError);
-    expect((error as IsolatedRunnerError).kind).toBe('oom');
-    expect((error as IsolatedRunnerError).message).toContain('64MB');
+    const capped = cappedRunner();
+
+    try {
+      const error = await capped.call('oom', []).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(IsolatedRunnerError);
+      expect((error as IsolatedRunnerError).kind).toBe('oom');
+      expect((error as IsolatedRunnerError).message).toContain('64MB');
+    } finally {
+      capped.dispose();
+    }
   }, 30000);
 
   it('respawns a fresh child after a kill rather than reusing the corpse', async () => {
