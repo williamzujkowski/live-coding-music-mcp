@@ -15,6 +15,20 @@ export interface TempoAnalysis {
    * 174, which is the reading its producer would give (#352).
    */
   alternatives?: number[];
+  /**
+   * True when a reading exists but has not been confirmed yet.
+   *
+   * `bpm: 0` means two different things and a caller has to be able to
+   * tell them apart: "there is no pulse in this audio" — the sentinel
+   * #288 introduced — and "there is one, I have a candidate, and I am
+   * waiting for a second window to agree" (#374, #501).
+   *
+   * Telling an agent to "ensure audio is playing" when audio IS playing
+   * and the detector is merely settling sends it to fix the wrong
+   * thing. The detector knows which state it is in; this is how it
+   * says so.
+   */
+  settling?: boolean;
 }
 
 export interface KeyAnalysis {
