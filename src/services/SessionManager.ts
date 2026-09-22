@@ -48,6 +48,20 @@ export class SessionManager {
   /** In-flight close, so a create waits for it rather than racing it. */
   private browserClose: Promise<void> | null = null;
 
+  /**
+   * Handles that refused to close, kept so a later teardown can retry.
+   *
+   * `destroySession` and `closeBrowser` both logged a close failure and
+   * moved on, which dropped the last reference to the thing that failed
+   * — nothing could ever try again, and a context or browser that was
+   * only temporarily wedged stayed up for the life of the process
+   * (#423 item 9). Playwright exposes no process handle for a browser
+   * from `chromium.launch()` (`process()` is on BrowserServer and
+   * ElectronApplication, not Browser), so retrying the close is the
+   * strongest move available here.
+   */
+  private readonly pendingCloses = new Map<{ close(): Promise<void> }, string>();
+
   private sessions: Map<string, Session> = new Map();
 
   /**
@@ -222,11 +236,23 @@ export class SessionManager {
       // still read 0/5, and an agent retrying a transient strudel.cc
       // failure leaked one per attempt.
       if (context !== undefined) {
-        try {
-          await context.close();
-        } catch (closeError: any) {
-          this.logger.warn(`Failed to close context for '${id}': ${closeError.message}`);
-        }
+        await this.closeOrRetain(context, `context for '${id}'`);
+      }
+
+      // Released here rather than only in `finally`, because the check
+      // below has to see `reservedIds` without this attempt still in it.
+      // `finally` deletes again; Set.delete is idempotent.
+      this.reservedIds.delete(id);
+
+      // A failed create is the one path that can leave Chromium up with
+      // nothing to serve. `ensureBrowser` launches it and starts the
+      // 5-minute idle sweep, and only `destroySession` and `destroyAll`
+      // ever close it — neither of which runs for a session that never
+      // landed. So a server whose create failed, and which never made
+      // another, held a browser and a live interval with
+      // `sessions.size === 0` (#423 item 1).
+      if (this.sessions.size === 0 && this.reservedIds.size === 0) {
+        await this.closeBrowser();
       }
       throw error;
     } finally {
@@ -316,15 +342,11 @@ export class SessionManager {
     // callback below, and both reach `closeBrowser` (#423).
     this.sessions.delete(id);
 
-    try {
-      // Close the browser context (which closes the page)
-      await session.context.close();
-    } catch (error: any) {
-      // Logged, not rethrown: the entry is already gone, and a context
-      // that refuses to close is not a reason to keep serving it. This
-      // does drop the last handle to it — noted in #423.
-      this.logger.warn(`Error closing session context: ${error.message}`);
-    }
+    // Not rethrown: the entry is already gone, and a context that
+    // refuses to close is not a reason to keep serving it. The handle is
+    // retained rather than dropped, so the next teardown retries it
+    // (#423 item 9).
+    await this.closeOrRetain(session.context, `context for session '${id}'`);
 
     // Tell the owner, whichever path got us here. The server keeps its
     // own per-session maps (history bundles, capture services), and those
@@ -422,21 +444,27 @@ export class SessionManager {
     const sessionIds = this.listSessions();
 
     for (const id of sessionIds) {
+      const session = this.sessions.get(id);
+      if (!session) continue;
+      this.sessions.delete(id);
+
+      await this.closeOrRetain(session.context, `context for session '${id}'`);
+
+      // The same callback `destroySession` fires. This loop used to
+      // close contexts and call `sessions.clear()` without it, so the
+      // server's per-session history bundles and capture services were
+      // never dropped — while the comment on `destroySession` and the
+      // one at the callback's registration both said destroyAll was
+      // covered (#423). Only the shutdown path calls this, so nothing
+      // leaked in practice; the claim was the problem.
+      //
+      // It runs outside the close, because a `try` around both put the
+      // callback back on the same failure path the fix removed: a
+      // context that would not close skipped the teardown again.
       try {
-        const session = this.sessions.get(id);
-        if (!session) continue;
-        this.sessions.delete(id);
-        await session.context.close();
-        // The same callback `destroySession` fires. This loop used to
-        // close contexts and call `sessions.clear()` without it, so the
-        // server's per-session history bundles and capture services were
-        // never dropped — while the comment on `destroySession` and the
-        // one at the callback's registration both said destroyAll was
-        // covered (#423). Only the shutdown path calls this, so nothing
-        // leaked in practice; the claim was the problem.
         this.onSessionDestroyed?.(id);
       } catch (error: any) {
-        this.logger.warn(`Error closing session '${id}': ${error.message}`);
+        this.logger.warn(`Session destroy callback failed for '${id}': ${error.message}`);
       }
     }
 
@@ -454,9 +482,9 @@ export class SessionManager {
     this.stopCleanupTimer();
 
     const browser = this.browser;
-    if (!browser) return;
+    if (!browser && this.pendingCloses.size === 0) return;
 
-    // Cleared BEFORE the await, not after.
+    // Cleared BEFORE the first await, not after.
     //
     // `ensureBrowser` returns `this.browser` when it is non-null, and it
     // stayed non-null for the whole of `await browser.close()` — so a
@@ -464,18 +492,23 @@ export class SessionManager {
     // away and `newContext()` threw `Target page, context or browser has
     // been closed`. `reservedIds` guards the window before closeBrowser
     // is entered, not during it (#423).
+    //
+    // Nothing may await above this line: the retry below is an await,
+    // and running it first would reopen exactly that window.
     this.browser = null;
+
     // Held so a concurrent `ensureBrowser` waits for the close to finish
     // rather than launching a second Chromium beside it.
     this.browserClose = (async () => {
-      try {
-        await browser.close();
-      } catch (error: any) {
-        // Logged, not rethrown: the field is already cleared, and a
-        // browser that will not close is not a reason to keep handing it
-        // out. This does drop the last handle to it — noted in #423.
-        this.logger.warn(`Error closing browser: ${error.message}`);
-      }
+      // Anything an earlier teardown could not close gets another
+      // attempt, before the browser it belongs to goes away (#423 item 9).
+      await this.retryPendingCloses();
+
+      // Not rethrown: the field is already cleared, and a browser that
+      // will not close is not a reason to keep handing it out. The
+      // handle is retained rather than dropped, so the next teardown
+      // retries it.
+      if (browser) await this.closeOrRetain(browser, 'shared browser');
     })();
 
     try {
@@ -483,6 +516,58 @@ export class SessionManager {
     } finally {
       this.browserClose = null;
     }
+  }
+
+  /**
+   * Closes a handle, retaining it for a later retry if it refuses.
+   *
+   * Never throws: every caller is on a teardown path where the entry is
+   * already gone from the map, and a failed close must not stop the rest
+   * of the teardown.
+   *
+   * @param handle - Anything with an async `close()` — a context or the browser
+   * @param label - What to call it in the log
+   */
+  private async closeOrRetain(
+    handle: { close(): Promise<void> },
+    label: string
+  ): Promise<void> {
+    try {
+      await handle.close();
+      this.pendingCloses.delete(handle);
+    } catch (error: any) {
+      this.pendingCloses.set(handle, label);
+      this.logger.error(`Failed to close ${label}; retained for retry`, error);
+    }
+  }
+
+  /**
+   * Retries handles an earlier teardown could not close.
+   *
+   * One that still refuses stays in the map for the teardown after this
+   * one. The map holds at most one entry per handle and entries are
+   * dropped on success, so a repeatedly-wedged handle costs one
+   * reference, not a growing list.
+   */
+  private async retryPendingCloses(): Promise<void> {
+    for (const [handle, label] of [...this.pendingCloses]) {
+      try {
+        await handle.close();
+        this.pendingCloses.delete(handle);
+        this.logger.info(`Closed ${label} on retry`);
+      } catch (error: any) {
+        this.logger.warn(`${label} still will not close: ${error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Number of handles retained after a failed close. Test seam for #423
+   * item 9; nothing in src/ reads it.
+   * @returns Count of handles awaiting a retry
+   */
+  getPendingCloseCount(): number {
+    return this.pendingCloses.size;
   }
 
   /**
