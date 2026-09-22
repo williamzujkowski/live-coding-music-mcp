@@ -29,6 +29,20 @@ function isValidFftSize(n: unknown): n is number {
 }
 
 /** A detected onset and how loud the transient that produced it was. */
+/**
+ * A beat period and how strongly the onsets actually support it.
+ *
+ * `periodicity` is `corr(beat) / corr(0)` — the share of the
+ * envelope's self-similarity that survives at the reported period. It
+ * exists because confidence used to be computed from the spread of
+ * inter-onset intervals, which is a different question from "is this
+ * the beat" and answered it wrongly (#506).
+ */
+export interface BeatPeriod {
+  periodMs: number;
+  periodicity: number;
+}
+
 export interface OnsetObservation {
   t: number;
   strength: number;
@@ -223,6 +237,18 @@ export class AudioAnalyzer {
    * flipped in #501 — are never mistaken for each other.
    */
   private static readonly TEMPO_AGREEMENT_RATIO = 0.02;
+
+  /**
+   * Floor for the autocorrelation branch, on its own scale.
+   *
+   * `corr(beat)/corr(0)` is not the interval-spread number
+   * MIN_TEMPO_CONFIDENCE was calibrated against, so it does not
+   * inherit that threshold. Measured: deliberate negatives — intervals
+   * drawn flat, onsets scattered through the window — score 0.088 to
+   * 0.160, and the weakest genuine reading scores 0.303. 0.25 sits in
+   * the gap (#506).
+   */
+  private static readonly MIN_PERIODICITY_CONFIDENCE = 0.25;
 
   /**
    * How much of the past a tempo reading may be built from.
@@ -1377,7 +1403,7 @@ export class AudioAnalyzer {
     return own + AudioAnalyzer.FAMILY_CORROBORATION * relatives;
   }
 
-  beatPeriodFromOnsets(onsets: OnsetInput): number | null {
+  beatPeriodFromOnsets(onsets: OnsetInput): BeatPeriod | null {
     const times = onsetTimes(onsets);
     const strengths = onsetStrengths(onsets);
     // Autocorrelation needs a series long enough to show periodicity.
@@ -1500,7 +1526,14 @@ export class AudioAnalyzer {
       lag = half;
     }
 
-    return lag * RESOLUTION_MS;
+    // The share of the envelope's self-similarity that survives at the
+    // reported period — `corr(beat) / corr(0)`. This is what the
+    // caller uses for confidence, and it is the quantity the answer
+    // was actually derived from (#506).
+    const periodicity = correlation[0] > 0
+      ? Math.min(1, correlation[lag] / correlation[0])
+      : 0;
+    return { periodMs: lag * RESOLUTION_MS, periodicity };
   }
 
   /**
@@ -1546,16 +1579,38 @@ export class AudioAnalyzer {
     // fold-into-range step picked whichever octave the subdivision
     // landed in first (#352).
     const beatPeriod = this.beatPeriodFromOnsets(onsets);
-    if (beatPeriod !== null && beatPeriod > 0) {
-      const rawBpm = 60000 / beatPeriod;
+    if (beatPeriod !== null && beatPeriod.periodMs > 0) {
+      const rawBpm = 60000 / beatPeriod.periodMs;
       const folded = AudioAnalyzer.foldIntoTempoRange(rawBpm);
       if (folded !== null) {
         const bpm = Math.round(folded);
-        const intervals = this.calculateIntervals(times);
-        const variance = this.calculateVariance(intervals);
-        const mean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-        const cv = mean > 0 ? Math.sqrt(variance) / mean : 1;
-        const confidence = Math.min(1, Math.max(0, 1 - cv * 1.5));
+        // Confidence from the correlation that produced this number,
+        // not from the spread of the inter-onset intervals.
+        //
+        // The old measure asked "were the detected onsets evenly
+        // spaced?" and was read as "how sure are you about this
+        // tempo?". Those come apart exactly where it matters: the
+        // autocorrelation returned 130.4 BPM in seven of seven
+        // six-second ambient windows while interval CV drifted across
+        // the floor, so a correct answer was reported in four of them
+        // and discarded in three — on a statistic the correlation had
+        // never consulted (#506).
+        //
+        // Measured across real captures and deliberate negatives, the
+        // two quantities rank the cases differently and only one of
+        // them ranks them correctly:
+        //
+        //                        interval CV   corr(beat)/corr(0)
+        //   random intervals        0.45            0.11
+        //   scattered onsets        0.00            0.09
+        //   ambient (correct)       0.19            0.71
+        //   amen break              0.39            0.56
+        //   techno                  0.94            0.95
+        //
+        // The old measure puts a pulseless series ABOVE real ambient.
+        // The new one separates every negative from every positive
+        // with no overlap — 0.16 against 0.30 at the boundary.
+        const confidence = beatPeriod.periodicity;
 
         // Below the floor, say nothing rather than say 120.
         //
@@ -1565,7 +1620,12 @@ export class AudioAnalyzer {
         // Measured on real playback before #366's onset fix: 120 BPM for
         // dnb, techno and house alike, every run, at confidence 0.00.
         // The code already knew; nothing was reading it.
-        if (confidence < AudioAnalyzer.MIN_TEMPO_CONFIDENCE) {
+        // Its own floor, because it is its own scale. The negatives
+        // measured top out at 0.16 and the weakest true reading is
+        // 0.30, so 0.25 sits in the gap rather than on either side of
+        // it. MIN_TEMPO_CONFIDENCE still governs the median branch,
+        // where confidence is still interval-based.
+        if (confidence < AudioAnalyzer.MIN_PERIODICITY_CONFIDENCE) {
           return { bpm: 0, confidence, method: 'autocorrelation' };
         }
 

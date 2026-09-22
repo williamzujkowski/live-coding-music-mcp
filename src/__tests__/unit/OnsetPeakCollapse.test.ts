@@ -81,25 +81,45 @@ describe('collapseToPeaks (#366)', () => {
 
 describe('no pulse means no tempo (#366)', () => {
   it('reports 0, not the prior, when the onsets carry no periodicity', () => {
-    // Deterministic, not random: intervals alternating 100ms and 900ms
-    // have a correlation peak at 1000ms like anything else, but a
-    // coefficient of variation that says the series has no steady pulse.
-    // The old code answered 60 BPM at confidence 0.00 and looked exactly
-    // as certain as a real reading.
+    // Deterministic, and genuinely aperiodic: intervals drawn flat from
+    // 150-900ms by a seeded generator, so the series has no repeat at
+    // any lag. The old code answered whatever the 120 BPM prior liked,
+    // at confidence 0.00, looking exactly as certain as a real reading.
     //
-    // Written with random intervals first, guarded by an if/else that
+    // Written with Math.random first, guarded by an if/else that
     // accepted either outcome — which passed with the floor removed. A
-    // test that cannot fail is not evidence.
-    const analyzer = new AudioAnalyzer();
+    // test that cannot fail is not evidence. Seeded instead.
+    const rand = (() => { let x = 4242; return () => (x = (x * 1103515245 + 12345) % 2147483648) / 2147483648; })();
     let t = 1_700_000_000_000;
-    const lurching = [t];
+    const aimless = [t];
+    for (let i = 0; i < 30; i++) {
+      t += 150 + Math.round(rand() * 750);
+      aimless.push(t);
+    }
+    const result = new AudioAnalyzer().tempoFromOnsets(aimless);
+    expect(result.confidence).toBeLessThan(0.25);
+    expect(result.bpm).toBe(0);
+  });
+
+  it('calls a 100/900 alternation what it is: 60 BPM with a flam', () => {
+    // This fixture used to stand in for "no periodicity" above, and it
+    // was the wrong example. Onsets at 0, 100, 1000, 1100, 2000, 2100
+    // repeat EXACTLY every 1000ms — that is a 60 BPM pulse with a grace
+    // note, not an absence of pulse. It only looked pulseless to a
+    // coefficient of variation, which is the measure #506 replaced.
+    //
+    // Kept rather than deleted, asserting what is actually true of it,
+    // because the change of answer here is the change being made and it
+    // should be visible.
+    let t = 1_700_000_000_000;
+    const flammed = [t];
     for (let i = 0; i < 30; i++) {
       t += i % 2 === 0 ? 100 : 900;
-      lurching.push(t);
+      flammed.push(t);
     }
-    const result = analyzer.tempoFromOnsets(lurching);
-    expect(result.confidence).toBeLessThan(0.1);
-    expect(result.bpm).toBe(0);
+    const result = new AudioAnalyzer().tempoFromOnsets(flammed);
+    expect(result.bpm).toBe(60);
+    expect(result.confidence).toBeGreaterThan(0.9);
   });
 
   it('still reports a tempo when the pulse is real', () => {
