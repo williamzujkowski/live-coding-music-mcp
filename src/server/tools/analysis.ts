@@ -140,11 +140,19 @@ async function getTempo(controller: any): Promise<unknown> {
     // explicit flag (#288). No envelope here: getTempo is a sub-result
     // composed into analyze's object, and an envelope nested inside a
     // data payload is not the contract.
+    //
+    // Two different states arrive here. A reading that is merely
+    // settling has a candidate already and needs another poll; telling
+    // its caller to check whether audio is playing, while audio IS
+    // playing, sends it to fix the wrong thing (#374).
     return {
       bpm: null,
       detected: false,
       confidence: 0,
-      message: 'No tempo detected. Ensure audio is playing and has a clear rhythmic pattern.',
+      message: tempoAnalysis?.settling === true
+        ? 'Tempo is still settling — a reading was taken but not yet confirmed by a second '
+          + 'window. Call again in a second or two.'
+        : 'No tempo detected. Ensure audio is playing and has a clear rhythmic pattern.',
     };
   }
   return {

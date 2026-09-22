@@ -23,10 +23,27 @@ const stubPage = (): Page => ({
   evaluate: async () => ({ dataArray: new Uint8Array(512), isConnected: true }),
 } as unknown as Page);
 
+/**
+ * Two polls, because `detectTempo` withholds a reading until a second
+ * window agrees with it (#374, #501).
+ *
+ * The onset history here is injected and never changes, so the second
+ * poll sees an unmoved window, which the detector treats as final — the
+ * reading it reports is the same one a single poll used to give. The
+ * extra call is the new contract, not a workaround for it: the first
+ * reading after a reset is the one taken from the least evidence, and
+ * on real audio it is the one that was wrong.
+ */
 async function bpmFor(intervals: number[]): Promise<number> {
+  return (await readingFor(intervals)).bpm;
+}
+
+async function readingFor(intervals: number[]) {
   const analyzer = new AudioAnalyzer();
   (analyzer as unknown as { _onsetHistory: number[] })._onsetHistory = onsetsFrom(intervals);
-  return (await analyzer.detectTempo(stubPage())).bpm;
+  const page = stubPage();
+  await analyzer.detectTempo(page);
+  return await analyzer.detectTempo(page);
 }
 
 describe('median inter-onset interval (#322)', () => {
@@ -46,10 +63,7 @@ describe('median inter-onset interval (#322)', () => {
   });
 
   it('a genuinely irregular sequence still reports low confidence', async () => {
-    const analyzer = new AudioAnalyzer();
-    (analyzer as unknown as { _onsetHistory: number[] })._onsetHistory =
-      onsetsFrom([500, 900, 300, 700, 400, 800]);
-    const result = await analyzer.detectTempo(stubPage());
+    const result = await readingFor([500, 900, 300, 700, 400, 800]);
     // The median makes it robust, not credulous.
     expect(result.confidence).toBeLessThan(0.6);
   });
@@ -96,15 +110,8 @@ describe('octave folding (#322)', () => {
   });
 
   it('a folded reading is less confident than a direct one', async () => {
-    const direct = new AudioAnalyzer();
-    (direct as unknown as { _onsetHistory: number[] })._onsetHistory =
-      onsetsFrom([345, 345, 345, 345, 345, 345]);
-    const folded = new AudioAnalyzer();
-    (folded as unknown as { _onsetHistory: number[] })._onsetHistory =
-      onsetsFrom([172, 172, 172, 172, 172, 172]);
-
-    const a = await direct.detectTempo(stubPage());
-    const b = await folded.detectTempo(stubPage());
+    const a = await readingFor([345, 345, 345, 345, 345, 345]);
+    const b = await readingFor([172, 172, 172, 172, 172, 172]);
     // Both land on 174; inferring the beat is double what the onsets
     // literally say is a weaker claim than reading it off directly.
     expect(a.bpm).toBe(b.bpm);

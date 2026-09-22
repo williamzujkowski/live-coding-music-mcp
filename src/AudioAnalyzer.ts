@@ -67,6 +67,42 @@ export class AudioAnalyzer {
    * kick from a hi-hat.
    */
   private _onsetHistory: OnsetObservation[] = [];
+
+  /**
+   * The tempo we have committed to, and the one still on probation.
+   *
+   * `detectTempo` used to answer from scratch every poll, so the answer
+   * moved while the onset window filled. Measured on unchanging audio:
+   * the amen break read 167, 83, 83, 83 across four polls, and
+   * `gen/intelligent_dnb` read 130, 130, 86, 130 (#374, #501).
+   *
+   * At most one of 167 and 83 is a measurement. The other is an
+   * artifact of how much history had accumulated — and a caller has no
+   * way to tell which poll it is holding.
+   *
+   * So a reading has to be seen twice, from two different windows,
+   * before it is reported; and once reported it is not displaced until
+   * some other reading has cleared the same bar. Cleared by
+   * `resetTempoHistory`, which is the pattern-change boundary.
+   */
+  private _confirmedTempo: TempoAnalysis | null = null;
+  private _unconfirmedBpm: number | null = null;
+
+  /**
+   * What the onsets looked like at the previous poll.
+   *
+   * Confirmation has to mean two readings from DIFFERENT evidence.
+   * `detectTempo` drains the page's flux buffer, so calling it twice in
+   * a row sees the identical onset history and trivially agrees with
+   * itself — which would confirm a first reading rather than test it.
+   *
+   * Count alone is not enough: the history is capped at
+   * MAX_HISTORY_LENGTH, so a full window slides without the count
+   * changing. The newest onset's timestamp catches that.
+   *
+   * `null` means no poll has happened yet.
+   */
+  private _lastOnsetSignature: string | null = null;
   private _spectralFluxHistory: number[] = [];
   private _previousMagnitudes: number[] | null = null;
   private _chromaHistory: number[][] = [];
@@ -177,6 +213,16 @@ export class AudioAnalyzer {
    * 120", which is the distinction #366 turned on.
    */
   private static readonly MIN_TEMPO_CONFIDENCE = 0.1;
+
+  /**
+   * How far two readings may differ and still count as the same answer.
+   *
+   * 2%, with a one-BPM floor applied at the comparison. Wide enough for
+   * the 83/82 wobble adjacent polls produce on identical audio, narrow
+   * enough that 130 and 86 — a 2:3 cross-rhythm, and the pair that
+   * flipped in #501 — are never mistaken for each other.
+   */
+  private static readonly TEMPO_AGREEMENT_RATIO = 0.02;
 
   /**
    * How much of the past a tempo reading may be built from.
@@ -749,6 +795,10 @@ export class AudioAnalyzer {
    */
   async resetTempoHistory(page?: Page): Promise<void> {
     this._onsetHistory = [];
+    // The stable reading belongs to the pattern that produced it (#374).
+    this._confirmedTempo = null;
+    this._unconfirmedBpm = null;
+    this._lastOnsetSignature = null;
     this.resetOnsetDetection();
 
     // The PAGE keeps its own flux buffer, and clearing only the Node
@@ -1073,7 +1123,8 @@ export class AudioAnalyzer {
         // (#370, #502).
         const detected = this.onsetCandidatesFromFlux(buffered, this._onsetHistory.length > 0);
         this.mergeOnsetHistory(detected);
-        return this.tempoFromOnsets([...this._onsetHistory]);
+        const history = [...this._onsetHistory];
+        return this.stabilise(this.tempoFromOnsets(history), history);
       }
 
       // Fall back to the single-sample path when the page has no buffer
@@ -1094,7 +1145,109 @@ export class AudioAnalyzer {
       onsets = [...this._onsetHistory];
     }
 
-    return this.tempoFromOnsets(onsets);
+    return this.stabilise(this.tempoFromOnsets(onsets), onsets);
+  }
+
+  /**
+   * Whether two readings describe the same pulse.
+   *
+   * Not equality: consecutive readings of the same audio wobble by a
+   * BPM, and the amen break read 83 then 82 on adjacent polls. A
+   * proportional tolerance with a one-BPM floor treats that as the same
+   * answer and still separates 130 from 86.
+   *
+   * @param a - One reading, in BPM
+   * @param b - The other
+   * @returns True when the two agree within tolerance
+   */
+  private static readingsAgree(a: number, b: number): boolean {
+    if (a <= 0 || b <= 0) return false;
+    return Math.abs(a - b) <= Math.max(1, a * AudioAnalyzer.TEMPO_AGREEMENT_RATIO);
+  }
+
+  /**
+   * A fingerprint of the onsets a reading was taken from.
+   *
+   * @param onsets - The series the reading came from
+   * @returns A string that changes when the window does
+   */
+  private static onsetSignature(onsets: OnsetInput): string {
+    const times = onsetTimes(onsets);
+    const newest = times.length > 0 ? times[times.length - 1] : 0;
+    return `${String(times.length)}:${String(newest)}`;
+  }
+
+  /**
+   * Holds a reading back until a second window agrees with it.
+   *
+   * The rule, in full:
+   *
+   *  - A window that has not changed since the last poll cannot produce
+   *    a different answer, so its reading is final and reported at
+   *    once. This is the mock and fixture case, and the real case after
+   *    the audio stops.
+   *  - A reading that agrees with the confirmed one refreshes it. The
+   *    confirmed BPM is reported rather than the new one, so the number
+   *    does not wobble by a BPM between polls; confidence stays live,
+   *    because that is a live property of the evidence.
+   *  - A reading that agrees with the previous unconfirmed one is
+   *    promoted and reported.
+   *  - Anything else is held. If something is already confirmed it
+   *    keeps being reported, so one deviant poll cannot flip the
+   *    answer — the deviant has to be seen twice, like every other
+   *    reading. That is what stops 130, 130, 86, 130.
+   *  - `bpm: 0` is not a competing reading, it is the absence of one.
+   *    It never displaces a confirmed answer and never counts as
+   *    corroboration.
+   *
+   * A held reading returns `bpm: 0` with its measured confidence and
+   * method, matching what the MIN_TEMPO_CONFIDENCE gate already does —
+   * the caller reads `bpm === 0` as "no answer yet" either way.
+   *
+   * @param reading - What this poll measured
+   * @param onsets - The onsets it measured from
+   * @returns The reading to report
+   */
+  private stabilise(reading: TempoAnalysis, onsets: OnsetInput): TempoAnalysis {
+    const signature = AudioAnalyzer.onsetSignature(onsets);
+    const windowMoved = this._lastOnsetSignature !== signature;
+    const firstPoll = this._lastOnsetSignature === null;
+    this._lastOnsetSignature = signature;
+
+    if (reading.bpm === 0) {
+      // No reading to corroborate, and none to contradict. Whatever was
+      // confirmed still stands until the pattern changes.
+      return this._confirmedTempo === null
+        ? reading
+        : { ...this._confirmedTempo, confidence: reading.confidence };
+    }
+
+    if (!windowMoved && !firstPoll) {
+      // Nothing new can arrive, so waiting cannot improve this answer.
+      this._confirmedTempo = reading;
+      this._unconfirmedBpm = null;
+      return reading;
+    }
+
+    if (this._confirmedTempo !== null
+        && AudioAnalyzer.readingsAgree(this._confirmedTempo.bpm, reading.bpm)) {
+      this._unconfirmedBpm = null;
+      return { ...this._confirmedTempo, confidence: reading.confidence };
+    }
+
+    if (this._unconfirmedBpm !== null
+        && AudioAnalyzer.readingsAgree(this._unconfirmedBpm, reading.bpm)) {
+      this._confirmedTempo = reading;
+      this._unconfirmedBpm = null;
+      return reading;
+    }
+
+    this._unconfirmedBpm = reading.bpm;
+    // `settling`, so the caller is not told to check whether audio is
+    // playing while it is playing and a candidate is already in hand.
+    return this._confirmedTempo === null
+      ? { ...reading, bpm: 0, alternatives: undefined, settling: true }
+      : { ...this._confirmedTempo, confidence: reading.confidence };
   }
 
   /**

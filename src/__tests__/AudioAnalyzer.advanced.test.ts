@@ -262,12 +262,30 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
   // ==========================================================================
 
   describe('Tempo Detection', () => {
+    /**
+     * Two polls, because `detectTempo` holds a reading back until a
+     * second window agrees with it (#374, #501).
+     *
+     * The mock returns the same onset times every call, so the second
+     * poll sees an unmoved window — which the detector treats as final,
+     * since nothing new can arrive to change it. The reported reading
+     * is the one a single poll used to give.
+     *
+     * On real audio the window does move between polls, and there the
+     * first reading is the one taken from the least evidence: the amen
+     * break read 167 and then 83, 83, 83 on unchanging audio.
+     */
+    const settledTempo = async (page: unknown) => {
+      await analyzer.detectTempo(page as unknown as Page);
+      return await analyzer.detectTempo(page as unknown as Page);
+    };
+
     describe('Known Tempo Detection', () => {
       test('should detect 120 BPM within ±2 BPM tolerance', async () => {
         mockPage = createMockPageWithAnalysis(mockAudioData.tempo120bpm);
         await analyzer.inject(mockPage as unknown as Page);
 
-        const analysis = await analyzer.detectTempo(mockPage as unknown as Page);
+        const analysis = await settledTempo(mockPage);
 
         expect(analysis).toBeDefined();
         expect(analysis?.bpm).toBeGreaterThanOrEqual(118);
@@ -279,7 +297,7 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
         mockPage = createMockPageWithAnalysis(mockAudioData.tempo174bpm);
         await analyzer.inject(mockPage as unknown as Page);
 
-        const analysis = await analyzer.detectTempo(mockPage as unknown as Page);
+        const analysis = await settledTempo(mockPage);
 
         expect(analysis).toBeDefined();
         expect(analysis?.bpm).toBeGreaterThanOrEqual(172);
@@ -291,7 +309,7 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
         mockPage = createMockPageWithAnalysis(mockAudioData.tempo90bpm);
         await analyzer.inject(mockPage as unknown as Page);
 
-        const analysis = await analyzer.detectTempo(mockPage as unknown as Page);
+        const analysis = await settledTempo(mockPage);
 
         expect(analysis).toBeDefined();
         expect(analysis?.bpm).toBeGreaterThanOrEqual(88);
@@ -305,7 +323,7 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
         mockPage = createMockPageWithAnalysis(mockAudioData.tempo40bpm);
         await analyzer.inject(mockPage as unknown as Page);
 
-        const analysis = await analyzer.detectTempo(mockPage as unknown as Page);
+        const analysis = await settledTempo(mockPage);
 
         expect(analysis).toBeDefined();
         expect(analysis?.bpm).toBeGreaterThanOrEqual(38);
@@ -318,7 +336,7 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
         mockPage = createMockPageWithAnalysis(mockAudioData.tempo200bpm);
         await analyzer.inject(mockPage as unknown as Page);
 
-        const analysis = await analyzer.detectTempo(mockPage as unknown as Page);
+        const analysis = await settledTempo(mockPage);
 
         expect(analysis).toBeDefined();
         expect(analysis?.bpm).toBeGreaterThanOrEqual(195);
@@ -330,7 +348,7 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
         mockPage = createMockPageWithAnalysis(mockAudioData.noAudio);
         await analyzer.inject(mockPage as unknown as Page);
 
-        const analysis = await analyzer.detectTempo(mockPage as unknown as Page);
+        const analysis = await settledTempo(mockPage);
 
         expect(analysis).toBeDefined();
         expect(analysis?.bpm === 0 || analysis === null).toBe(true);
@@ -345,7 +363,7 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
         mockPage = createMockPageWithAnalysis(mockAudioData.tempo120bpm);
         await analyzer.inject(mockPage as unknown as Page);
 
-        const analysis = await analyzer.detectTempo(mockPage as unknown as Page);
+        const analysis = await settledTempo(mockPage);
 
         expect(analysis?.confidence).toBeGreaterThan(0.8);
       });
@@ -361,7 +379,7 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
         mockPage = createMockPageWithAnalysis(irregularData);
         await analyzer.inject(mockPage as unknown as Page);
 
-        const analysis = await analyzer.detectTempo(mockPage as unknown as Page);
+        const analysis = await settledTempo(mockPage);
 
         expect(analysis?.confidence).toBeLessThan(0.7);
       });
@@ -372,7 +390,7 @@ describe('AudioAnalyzer - Advanced Analysis', () => {
         mockPage = createMockPageWithAnalysis(mockAudioData.tempo120bpm);
         await analyzer.inject(mockPage as unknown as Page);
 
-        const analysis = await analyzer.detectTempo(mockPage as unknown as Page);
+        const analysis = await settledTempo(mockPage);
 
         expect(analysis?.method).toBeDefined();
         expect(['autocorrelation', 'onset', 'spectral']).toContain(analysis?.method);
