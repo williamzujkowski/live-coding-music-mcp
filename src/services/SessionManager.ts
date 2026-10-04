@@ -1,6 +1,12 @@
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { StrudelController, waitForStrudelReady } from '../StrudelController.js';
-import { DEFAULT_STRUDEL_URL } from '../utils/ServerConfig.js';
+import {
+  DEFAULT_BLOCK_RESOURCES,
+  DEFAULT_STRUDEL_URL,
+  DEFAULT_VIEWPORT,
+  type BrowserFidelity,
+  type ViewportConfig,
+} from '../utils/ServerConfig.js';
 import { Logger } from '../utils/Logger.js';
 import type { AudioAnalysisConfig } from '../types/AudioAnalysis.js';
 import { BusinessError } from '../utils/CategorisedError.js';
@@ -89,6 +95,10 @@ export class SessionManager {
   private audioAnalysisConfig?: AudioAnalysisConfig;
   /** Strudel REPL URL; `strudel_url` in config.json (#227). */
   private readonly strudelUrl: string;
+  /** Playwright viewport; null lets the page track the OS window (#514). */
+  private readonly viewport: ViewportConfig | null;
+  /** Resource types the per-session page route aborts (#514). */
+  private readonly blockResources: readonly string[];
 
   /**
    * Called after a session is removed, however it was removed.
@@ -111,10 +121,14 @@ export class SessionManager {
     headless: boolean = false,
     audioAnalysisConfig?: AudioAnalysisConfig,
     strudelUrl: string = DEFAULT_STRUDEL_URL,
+    // Page-setup overrides from config.json `viewport` / `block_resources` (#514).
+    fidelity: BrowserFidelity = {},
   ) {
     this.isHeadless = headless;
     this.audioAnalysisConfig = audioAnalysisConfig;
     this.strudelUrl = strudelUrl;
+    this.viewport = fidelity.viewport !== undefined ? fidelity.viewport : DEFAULT_VIEWPORT;
+    this.blockResources = fidelity.blockResources ?? DEFAULT_BLOCK_RESOURCES;
     this.logger = new Logger();
   }
 
@@ -210,13 +224,20 @@ export class SessionManager {
 
       context = await browser.newContext({
         permissions: ['microphone'],
-        viewport: { width: 1280, height: 720 },
+        // null is meaningful: Playwright tracks the real window size (#514).
+        viewport: this.viewport,
         reducedMotion: 'reduce',
       });
 
       const page = await context.newPage();
 
-      controller = new StrudelController(this.isHeadless, this.audioAnalysisConfig, this.strudelUrl);
+      controller = new StrudelController(
+        this.isHeadless,
+        this.audioAnalysisConfig,
+        this.strudelUrl,
+        undefined,
+        { viewport: this.viewport, blockResources: this.blockResources },
+      );
       await this.initializeControllerWithPage(controller, page);
 
       const session: Session = {
@@ -277,7 +298,7 @@ export class SessionManager {
     // Set up page routing for resource optimization
     await page.route('**/*', (route) => {
       const resourceType = route.request().resourceType();
-      if (['image', 'font', 'media'].includes(resourceType)) {
+      if (this.blockResources.includes(resourceType)) {
         route.abort();
       } else {
         route.continue();

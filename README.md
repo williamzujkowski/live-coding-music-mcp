@@ -622,6 +622,8 @@ node tests/strudel-integration.js
   "strudel_url": "https://strudel.cc/",
   "patterns_dir": "./patterns",
   "exports_dir": "./exports",
+  "viewport": { "width": 1280, "height": 720 },  // or null to track the window size (#514)
+  "block_resources": ["image", "font", "media"], // resource types the page route aborts
   "audio_analysis": {
     "fft_size": 2048,       // power of 2 in [32, 32768]; code default is 1024
     "smoothing": 0.8        // number in [0, 1]; default 0.8
@@ -632,6 +634,13 @@ node tests/strudel-integration.js
 `strudel_url` is the REPL the browser is pointed at — set it to run against a self-hosted or
 pinned Strudel build. Only `http`/`https` are accepted; anything else falls back to the default
 with a logged warning. `patterns_dir` is where `pattern_store` reads and writes.
+
+`viewport` pins the Playwright page layout. Set it to `null` in a headed window so dragging the
+window resizes the page and strudel's canvases follow (#514). `block_resources` lists the
+resource types the page route aborts to speed up load; the default blocks `image`, `font`, and
+`media`, which suits headless CI but degrades the live editor (fallback-font button metrics,
+canvases that ignore window resizes). A live-coding setup wants `"block_resources": ["media"]`.
+Both keys fall back to the defaults with a logged warning when invalid.
 
 `exports_dir` is where `export_midi({format:"file"})` writes. Exported filenames are reduced to a
 basename and confined to this directory — a name containing path separators is sanitized rather

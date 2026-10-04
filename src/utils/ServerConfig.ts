@@ -31,7 +31,59 @@ const KNOWN_KEYS = new Set([
   'patterns_dir',
   'exports_dir',
   'audio_analysis',
+  'viewport',
+  'block_resources',
 ]);
+
+/** Playwright viewport size. `null` means "track the OS window size". */
+export interface ViewportConfig {
+  width: number;
+  height: number;
+}
+
+/**
+ * Default page setup, unchanged from the historic hardcoding (#514).
+ *
+ * Both values exist for headless CI: a pinned viewport keeps
+ * screenshots deterministic, and aborting fonts and images speeds up
+ * page load. In a headed window the same choices degrade the live
+ * editor (fallback-font button metrics, canvases that ignore window
+ * resizes), which is why both are now configurable.
+ */
+export const DEFAULT_VIEWPORT: ViewportConfig = { width: 1280, height: 720 };
+
+/** Resource types the page route aborts by default (#514). */
+export const DEFAULT_BLOCK_RESOURCES: readonly string[] = ['image', 'font', 'media'];
+
+/**
+ * Resource types Playwright may report; `block_resources` values are
+ * validated against this set so a typo earns a warning instead of a
+ * silently unblocked resource class.
+ */
+const KNOWN_RESOURCE_TYPES = new Set([
+  'document',
+  'stylesheet',
+  'image',
+  'media',
+  'font',
+  'script',
+  'texttrack',
+  'xhr',
+  'fetch',
+  'eventsource',
+  'websocket',
+  'manifest',
+  'other',
+]);
+
+/**
+ * Browser page-setup overrides threaded from config.json to the
+ * Playwright launch sites (#514). Absent fields mean "use the default".
+ */
+export interface BrowserFidelity {
+  viewport?: ViewportConfig | null;
+  blockResources?: readonly string[];
+}
 
 /** Validated configuration, with defaults applied. */
 export interface ServerConfig {
@@ -40,6 +92,10 @@ export interface ServerConfig {
   patternsDir: string;
   exportsDir?: string;
   audioAnalysis?: AudioAnalysisConfig;
+  /** Playwright viewport; null lets the page track the OS window size (#514). */
+  viewport: ViewportConfig | null;
+  /** Resource types the page route aborts to speed up load (#514). */
+  blockResources: string[];
   /** Human-readable problems found while parsing; caller logs these. */
   warnings: string[];
 }
@@ -176,6 +232,63 @@ function parseAudioAnalysis(
   };
 }
 
+/**
+ * Parses the `viewport` block (#514).
+ *
+ * `null` is meaningful, not missing: Playwright treats a null viewport
+ * as "use the real window size", which is what makes window resizes
+ * reach the page. A malformed value falls back to the pinned default
+ * rather than to null, so a typo cannot silently unpin the layout in
+ * headless runs.
+ */
+function parseViewport(raw: unknown, warnings: string[]): ViewportConfig | null {
+  if (raw === undefined) return DEFAULT_VIEWPORT;
+  if (raw === null) return null;
+
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    const vp = raw as Record<string, unknown>;
+    if (
+      typeof vp.width === 'number' &&
+      typeof vp.height === 'number' &&
+      Number.isFinite(vp.width) &&
+      Number.isFinite(vp.height) &&
+      vp.width > 0 &&
+      vp.height > 0
+    ) {
+      return { width: vp.width, height: vp.height };
+    }
+  }
+
+  warnings.push(
+    'config.viewport must be null or an object with positive numeric width and height; ' +
+      `using ${DEFAULT_VIEWPORT.width}x${DEFAULT_VIEWPORT.height}`
+  );
+  return DEFAULT_VIEWPORT;
+}
+
+/**
+ * Parses the `block_resources` array (#514).
+ *
+ * An empty array is valid and means "abort nothing" — the live-coding
+ * recommendation is `["media"]`, keeping large audio fetches out while
+ * letting fonts and images render.
+ */
+function parseBlockResources(raw: unknown, warnings: string[]): string[] {
+  if (raw === undefined) return [...DEFAULT_BLOCK_RESOURCES];
+
+  const valid =
+    Array.isArray(raw) &&
+    raw.every((t): t is string => typeof t === 'string' && KNOWN_RESOURCE_TYPES.has(t));
+  if (valid) return [...raw];
+
+  warnings.push(
+    'config.block_resources must be an array of Playwright resource types ' +
+      `(${[...KNOWN_RESOURCE_TYPES].join(', ')}); using ` +
+      `[${DEFAULT_BLOCK_RESOURCES.map((t) => `'${t}'`).join(', ')}]`
+  );
+  return [...DEFAULT_BLOCK_RESOURCES];
+}
+
 export function parseServerConfig(raw: unknown): ServerConfig {
   const warnings: string[] = [];
   const obj: Record<string, unknown> =
@@ -210,6 +323,8 @@ export function parseServerConfig(raw: unknown): ServerConfig {
         ? undefined
         : parseDirectory(obj.exports_dir, 'exports_dir', './exports', warnings),
     audioAnalysis,
+    viewport: parseViewport(obj.viewport, warnings),
+    blockResources: parseBlockResources(obj.block_resources, warnings),
     warnings,
   };
 }
