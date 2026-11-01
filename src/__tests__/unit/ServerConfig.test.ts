@@ -131,6 +131,61 @@ describe('parseServerConfig', () => {
     });
   });
 
+  describe('viewport (#514)', () => {
+    it('defaults to the pinned 1280x720 when absent', () => {
+      expect(parseServerConfig({}).viewport).toEqual({ width: 1280, height: 720 });
+    });
+
+    it('is actually read, not ignored', () => {
+      expect(parseServerConfig({ viewport: { width: 1920, height: 1080 } }).viewport)
+        .toEqual({ width: 1920, height: 1080 });
+    });
+
+    it('accepts null to track the OS window size', () => {
+      expect(parseServerConfig({ viewport: null }).viewport).toBeNull();
+    });
+
+    it.each([
+      'a string',
+      42,
+      [],
+      { width: 'wide', height: 1080 },
+      { width: 1920 },
+      { width: 0, height: 1080 },
+      { width: -1, height: -1 },
+      { width: NaN, height: 1080 },
+    ])('warns and falls back for %p', value => {
+      const config = parseServerConfig({ viewport: value });
+
+      expect(config.viewport).toEqual({ width: 1280, height: 720 });
+      expect(config.warnings.join(' ')).toMatch(/viewport/);
+    });
+  });
+
+  describe('block_resources (#514)', () => {
+    it('defaults to image, font, media when absent', () => {
+      expect(parseServerConfig({}).blockResources).toEqual(['image', 'font', 'media']);
+    });
+
+    it('is actually read, not ignored', () => {
+      expect(parseServerConfig({ block_resources: ['media'] }).blockResources).toEqual(['media']);
+    });
+
+    it('accepts an empty list, meaning abort nothing', () => {
+      expect(parseServerConfig({ block_resources: [] }).blockResources).toEqual([]);
+    });
+
+    it.each(['a string', 42, { image: true }, ['image', 'bogus'], [42], [null]])(
+      'warns and falls back for %p',
+      value => {
+        const config = parseServerConfig({ block_resources: value });
+
+        expect(config.blockResources).toEqual(['image', 'font', 'media']);
+        expect(config.warnings.join(' ')).toMatch(/block_resources/);
+      },
+    );
+  });
+
   describe('malformed input never throws', () => {
     it.each([undefined, null, 'a string', 42, []])('survives %p', raw => {
       expect(() => parseServerConfig(raw)).not.toThrow();

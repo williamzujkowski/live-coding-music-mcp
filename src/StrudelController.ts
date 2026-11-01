@@ -3,7 +3,13 @@ import * as path from 'path';
 import { promises as fs } from 'fs';
 import { AudioAnalyzer } from './AudioAnalyzer.js';
 import { PatternValidator, ValidationResult } from './utils/PatternValidator.js';
-import { DEFAULT_STRUDEL_URL } from './utils/ServerConfig.js';
+import {
+  DEFAULT_BLOCK_RESOURCES,
+  DEFAULT_STRUDEL_URL,
+  DEFAULT_VIEWPORT,
+  type BrowserFidelity,
+  type ViewportConfig,
+} from './utils/ServerConfig.js';
 import { resolveSafeOutputPath } from './utils/SafePath.js';
 import { ErrorRecovery } from './utils/ErrorRecovery.js';
 import { Logger } from './utils/Logger.js';
@@ -88,6 +94,10 @@ export class StrudelController {
   private isHeadless: boolean;
   /** Strudel REPL URL; `strudel_url` in config.json (#227). */
   private readonly strudelUrl: string;
+  /** Playwright viewport; null lets the page track the OS window (#514). */
+  private readonly viewport: ViewportConfig | null;
+  /** Resource types the init route aborts (#514). */
+  private readonly blockResources: readonly string[];
   private editorCache: string = '';
   private cacheTimestamp: number = 0;
   private readonly CACHE_TTL = 100; // milliseconds
@@ -108,10 +118,14 @@ export class StrudelController {
     // Injectable so a test asserting a start FAILURE does not have to
     // wait out a budget sized for a real cold start.
     playbackBudget: PlaybackStartBudget = DEFAULT_PLAYBACK_BUDGET,
+    // Page-setup overrides from config.json `viewport` / `block_resources` (#514).
+    fidelity: BrowserFidelity = {},
   ) {
     this.playbackBudget = playbackBudget;
     this.isHeadless = headless;
     this.strudelUrl = strudelUrl;
+    this.viewport = fidelity.viewport !== undefined ? fidelity.viewport : DEFAULT_VIEWPORT;
+    this.blockResources = fidelity.blockResources ?? DEFAULT_BLOCK_RESOURCES;
     this.analyzer = new AudioAnalyzer(audioAnalysisConfig);
     this.validator = new PatternValidator();
     this.errorRecovery = new ErrorRecovery();
@@ -175,7 +189,9 @@ export class StrudelController {
 
     const context = await this.browser.newContext({
       permissions: ['microphone'],
-      viewport: { width: 1280, height: 720 },
+      // null is meaningful: Playwright tracks the real window size, so
+      // resizes reach the page and canvases re-measure (#514).
+      viewport: this.viewport,
       reducedMotion: 'reduce',
     });
 
@@ -184,8 +200,9 @@ export class StrudelController {
     // Optimize page loading
     await this._page.route('**/*', (route) => {
       const resourceType = route.request().resourceType();
-      // Block unnecessary resources
-      if (['image', 'font', 'media'].includes(resourceType)) {
+      // Abort the configured resource classes; an empty
+      // block_resources blocks nothing (#514).
+      if (this.blockResources.includes(resourceType)) {
         route.abort();
       } else {
         route.continue();

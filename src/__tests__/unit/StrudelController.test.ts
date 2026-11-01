@@ -105,6 +105,85 @@ describe('StrudelController', () => {
 
       await expect(controller.initialize()).rejects.toThrow('Browser launch failed');
     });
+
+    test('pins the default 1280x720 viewport unless overridden (#514)', async () => {
+      await controller.initialize();
+
+      expect(mockBrowser.newContext).toHaveBeenCalledWith(
+        expect.objectContaining({ viewport: { width: 1280, height: 720 } }),
+      );
+    });
+
+    test('passes a null viewport through so resizes reach the page (#514)', async () => {
+      const loose = new StrudelController(
+        true,
+        undefined,
+        undefined,
+        { firstPlayMs: 300, subsequentPlayMs: 300 },
+        { viewport: null },
+      );
+
+      await loose.initialize();
+
+      expect(mockBrowser.newContext).toHaveBeenCalledWith(
+        expect.objectContaining({ viewport: null }),
+      );
+      await loose.cleanup();
+    });
+
+    test('the route aborts the default resource classes (#514)', async () => {
+      const handlers: Array<(route: unknown) => void> = [];
+      mockPage.route = jest.fn(async (_url: string, handler: (route: unknown) => void) => {
+        handlers.push(handler);
+      }) as never;
+
+      await controller.initialize();
+
+      const aborted: string[] = [];
+      const continued: string[] = [];
+      const fakeRoute = (type: string) => ({
+        request: () => ({ resourceType: () => type }),
+        abort: () => aborted.push(type),
+        continue: () => continued.push(type),
+      });
+      handlers[0](fakeRoute('font'));
+      handlers[0](fakeRoute('image'));
+      handlers[0](fakeRoute('media'));
+      handlers[0](fakeRoute('document'));
+
+      expect(aborted).toEqual(['font', 'image', 'media']);
+      expect(continued).toEqual(['document']);
+    });
+
+    test('an overridden block_resources is what the route aborts (#514)', async () => {
+      const handlers: Array<(route: unknown) => void> = [];
+      mockPage.route = jest.fn(async (_url: string, handler: (route: unknown) => void) => {
+        handlers.push(handler);
+      }) as never;
+      const lenient = new StrudelController(
+        true,
+        undefined,
+        undefined,
+        { firstPlayMs: 300, subsequentPlayMs: 300 },
+        { blockResources: ['media'] },
+      );
+
+      await lenient.initialize();
+
+      const aborted: string[] = [];
+      const continued: string[] = [];
+      const fakeRoute = (type: string) => ({
+        request: () => ({ resourceType: () => type }),
+        abort: () => aborted.push(type),
+        continue: () => continued.push(type),
+      });
+      handlers[0](fakeRoute('font'));
+      handlers[0](fakeRoute('media'));
+
+      expect(aborted).toEqual(['media']);
+      expect(continued).toEqual(['font']);
+      await lenient.cleanup();
+    });
   });
 
   describe('writePattern', () => {

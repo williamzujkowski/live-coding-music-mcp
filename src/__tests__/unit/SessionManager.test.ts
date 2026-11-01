@@ -75,6 +75,25 @@ describe('SessionManager', () => {
       expect(mockBrowser.newContext).toHaveBeenCalledTimes(2);
     });
 
+    test('pins the default viewport on new contexts (#514)', async () => {
+      await sessionManager.createSession('vp-default');
+
+      expect(mockBrowser.newContext).toHaveBeenCalledWith(
+        expect.objectContaining({ viewport: { width: 1280, height: 720 } }),
+      );
+    });
+
+    test('a null viewport reaches newContext so resizes reach the page (#514)', async () => {
+      const loose = new SessionManager(true, undefined, undefined, { viewport: null });
+
+      await loose.createSession('vp-null');
+
+      expect(mockBrowser.newContext).toHaveBeenCalledWith(
+        expect.objectContaining({ viewport: null }),
+      );
+      await loose.destroyAll();
+    });
+
     test('should throw error for duplicate session ID', async () => {
       await sessionManager.createSession('duplicate');
 

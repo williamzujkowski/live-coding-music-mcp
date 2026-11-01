@@ -145,7 +145,13 @@ export class StrudelMCPServer {
       }
     );
 
-    this.controller = new StrudelController(config.headless, audioAnalysisConfig, config.strudelUrl);
+    this.controller = new StrudelController(
+      config.headless,
+      audioAnalysisConfig,
+      config.strudelUrl,
+      undefined,
+      { viewport: config.viewport, blockResources: config.blockResources },
+    );
     this.store = new PatternStore(config.patternsDir);
     this.theory = new MusicTheory();
     this.generator = new PatternGenerator();
@@ -156,7 +162,12 @@ export class StrudelMCPServer {
     // Shares the export directory and sanitizer with MIDI export (#223, #224).
     this.audioExportService = new AudioExportService(config.exportsDir);
     this.midiImportService = new MIDIImportService();
-    this.sessionManager = new SessionManager(config.headless, audioAnalysisConfig, config.strudelUrl);
+    this.sessionManager = new SessionManager(
+      config.headless,
+      audioAnalysisConfig,
+      config.strudelUrl,
+      { viewport: config.viewport, blockResources: config.blockResources },
+    );
     // Covers every teardown path — the destroy tool, idle eviction, and
     // destroyAll — rather than only the one the tool handler knew about.
     // destroyAll fired none of these until #423; the claim above this
