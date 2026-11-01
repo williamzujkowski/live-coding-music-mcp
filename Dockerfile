@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM node:22-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85 AS builder
+FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS builder
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ RUN npm prune --production && \
     rm -rf ~/.npm /tmp/*
 
 # Stage 2: Runtime (smaller image)
-FROM node:22-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85 AS runtime
+FROM node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS runtime
 
 # Install Chromium and cleanup in single layer
 RUN apk add --no-cache chromium && \
