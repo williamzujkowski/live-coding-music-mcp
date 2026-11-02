@@ -88,7 +88,6 @@ describe('onset history scope (#366)', () => {
 });
 
 function readFileSyncSafe(relative: string): string {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const fs = require('node:fs') as typeof import('node:fs');
   const path = require('node:path') as typeof import('node:path');
   return fs.readFileSync(path.join(__dirname, '..', '..', '..', relative), 'utf8');
