@@ -59,7 +59,7 @@
     "prettier": "^3.9.10",
     "ts-jest": "^29.4.15",
     "tsx": "^4.23.15",
-    "typescript": "^5.0.0",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.1"
   },
   "repository": {
