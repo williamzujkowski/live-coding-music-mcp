@@ -22,7 +22,7 @@
     "test:watch": "jest --watch",
     "test:integration": "node tests/strudel-integration.js",
     "test:browser": "HEADLESS=true jest --runInBand --forceExit --coverage=false --testPathPattern=__tests__/browser/",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src",
     "format": "prettier --write \"src/**/*.ts\"",
     "docker:build": "docker build -t live-coding-music-mcp .",
     "docker:run": "docker-compose up",
@@ -54,14 +54,13 @@
   "devDependencies": {
     "@types/jest": "^29.5.0",
     "@types/node": "^22",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^8.57.0",
+    "eslint": "^9.39.5",
     "jest": "^29.7.0",
     "prettier": "^3.9.10",
     "ts-jest": "^29.4.15",
     "tsx": "^4.23.15",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.72.1"
   },
   "repository": {
     "type": "git",
