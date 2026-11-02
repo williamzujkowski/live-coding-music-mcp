@@ -18,3 +18,10 @@ updates:
     ignore:
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      npm_and_yarn:
+        patterns: ["*"]
